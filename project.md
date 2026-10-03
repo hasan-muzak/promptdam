@@ -1,7 +1,7 @@
 # Promptdam: cut the LLM bill, block the leaks
 
 > **Status:** planning · **Owner:** Hasan · **Written:** 2026-10-03
-> **MVP build:** Feb 1 – Mar 19, 2027 · **Beta:** Mar 22, 2027 · **Public launch:** Tue Apr 13, 2027
+> **MVP build:** Mar 8 – Apr 23, 2027 · **Beta:** Apr 26, 2027 · **Public launch:** Tue May 18, 2027 (moved 5 weeks later to make room for Runlens for Mobile)
 > **Catalog:** #10 "AI Cost Optimization API" + #17 "AI Firewall". Revenue potential: High.
 > **Location:** `keel/products/promptdam/` inside the root monorepo. Shared Go packages are in `../../pkg/`, shared Nuxt layers in `../../packages/`.
 > **Built on:** Keel (`../../project.md`). Read it first for the stack, conventions, billing and shared modules.
@@ -89,7 +89,7 @@ Basic routing and logging are free elsewhere, so Promptdam charges for **outcome
 
 ## 4. Product scope
 
-### 4.1 MVP (beta Mar 22)
+### 4.1 MVP (beta Apr 26)
 - **Data-plane endpoints** at `https://gateway.<domain>/v1` (BYOK; customers add provider keys, stored in `pkg/vault`):
   - OpenAI-compatible: `POST /v1/chat/completions`, `POST /v1/embeddings`, `GET /v1/models`.
   - `POST /v1/responses`: OpenAI Responses passthrough.
@@ -130,7 +130,7 @@ Basic routing and logging are free elsewhere, so Promptdam charges for **outcome
   - request log (metadata by default; payload capture opt-in per project with `redact` applied).
 - **Platform (Keel):** orgs, members, keys, billing, usage, audit, webhooks (`budget.exceeded`, `firewall.blocked`, `experiment.ready`, `rule.reverted`).
 
-### 4.2 Post-launch (Apr – Jun 2027)
+### 4.2 Post-launch (May – Jul 2027)
 - **Batch deferral:** `x-promptdam-defer: batch` sends requests to Anthropic Message Batches or the OpenAI Batch API (about 50% cheaper). Results arrive by webhook or polling.
 - **Semantic cache:** embeddings, opt-in per route, similarity threshold, and an eval-guarded hit policy.
 - **Learned router:** a per-family classifier (embedding + outcome features) that decides the model per request, not just per family.
@@ -146,7 +146,8 @@ Basic routing and logging are free elsewhere, so Promptdam charges for **outcome
 ### 4.3 v2: Enterprise firewall (Q3 2027)
 - An EU data-plane region and data-residency routing.
 - A self-hosted data plane (Docker image syncing config and policies from the hosted control plane; logs stay in the customer's VPC).
-- DLP integrations, SIEM export, SOC 2 Type I.
+- DLP integrations, SIEM export.
+- No certifications (SOC 2 or ISO are out of reach for a solo company). Strict buyers get the BYOC data plane above, plus a security page, DPA and an independent pen test.
 
 ### Non-goals (until $10k MRR)
 Reselling tokens or unified billing (no credit risk, no float, no fraud surface), fine-tuning or distillation, prompt management, a general API gateway.
@@ -306,16 +307,16 @@ products/promptdam/
 
 ## 7. Timeline and phases (detailed todos)
 
-Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from v0.2. Keel K7 (streaming redact, hybrid limiter, budget counters) is built inside S1–S3 and tagged `core-v0.4.0`. Runlens and Toolport post-launch work takes about 20% of time during this build.
+Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from v0.2. Keel K7 (streaming redact, hybrid limiter, budget counters) is built inside S1–S3 and tagged `core-v0.4.0`. Runlens and Plugport post-launch work takes about 20% of time during this build.
 
-### S0: Scaffold and spikes (Mon Feb 1 – Wed Feb 3)
+### S0: Scaffold and spikes (Mon Mar 8 – Wed Mar 10)
 - [ ] S0.1 `keelctl new-product promptdam --prefix pd --domain <domain>` scaffolds `products/promptdam/`; CI path filter and the deploy workflow are green.
 - [ ] S0.2 Spike: streaming passthrough + usage tee for OpenAI Chat Completions, OpenAI Responses, Anthropic Messages and Gemini OpenAI-compat. Measure the added latency against direct calls.
 - [ ] S0.3 `bench/` harness with a fake upstream (configurable latency and streaming) for repeatable overhead measurement in CI.
 - [ ] S0.4 Catalog (`plans.go`), Stripe sync (test), real landing page; recruit 10 design partners with ≥ $2k/mo LLM spend (waitlist, interviews, Runlens customers with high cost-per-run).
 - **Exit:** proxy overhead p99 < 40 ms on the bench with streaming; OpenAI and Anthropic SDKs work unmodified with only `base_url` changed.
 
-### S1: Gateway core (Thu Feb 4 – Mon Feb 15)
+### S1: Gateway core (Thu Mar 11 – Mon Mar 22)
 - [ ] S1.1 Provider registry + BYOK credentials in `pkg/vault`, provider key validation call, per-provider settings.
 - [ ] S1.2 Endpoints: chat/completions, responses (passthrough), messages, embeddings, models; request parsing for both formats; error normalisation.
 - [ ] S1.3 Promptdam keys (key_settings: allowed models, tags, developer), attribution headers.
@@ -327,7 +328,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - [ ] S1.9 Quickstarts: OpenAI SDK (Py/TS), Anthropic SDK (Py/TS), Vercel AI SDK, LangChain, Claude Code (`ANTHROPIC_BASE_URL`), curl.
 - **Exit:** design partners route production traffic through Promptdam with fallbacks and budgets; spend analytics match provider invoices within ±2%.
 
-### S2: Cost levers (Tue Feb 16 – Wed Feb 24)
+### S2: Cost levers (Tue Mar 23 – Wed Mar 31)
 - [ ] S2.1 Families: normalisation + hashing, stats rollups, families UI (top families by spend).
 - [ ] S2.2 Exact response cache (opt-in per route; Valkey with size limits; TTL; project-scoped; `x-promptdam-cache` header).
 - [ ] S2.3 Prompt-caching doctor: prefix divergence analysis, cause classification, dollar impact, fix snippets.
@@ -336,7 +337,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - [ ] S2.6 Savings ledger (counterfactual pricing, reasons) and savings dashboard.
 - **Exit:** at least 3 design partners show ≥ 15% verified savings from caching and manual rules alone.
 
-### S3: Firewall and savings experiments (Thu Feb 25 – Mon Mar 8)
+### S3: Firewall and savings experiments (Thu Apr 1 – Mon Apr 12)
 - [ ] S3.1 Keel K7.1: streaming-safe redact scanner with chunk overlap; reversible tokenisation restored in streamed responses.
 - [ ] S3.2 Firewall presets (source code, customer data), CEL policy sets, actions (block/redact/tokenize/alert/route_to), fail-closed option.
 - [ ] S3.3 Firewall UI (events with masked excerpts, stats), alerts, weekly digest.
@@ -346,7 +347,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - [ ] S3.7 Tag core milestone **`core-v0.4.0`**.
 - **Exit:** an end-to-end experiment on a design partner's family reaches a recommendation; a forced quality drop triggers auto-revert within one window; secrets in a test prompt are blocked before leaving.
 
-### S4: Billing, launch readiness and lead magnet (Tue Mar 9 – Fri Mar 19)
+### S4: Billing, launch readiness and lead magnet (Tue Apr 13 – Fri Apr 23)
 - [ ] S4.1 Billing: plans, `requests` overage meter, savings-plan base + `savings_share` meter, the monthly savings report approval flow.
 - [ ] S4.2 "LLM Bill Audit" free tool on the site. The user uploads OpenAI/Anthropic usage exports (CSV), or a 7-day sample through Promptdam's free plan. Output:
   - an estimated savings breakdown (model downgrade potential by family size, caching potential, batch potential)
@@ -355,19 +356,19 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - [ ] S4.4 Load test at 1k req/s per instance with streaming; multi-zone Cloud Run (min 2); uptime checks; status page.
 - [ ] S4.5 Security pass: vault for provider keys, payload-free default, tenant isolation, SSRF guard on custom provider URLs, dependency audit, signed container images.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
-- **Exit:** ≥ 5 design partners in production, ≥ 2 willing to sign the savings plan. → **Beta Mon Mar 22**.
+- **Exit:** ≥ 5 design partners in production, ≥ 2 willing to sign the savings plan. → **Beta Mon Apr 26**.
 
-### S5: Beta → launch (Mon Mar 22 – Fri Apr 9)
+### S5: Beta → launch (Mon Apr 26 – Fri May 14)
 - [ ] S5.1 Weekly partner calls; fix the top issues; tune detector precision and judge thresholds.
 - [ ] S5.2 Case studies with real numbers ("$X/mo → $Y/mo, quality unchanged, evidence attached").
 - [ ] S5.3 Launch assets: demo video ("one line change, 41% cheaper"), Show HN, Product Hunt, comparison pages (vs OpenRouter, LiteLLM, Portkey, Cloudflare AI Gateway, Vercel AI Gateway, Helicone), "Secrets your coding agent sent to the LLM" blog post (with anonymised aggregate data, if partners opt in).
 - [ ] S5.4 Stripe live mode; savings-plan contract template (click-through terms with dispute window).
 
-### Launch: Tue Apr 13, 2027
+### Launch: Tue May 18, 2027
 - [ ] Show HN + Product Hunt + X/LinkedIn; r/LocalLLaMA, r/LLMDevs, r/ExperiencedDevs (cost angle); engineering-manager newsletters.
 - [ ] Outbound to Runlens customers with high cost-per-run ("Runlens shows the cost; Promptdam cuts it").
 
-### S6: Post-launch (Apr – Jun 2027)
+### S6: Post-launch (May – Jul 2027; shares time with Runlens for Games, May 19 – Jun 25)
 - [ ] S6.1 Batch deferral (Anthropic Message Batches, OpenAI Batch).
 - [ ] S6.2 Semantic cache with eval guard.
 - [ ] S6.3 Cross-format translation (OpenAI ⇄ Anthropic incl. tools + streaming), unlocking cross-provider routing.
@@ -378,7 +379,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 ### S7: Enterprise firewall (Q3 2027)
 - [ ] S7.1 EU data-plane region + residency routing.
 - [ ] S7.2 Self-hosted data plane (config sync, local logs).
-- [ ] S7.3 SIEM export, SOC 2 Type I readiness (buy tooling, don't build).
+- [ ] S7.3 SIEM export; security page, DPA and an independent pen test. No certifications: BYOC (S7.2) is the answer for buyers who need data to stay in their cloud.
 
 ---
 
@@ -413,7 +414,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 | Providers cut prices and cache implicitly, shrinking savings | Savings-share aligns incentives; the levers diversify (routing, caching fixes, batch, semantic cache); value shifts to firewall and budgets |
 | Routing hurts quality | Shadow eval before adoption, canary after, auto-revert, per-route thresholds, customer approval by default |
 | Hot-path reliability and latency | Go, in-memory snapshots, no DB on the hot path, multi-zone, fallbacks, bench in CI, documented fail-open client pattern |
-| Trust: a proxy sees all prompts | Payload-free logging by default, vault-encrypted keys, minimal dependencies, signed images, DPA, EU region (S7), SOC 2 path; contrast with self-run proxies after the Mar 2026 LiteLLM supply-chain incident |
+| Trust: a proxy sees all prompts | Payload-free logging by default, vault-encrypted keys, minimal dependencies, signed images, DPA, EU region and BYOC data plane (S7), no certification claims; contrast with self-run proxies after the Mar 2026 LiteLLM supply-chain incident |
 | Savings-share disputes | Transparent per-request ledger, monthly approval with a dispute window, conservative counterfactual (list prices, provider-reported usage) |
 | API format translation complexity | MVP routes only within a format family; translation is post-launch with golden tests |
 
