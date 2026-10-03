@@ -416,7 +416,8 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 | Providers cut prices and cache implicitly, shrinking savings | Savings-share aligns incentives; the levers diversify (routing, caching fixes, batch, semantic cache); value shifts to firewall and budgets |
 | Routing hurts quality | Shadow eval before adoption, canary after, auto-revert, per-route thresholds, customer approval by default |
 | Hot-path reliability and latency (one VPS) | Go, in-memory snapshots, no DB on the hot path, two gateway replicas, fallbacks, bench in CI, documented fail-open client pattern; a second VPS behind Cloudflare Load Balancing before any SLA |
-| Trust: a proxy sees all prompts | Payload-free logging by default, vault-encrypted keys, minimal dependencies, signed images, DPA, EU region and BYOC data plane (S7), no certification claims; contrast with self-run proxies after the Mar 2026 LiteLLM supply-chain incident |
+| Gateway is hosted in Europe only (Contabo): US apps add a transatlantic round trip (~80–100 ms) per LLM call | Small relative to LLM latency (seconds) but visible in time-to-first-token. Measure in beta. Add a US gateway VPS only when US revenue justifies it (owner keeps all VPS in Europe for now). Market EU residency to EU customers |
+| Trust: a proxy sees all prompts | Payload-free logging by default, vault-encrypted keys, minimal dependencies, signed images, DPA, EU data residency and BYOC data plane (S7), no certification claims; contrast with self-run proxies after the Mar 2026 LiteLLM supply-chain incident |
 | Savings-share disputes | Transparent per-request ledger, monthly approval with a dispute window, conservative counterfactual (list prices, provider-reported usage) |
 | API format translation complexity | MVP routes only within a format family; translation is post-launch with golden tests |
 
