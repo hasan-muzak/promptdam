@@ -1,17 +1,19 @@
-# Sluice: cut the LLM bill, block the leaks
+# Promptdam: cut the LLM bill, block the leaks
 
 > **Status:** planning · **Owner:** Hasan · **Written:** 2026-10-03
 > **MVP build:** Feb 1 – Mar 19, 2027 · **Beta:** Mar 22, 2027 · **Public launch:** Tue Apr 13, 2027
 > **Catalog:** #10 "AI Cost Optimization API" + #17 "AI Firewall". Revenue potential: High.
-> **Location:** `keel/products/sluice/` inside the root monorepo. Shared Go packages are in `../../pkg/`, shared Nuxt layers in `../../packages/`.
+> **Location:** `keel/products/promptdam/` inside the root monorepo. Shared Go packages are in `../../pkg/`, shared Nuxt layers in `../../packages/`.
 > **Built on:** Keel (`../../project.md`). Read it first for the stack, conventions, billing and shared modules.
-> **Working name.** `DECISION NEEDED:` final name and domain (candidates: sluice.dev, getsluice.com, sluice.ai). Owned by Badele LLC.
+> **Name (final):** **Promptdam**. A dam holds back spend and stops leaks. Owned by Badele LLC.
+> - Domains: **promptdam.dev** (product) and **promptdam.com** (redirect). Both were unregistered on 2026-10-03 (RDAP/WHOIS check); register them now and run a trademark search before launch.
+> - "Sluice" was dropped because sluice.dev and sluice.ai are taken.
 
 ---
 
 ## 1. One-liner and pitch
 
-**Change one line (`base_url`) and Sluice cuts your LLM bill 30–60% with proven, quality-guarded routing and caching, while blocking secrets and PII before they leave your company. Pay a share of what you save.**
+**Change one line (`base_url`) and Promptdam cuts your LLM bill 30–60% with proven, quality-guarded routing and caching, while blocking secrets and PII before they leave your company. Pay a share of what you save.**
 
 LLM spend is now a top-3 cost line for many software companies. Most of it is waste:
 - the most expensive model is used for every request, including trivial ones
@@ -21,7 +23,7 @@ LLM spend is now a top-3 cost line for many software companies. Most of it is wa
 
 At the same time, apps and coding agents send `.env` files, customer emails and card numbers to third-party providers.
 
-**Sluice is an OpenAI- and Anthropic-compatible gateway (BYOK) that:**
+**Promptdam is an OpenAI- and Anthropic-compatible gateway (BYOK) that:**
 1. Finds savings automatically:
    - prompt families
    - cheaper-model experiments with shadow evaluation
@@ -29,7 +31,7 @@ At the same time, apps and coding agents send `.env` files, customer emails and 
 2. Proves every saved dollar in a per-request ledger.
 3. Enforces a firewall: secrets and PII detection, redaction and blocking, CEL policies, budgets.
 
-Basic routing and logging are free elsewhere, so Sluice charges for **outcomes** (savings, protection), not for passing traffic through.
+Basic routing and logging are free elsewhere, so Promptdam charges for **outcomes** (savings, protection), not for passing traffic through.
 
 ---
 
@@ -59,7 +61,7 @@ Basic routing and logging are free elsewhere, so Sluice charges for **outcomes**
 
 ## 3. Competitive landscape and wedge (checked 2026-10-03; re-verify at launch)
 
-| Player (status) | Pricing | What it does | Gap Sluice exploits |
+| Player (status) | Pricing | What it does | Gap Promptdam exploits |
 |---|---|---|---|
 | **OpenRouter** | 5.5% fee on credits (8% Business); BYOK first $25k/mo free, then 5% | Marketplace and router across hundreds of models | Routes by availability and price, not by task quality; no savings proof; firewall isn't the focus |
 | **Vercel AI Gateway** | Zero markup incl. BYOK; $5/mo free credit | Gateway for Vercel users | Passthrough and observability; no savings engine, no firewall |
@@ -80,7 +82,7 @@ Basic routing and logging are free elsewhere, so Sluice charges for **outcomes**
 4. **A firewall built in, not an enterprise add-on.**
    - Secrets are blocked by default on every plan.
    - PII redaction with reversible tokenisation, CEL policies, per-developer budgets.
-   - Works for **coding agents**: point Claude Code (`ANTHROPIC_BASE_URL`) or other OpenAI/Anthropic-compatible tools at Sluice.
+   - Works for **coding agents**: point Claude Code (`ANTHROPIC_BASE_URL`) or other OpenAI/Anthropic-compatible tools at Promptdam.
 5. **Hosted, minimal-dependency Go gateway.** Low overhead, signed builds, no customer-run Python proxy to patch.
 
 ---
@@ -98,10 +100,10 @@ Basic routing and logging are free elsewhere, so Sluice charges for **outcomes**
   - Mistral, DeepSeek, Groq, Together, xAI and Fireworks (OpenAI-compatible).
   - Azure OpenAI, Bedrock and Vertex come post-launch.
 - **Routing scope at MVP:** requests stay **within their API format family**. OpenAI-format requests can go to any OpenAI-compatible provider or model; Anthropic-format requests go to Anthropic models. Cross-format translation comes after launch (§4.2).
-- **Sluice keys** (`sl_sk_…`, via `pkg/apikeys`):
+- **Promptdam keys** (`pd_sk_…`, via `pkg/apikeys`):
   - per project, team or developer
   - settings: allowed models, budget, policies, tags
-  - attribution headers `x-sluice-user`, `x-sluice-route`, `x-sluice-tags`.
+  - attribution headers `x-promptdam-user`, `x-promptdam-route`, `x-promptdam-tags`.
 - **Reliability:**
   - retries with jitter; fallback chains (model → model, provider → provider) on 429, 5xx and timeouts
   - circuit breaker per provider and model
@@ -129,7 +131,7 @@ Basic routing and logging are free elsewhere, so Sluice charges for **outcomes**
 - **Platform (Keel):** orgs, members, keys, billing, usage, audit, webhooks (`budget.exceeded`, `firewall.blocked`, `experiment.ready`, `rule.reverted`).
 
 ### 4.2 Post-launch (Apr – Jun 2027)
-- **Batch deferral:** `x-sluice-defer: batch` sends requests to Anthropic Message Batches or the OpenAI Batch API (about 50% cheaper). Results arrive by webhook or polling.
+- **Batch deferral:** `x-promptdam-defer: batch` sends requests to Anthropic Message Batches or the OpenAI Batch API (about 50% cheaper). Results arrive by webhook or polling.
 - **Semantic cache:** embeddings, opt-in per route, similarity threshold, and an eval-guarded hit policy.
 - **Learned router:** a per-family classifier (embedding + outcome features) that decides the model per request, not just per family.
 - **Cross-format translation** (OpenAI ⇄ Anthropic, including tools and streaming), so any request can use any model.
@@ -138,7 +140,7 @@ Basic routing and logging are free elsewhere, so Sluice charges for **outcomes**
   - per-developer keys with SSO-issued tokens
   - setup guides for Claude Code, Cursor and other base-URL-configurable tools
   - secrets-blocking defaults tuned for source code.
-- **Employee chat:** guides for Open WebUI and LibreChat pointed at Sluice (instant "AI firewall for employees" with no build).
+- **Employee chat:** guides for Open WebUI and LibreChat pointed at Promptdam (instant "AI firewall for employees" with no build).
 - SSO, SCIM, audit export.
 
 ### 4.3 v2: Enterprise firewall (Q3 2027)
@@ -168,7 +170,7 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
   - the customer approves the monthly savings report before invoicing, with a dispute window of 7 days.
 - **Shadow evaluation cost:** experiments call models with the **customer's own provider keys**. Every experiment has a visible budget cap (default $25/experiment, $100/mo), and its cost is subtracted in the savings ledger.
 - **Path to $10–15k MRR:** for example, 50 Pro ($2.45k) + 25 Team ($5k) + 5 Business ($2.5k) + 3 savings plans (~$1.3k each, $3.9k) ≈ $13.8k. The catalog benchmark is about 12 × $1.3k at 15% of savings.
-- **Meters:** `requests` (soft on paid, hard on Free), `savings_share` (savings plan), `ai_credits` (judge calls when the customer opts for Sluice-paid judging, e.g. no Anthropic key), `seats`.
+- **Meters:** `requests` (soft on paid, hard on Free), `savings_share` (savings plan), `ai_credits` (judge calls when the customer opts for Promptdam-paid judging, e.g. no Anthropic key), `seats`.
 
 ---
 
@@ -176,7 +178,7 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 
 ```
  customer app / coding agent / internal tool  (OpenAI SDK, Anthropic SDK, Vercel AI SDK, LangChain, Claude Code …)
-   │  base_url = https://gateway.<domain>/v1     Authorization: Bearer sl_sk_…
+   │  base_url = https://gateway.<domain>/v1     Authorization: Bearer pd_sk_…
    ▼
  ┌──────────────── gateway (Cloud Run, min 2, raw http.Handler hot path) ─────────────────┐
  │ key check (checksum → in-memory → Valkey) → budget/rate (local bucket + Valkey)         │
@@ -203,12 +205,12 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
   - Response-side PII found while streaming defaults to **alert**, because blocking mid-stream breaks UX. **Tokenized placeholders** are restored in-stream.
 - **Request-side firewall:** scans all text parts (system, messages, tool results; text extracted from images is out of scope). It decides before anything is sent upstream, so blocked data never leaves.
 - **Fail behaviour:**
-  - On an internal error, Sluice fails open to direct upstream for routing and caching, but **never** for firewall decisions. A firewall-scanner error under a `block` policy fails closed, configurable per org.
-  - A provider outage triggers the fallback chain, then a clear error with a `x-sluice-trace` id.
-- **Headers returned:** `x-sluice-trace`, `x-sluice-served-model`, `x-sluice-cache` (hit/miss/prompt), `x-sluice-savings-micros`.
+  - On an internal error, Promptdam fails open to direct upstream for routing and caching, but **never** for firewall decisions. A firewall-scanner error under a `block` policy fails closed, configurable per org.
+  - A provider outage triggers the fallback chain, then a clear error with a `x-promptdam-trace` id.
+- **Headers returned:** `x-promptdam-trace`, `x-promptdam-served-model`, `x-promptdam-cache` (hit/miss/prompt), `x-promptdam-savings-micros`.
 
 ### 6.2 Families, experiments and the savings engine (`features/families`, `features/experiments`)
-1. **Family ID:** hash of the normalised system prompt (numbers, dates, UUIDs and whitespace normalised) + tool names + response format, or an explicit `x-sluice-route`. Stats are kept per family: volume, tokens, cost, model mix, latency, error rate.
+1. **Family ID:** hash of the normalised system prompt (numbers, dates, UUIDs and whitespace normalised) + tool names + response format, or an explicit `x-promptdam-route`. Stats are kept per family: volume, tokens, cost, model mix, latency, error rate.
 2. **Candidate selection:** a family qualifies with ≥ 1,000 requests/week and ≥ $50/week spend. Candidates are cheaper models with the required capabilities (tools, JSON/structured output, context ≥ p99 input, vision if needed), taken from the `pkg/llm` catalog.
 3. **Shadow sampling:**
    - The worker re-sends a sample (default 5%) of the family's requests to the candidate, asynchronously and outside the user's path, within the budget cap.
@@ -237,7 +239,7 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 - **Economics shown to the user:** cache reads cost about 0.1× base input (lower on some models), writes 1.25× for the 5-min TTL or 2× for the 1-hour TTL. The doctor only recommends 1-hour TTL when the start-to-start gaps in a family are 5–60 minutes.
 
 ### 6.4 Firewall (`features/firewall`)
-- Detectors come from `pkg/redact`, plus Sluice presets:
+- Detectors come from `pkg/redact`, plus Promptdam presets:
   - **"source code"** preset for coding agents (`.env` patterns, private keys, cloud credentials, connection strings)
   - **"customer data"** preset (email, phone, card, IBAN, national IDs).
 - CEL policies (`pkg/policy`) see `principal` (key, team, developer), `request` (model, provider, route, tokens, has_tools), `findings` (kinds, counts, locations) and `org` (region, plan).
@@ -272,9 +274,9 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 
 All tables have TTL by plan, and `ORDER BY` starts with `(project_id, ts)`.
 
-### 6.6 Folder layout (Keel standard from §5 of the root doc, with Sluice specifics)
+### 6.6 Folder layout (Keel standard from §5 of the root doc, with Promptdam specifics)
 ```
-products/sluice/
+products/promptdam/
 ├── server/
 │   ├── cmd/{api,gateway,worker,migrate}/
 │   ├── features/
@@ -307,7 +309,7 @@ products/sluice/
 Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from v0.2. Keel K7 (streaming redact, hybrid limiter, budget counters) is built inside S1–S3 and tagged `core-v0.4.0`. Runlens and Toolport post-launch work takes about 20% of time during this build.
 
 ### S0: Scaffold and spikes (Mon Feb 1 – Wed Feb 3)
-- [ ] S0.1 `keelctl new-product sluice --prefix sl --domain <domain>` scaffolds `products/sluice/`; CI path filter and the deploy workflow are green.
+- [ ] S0.1 `keelctl new-product promptdam --prefix pd --domain <domain>` scaffolds `products/promptdam/`; CI path filter and the deploy workflow are green.
 - [ ] S0.2 Spike: streaming passthrough + usage tee for OpenAI Chat Completions, OpenAI Responses, Anthropic Messages and Gemini OpenAI-compat. Measure the added latency against direct calls.
 - [ ] S0.3 `bench/` harness with a fake upstream (configurable latency and streaming) for repeatable overhead measurement in CI.
 - [ ] S0.4 Catalog (`plans.go`), Stripe sync (test), real landing page; recruit 10 design partners with ≥ $2k/mo LLM spend (waitlist, interviews, Runlens customers with high cost-per-run).
@@ -316,18 +318,18 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 ### S1: Gateway core (Thu Feb 4 – Mon Feb 15)
 - [ ] S1.1 Provider registry + BYOK credentials in `pkg/vault`, provider key validation call, per-provider settings.
 - [ ] S1.2 Endpoints: chat/completions, responses (passthrough), messages, embeddings, models; request parsing for both formats; error normalisation.
-- [ ] S1.3 Sluice keys (key_settings: allowed models, tags, developer), attribution headers.
+- [ ] S1.3 Promptdam keys (key_settings: allowed models, tags, developer), attribution headers.
 - [ ] S1.4 Config snapshots in memory (keys, routes, rules, policies, providers) with Valkey pub/sub refresh; no DB on the hot path.
 - [ ] S1.5 Retries, fallback chains, circuit breakers; provider error taxonomy → fallback decisions.
 - [ ] S1.6 Keel K7.2: hybrid local/Valkey limiter + budget counters (micro-USD), budgets CRUD and enforcement, alerts.
 - [ ] S1.7 Cost calculation via the `pkg/llm` catalog (incl. cache read/write pricing); ClickHouse `requests` writer; metering `requests`.
 - [ ] S1.8 Dashboard: providers, keys, requests log (metadata), spend analytics (by model/provider/key/developer/tag), budgets.
 - [ ] S1.9 Quickstarts: OpenAI SDK (Py/TS), Anthropic SDK (Py/TS), Vercel AI SDK, LangChain, Claude Code (`ANTHROPIC_BASE_URL`), curl.
-- **Exit:** design partners route production traffic through Sluice with fallbacks and budgets; spend analytics match provider invoices within ±2%.
+- **Exit:** design partners route production traffic through Promptdam with fallbacks and budgets; spend analytics match provider invoices within ±2%.
 
 ### S2: Cost levers (Tue Feb 16 – Wed Feb 24)
 - [ ] S2.1 Families: normalisation + hashing, stats rollups, families UI (top families by spend).
-- [ ] S2.2 Exact response cache (opt-in per route; Valkey with size limits; TTL; project-scoped; `x-sluice-cache` header).
+- [ ] S2.2 Exact response cache (opt-in per route; Valkey with size limits; TTL; project-scoped; `x-promptdam-cache` header).
 - [ ] S2.3 Prompt-caching doctor: prefix divergence analysis, cause classification, dollar impact, fix snippets.
 - [ ] S2.4 Anthropic auto prompt caching (top-level automatic + stable-prefix breakpoint; respect the 4-breakpoint limit and minimum sizes); verify through `cache_read_input_tokens`.
 - [ ] S2.5 Routes + manual routing rules (CEL conditions, same-format targets only), rules UI with dry-run on recent traffic ("would have saved $X").
@@ -346,7 +348,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 
 ### S4: Billing, launch readiness and lead magnet (Tue Mar 9 – Fri Mar 19)
 - [ ] S4.1 Billing: plans, `requests` overage meter, savings-plan base + `savings_share` meter, the monthly savings report approval flow.
-- [ ] S4.2 "LLM Bill Audit" free tool on the site. The user uploads OpenAI/Anthropic usage exports (CSV), or a 7-day sample through Sluice's free plan. Output:
+- [ ] S4.2 "LLM Bill Audit" free tool on the site. The user uploads OpenAI/Anthropic usage exports (CSV), or a 7-day sample through Promptdam's free plan. Output:
   - an estimated savings breakdown (model downgrade potential by family size, caching potential, batch potential)
   - a PDF/email report and a CTA.
 - [ ] S4.3 Docs: concepts (families, rules, experiments, ledger, firewall), provider setup, migration guides (from OpenRouter, LiteLLM, Portkey, Helicone), security and data handling page, API reference, `llms.txt`.
@@ -363,7 +365,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 
 ### Launch: Tue Apr 13, 2027
 - [ ] Show HN + Product Hunt + X/LinkedIn; r/LocalLLaMA, r/LLMDevs, r/ExperiencedDevs (cost angle); engineering-manager newsletters.
-- [ ] Outbound to Runlens customers with high cost-per-run ("Runlens shows the cost; Sluice cuts it").
+- [ ] Outbound to Runlens customers with high cost-per-run ("Runlens shows the cost; Promptdam cuts it").
 
 ### S6: Post-launch (Apr – Jun 2027)
 - [ ] S6.1 Batch deferral (Anthropic Message Batches, OpenAI Batch).
@@ -389,14 +391,14 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
   5. HN/PH launch.
   6. A coding-agent security angle aimed at platform/security leads.
 - **Sales motion:** self-serve to Team. The savings plan is the only plan with a call (optional 20-minute review of the savings report). Still no custom contracts below $2k/mo.
-- **Activation:** ≥ 1,000 requests through Sluice within 7 days **and** the savings or firewall dashboard viewed.
+- **Activation:** ≥ 1,000 requests through Promptdam within 7 days **and** the savings or firewall dashboard viewed.
 - **Expansion:** request volume, developers (keys), savings share growing with the customer's spend.
 
 ## 9. Metrics
 | Metric | Beta target | Launch + 90 days |
 |---|---|---|
 | Orgs routing traffic | 8 | 150 |
-| Monthly requests through Sluice | 5M | 150M |
+| Monthly requests through Promptdam | 5M | 150M |
 | Median verified savings (orgs with experiments) | 25% | 30% |
 | Secrets blocked (all orgs, monthly) | tracked | tracked (marketing stat) |
 | Paying orgs | 0 (coupons) | 40 |
@@ -416,7 +418,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 | API format translation complexity | MVP routes only within a format family; translation is post-launch with golden tests |
 
 ## 11. Decisions needed
-- [ ] `DECISION NEEDED:` final name and domain.
+- [x] Name and domain: **Promptdam**, promptdam.dev + promptdam.com (decided 2026-10-03; register the domains).
 - [ ] `DECISION NEEDED:` savings-share percentage and minimum (recommendation: 15%, $500/mo minimum, offered only above $5k/mo LLM spend).
 - [ ] `DECISION NEEDED:` default judge model for experiments (recommendation: `claude-sonnet-5-5` pairwise judge, run on the customer's Anthropic key when present; otherwise billed as AI credits).
 - [ ] `DECISION NEEDED:` firewall fail-closed default for `block` policies (recommendation: fail closed for secrets, fail open for everything else).
