@@ -181,7 +181,7 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
  customer app / coding agent / internal tool  (OpenAI SDK, Anthropic SDK, Vercel AI SDK, LangChain, Claude Code …)
    │  base_url = https://gateway.<domain>/v1     Authorization: Bearer pd_sk_…
    ▼
- ┌──────────────── gateway (Cloud Run, min 2, raw http.Handler hot path) ─────────────────┐
+ ┌──────── gateway container(s) on the Promptdam VPS (raw http.Handler hot path) ─────────┐
  │ key check (checksum → in-memory → Valkey) → budget/rate (local bucket + Valkey)         │
  │ → parse request (OpenAI | Anthropic) → family id (hash of normalised system+tools)      │
  │ → firewall: redact scan + CEL policy → block | redact | tokenize | alert                 │
@@ -194,7 +194,7 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
  │ family stats · experiment runner (shadow     │   │ providers, keys, routes, rules, policies,│
  │ calls + judge) · canary checks · auto-revert │   │ budgets, experiments, analytics, ledger  │
  │ · savings reports · cache doctor · alerts    │   └──────────────────────────────────────────┘
- └──────────────────────────────────────────────┘            ▲ app.<domain> (Nuxt SPA, @keel/dashboard)
+ └──────────────────────────────────────────────┘    ▲ app.<domain>: Promptdam's own dashboard (built from @keel/app-kit)
 ```
 
 ### 6.1 Hot path (`features/gateway`)
@@ -295,11 +295,13 @@ products/promptdam/
 │   ├── catalog/plans.go
 │   ├── ent/schema/
 │   └── migrations/{postgres,clickhouse}/
-├── web/{app,site,admin,api}/       (root pnpm workspace members; extend @keel/* layers)
+├── web/{app,site,api}/             Promptdam's OWN dashboard and landing site (built from @keel/app-kit and
+│                                   @keel/site-kit), plus the generated API client
 │   └── app/pages: index (spend + savings), requests/, requests/[id], families/, families/[id], experiments/,
 │                  routes/, firewall/, budgets/, providers/, savings/ (ledger + reports), settings/* (keel)
 ├── bench/                         latency + throughput harness (vegeta/k6 scripts, fake upstream)
-├── infra/{dev,prod}/              (root infra/terraform/modules; later a multi-region gateway)
+├── deploy/                        compose.yaml (api, gateway, worker + shared fragments), Caddyfile, env.*.sops;
+│                                  later a second gateway VPS behind Cloudflare Load Balancing
 └── docs/{adr,interviews}/
 ```
 
@@ -353,7 +355,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
   - an estimated savings breakdown (model downgrade potential by family size, caching potential, batch potential)
   - a PDF/email report and a CTA.
 - [ ] S4.3 Docs: concepts (families, rules, experiments, ledger, firewall), provider setup, migration guides (from OpenRouter, LiteLLM, Portkey, Helicone), security and data handling page, API reference, `llms.txt`.
-- [ ] S4.4 Load test at 1k req/s per instance with streaming; multi-zone Cloud Run (min 2); uptime checks; status page.
+- [ ] S4.4 Load test at 1k req/s with streaming on the Promptdam VPS (2 gateway replicas behind Caddy); uptime checks; status page; documented client-side fallback to the provider for when the gateway is unreachable.
 - [ ] S4.5 Security pass: vault for provider keys, payload-free default, tenant isolation, SSRF guard on custom provider URLs, dependency audit, signed container images.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
 - **Exit:** ≥ 5 design partners in production, ≥ 2 willing to sign the savings plan. → **Beta Mon Apr 26**.
@@ -413,7 +415,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 | Passthrough gateways are free or zero-markup (Vercel, Cloudflare) | Never charge for passthrough; charge for proven savings and the firewall; Free plan includes the gateway |
 | Providers cut prices and cache implicitly, shrinking savings | Savings-share aligns incentives; the levers diversify (routing, caching fixes, batch, semantic cache); value shifts to firewall and budgets |
 | Routing hurts quality | Shadow eval before adoption, canary after, auto-revert, per-route thresholds, customer approval by default |
-| Hot-path reliability and latency | Go, in-memory snapshots, no DB on the hot path, multi-zone, fallbacks, bench in CI, documented fail-open client pattern |
+| Hot-path reliability and latency (one VPS) | Go, in-memory snapshots, no DB on the hot path, two gateway replicas, fallbacks, bench in CI, documented fail-open client pattern; a second VPS behind Cloudflare Load Balancing before any SLA |
 | Trust: a proxy sees all prompts | Payload-free logging by default, vault-encrypted keys, minimal dependencies, signed images, DPA, EU region and BYOC data plane (S7), no certification claims; contrast with self-run proxies after the Mar 2026 LiteLLM supply-chain incident |
 | Savings-share disputes | Transparent per-request ledger, monthly approval with a dispute window, conservative counterfactual (list prices, provider-reported usage) |
 | API format translation complexity | MVP routes only within a format family; translation is post-launch with golden tests |
