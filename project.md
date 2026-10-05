@@ -1,7 +1,7 @@
 # Promptdam: cut the LLM bill, block the leaks
 
 > **Status:** planning · **Owner:** Hasan · **Written:** 2026-10-03
-> **MVP build:** Mar 8 – Apr 23, 2027 · **Beta:** Apr 26, 2027 · **Public launch:** Tue May 18, 2027 (moved 5 weeks later to make room for Runlens for Mobile)
+> **MVP build:** Mar 8 – Apr 23, 2027 · **Beta:** Apr 26, 2027 · **Public launch:** Tue May 18, 2027 (moved 5 weeks later to make room for Fixwire for Mobile)
 > **Catalog:** #10 "AI Cost Optimization API" + #17 "AI Firewall". Revenue potential: High.
 > **Location:** `keel/products/promptdam/` inside the root monorepo. Shared Go packages are in `../../pkg/`, shared Nuxt layers in `../../packages/`.
 > **Built on:** Keel (`../../project.md`). Read it first for the stack, conventions, billing and shared modules.
@@ -135,7 +135,7 @@ Basic routing and logging are free elsewhere, so Promptdam charges for **outcome
 - **Semantic cache:** embeddings, opt-in per route, similarity threshold, and an eval-guarded hit policy.
 - **Learned router:** a per-family classifier (embedding + outcome features) that decides the model per request, not just per family.
 - **Cross-format translation** (OpenAI ⇄ Anthropic, including tools and streaming), so any request can use any model.
-- **Runlens integration:** every gateway request appears as an LLM span in the customer's Runlens project.
+- **Fixwire integration:** every gateway request appears as an LLM span in the customer's Fixwire project.
 - **Coding-agent pack:**
   - per-developer keys with SSO-issued tokens
   - setup guides for Claude Code, Cursor and other base-URL-configurable tools
@@ -309,13 +309,13 @@ products/promptdam/
 
 ## 7. Timeline and phases (detailed todos)
 
-Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from v0.2. Keel K7 (streaming redact, hybrid limiter, budget counters) is built inside S1–S3 and tagged `core-v0.4.0`. Runlens and Plugport post-launch work takes about 20% of time during this build.
+Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from v0.2. Keel K7 (streaming redact, hybrid limiter, budget counters) is built inside S1–S3 and tagged `core-v0.4.0`. Fixwire and Plugport post-launch work takes about 20% of time during this build.
 
 ### S0: Scaffold and spikes (Mon Mar 8 – Wed Mar 10)
 - [ ] S0.1 `keelctl new-product promptdam --prefix pd --domain <domain>` scaffolds `products/promptdam/`; CI path filter and the deploy workflow are green.
 - [ ] S0.2 Spike: streaming passthrough + usage tee for OpenAI Chat Completions, OpenAI Responses, Anthropic Messages and Gemini OpenAI-compat. Measure the added latency against direct calls.
 - [ ] S0.3 `bench/` harness with a fake upstream (configurable latency and streaming) for repeatable overhead measurement in CI.
-- [ ] S0.4 Catalog (`plans.go`), Stripe sync (test), real landing page; recruit 10 design partners with ≥ $2k/mo LLM spend (waitlist, interviews, Runlens customers with high cost-per-run).
+- [ ] S0.4 Catalog (`plans.go`), Stripe sync (test), real landing page; recruit 10 design partners with ≥ $2k/mo LLM spend (waitlist, interviews, Fixwire customers with high cost-per-run).
 - **Exit:** proxy overhead p99 < 40 ms on the bench with streaming; OpenAI and Anthropic SDKs work unmodified with only `base_url` changed.
 
 ### S1: Gateway core (Thu Mar 11 – Mon Mar 22)
@@ -368,14 +368,14 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 
 ### Launch: Tue May 18, 2027
 - [ ] Show HN + Product Hunt + X/LinkedIn; r/LocalLLaMA, r/LLMDevs, r/ExperiencedDevs (cost angle); engineering-manager newsletters.
-- [ ] Outbound to Runlens customers with high cost-per-run ("Runlens shows the cost; Promptdam cuts it").
+- [ ] Outbound to Fixwire customers with high cost-per-run ("Fixwire shows the cost; Promptdam cuts it").
 
-### S6: Post-launch (May – Jul 2027; shares time with Runlens for Games, May 19 – Jun 25)
+### S6: Post-launch (May – Jul 2027; shares time with Fixwire for Games, May 19 – Jun 25)
 - [ ] S6.1 Batch deferral (Anthropic Message Batches, OpenAI Batch).
 - [ ] S6.2 Semantic cache with eval guard.
 - [ ] S6.3 Cross-format translation (OpenAI ⇄ Anthropic incl. tools + streaming), unlocking cross-provider routing.
 - [ ] S6.4 Learned per-request router.
-- [ ] S6.5 Runlens span export; coding-agent pack (per-developer SSO keys); employee-chat guides (Open WebUI, LibreChat).
+- [ ] S6.5 Fixwire span export; coding-agent pack (per-developer SSO keys); employee-chat guides (Open WebUI, LibreChat).
 - [ ] S6.6 SSO/SCIM; Azure OpenAI, Bedrock and Vertex providers.
 
 ### S7: Enterprise firewall (Q3 2027)
@@ -388,7 +388,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 ## 8. Go-to-market
 - **Channels (ranked):**
   1. The "LLM Bill Audit" lead magnet (high intent, shareable numbers).
-  2. Cross-sell from Runlens (cost data already there).
+  2. Cross-sell from Fixwire (cost data already there).
   3. Migration guides for orphaned or acquired-gateway users (Helicone, Portkey-to-enterprise).
   4. A content series: "where your LLM money goes" and caching deep dives.
   5. HN/PH launch.
