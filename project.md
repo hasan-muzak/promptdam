@@ -431,12 +431,44 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 
 ### S2: Cost levers (Tue Mar 23 – Wed Mar 31)
 - [ ] S2.1 Families: normalisation + hashing, stats rollups, families UI (top families by spend).
-- [ ] S2.2 Exact response cache (opt-in per route; Valkey with size limits; TTL; project-scoped; `x-promptdam-cache` header).
-- [ ] S2.3 Prompt-caching doctor: prefix divergence analysis, cause classification, dollar impact, fix snippets.
-- [ ] S2.4 Anthropic auto prompt caching (top-level automatic + stable-prefix breakpoint; respect the 4-breakpoint limit and minimum sizes); verify through `cache_read_input_tokens`.
+  - **Done 2026-10-07, the backend:**
+    - A family is the hash of a call's normalised system prompt, tools and answer format. Dates, times, UUIDs, hex IDs and numbers become placeholders first, so prompts that differ only in them share a family.
+    - Every call logs its family, the hash of its exact prefix, the changing values found in it, and the prefix length.
+    - The `families_hourly` and `prefixes_hourly` rollups feed the families APIs: top families by spend, one family, and labels.
+  - The families UI is the owner's (frontend phase).
+- [x] S2.2 Exact response cache (opt-in per route; Valkey with size limits; TTL; project-scoped; `x-promptdam-cache` header).
+  - **Done 2026-10-07:**
+    - Opt-in per route with `cache_ttl_seconds` (up to a week). It covers non-streamed calls only.
+    - Two requests are the same when their bodies are equal after sorting keys and setting aside fields that don't change the answer (`user`, `metadata`, `store`, `stream_options`, `service_tier`).
+    - Keys are scoped to the project and route. Answers over 1 MiB aren't cached. A hit returns `x-promptdam-cache: hit` and counts as a response-cache saving.
+- [x] S2.3 Prompt-caching doctor: prefix divergence analysis, cause classification, dollar impact, fix snippets.
+  - **Done 2026-10-07:**
+    - The doctor reads only the prefix rollup, never prompts.
+    - Findings, each with a fix: the prefix is too short to cache, a date or time in the instructions, IDs, changing numbers, tools in changing order, instructions that vary, and Anthropic calls without breakpoints.
+    - Dollar impact: what the cache could save a month if every call after the first read the prefix from it. Results are ranked by that amount.
+    - Covers one family, or the 20 with the most input tokens.
+- [x] S2.4 Anthropic auto prompt caching (top-level automatic + stable-prefix breakpoint; respect the 4-breakpoint limit and minimum sizes); verify through `cache_read_input_tokens`.
+  - **Done 2026-10-07:**
+    - Opt-in per route with `prompt_cache`. It applies to Anthropic requests that carry no `cache_control` of their own and whose prefix is long enough to cache (about 1,024 tokens, or 2,048 for Haiku).
+    - The gateway adds breakpoints on the last tool and the end of the system prompt: two, within Anthropic's limit of four. Content is never moved.
+    - The response says `x-promptdam-cache: prompt`. Cache reads and writes come from the provider's usage, and the savings ledger counts them.
 - [ ] S2.5 Routes + manual routing rules (CEL conditions, same-format targets only), rules UI with dry-run on recent traffic ("would have saved $X").
   - A rule is a customer's guess (e.g. `request.input_tokens < 1500`), so it is shadow-tested like an experiment before it routes anything. The dry-run shows both the savings and the quality on the requests the rule would match (win/tie/loss from steps 3–4 of §6.2). Activating a rule whose matched traffic fails the route's quality threshold needs an explicit override (decided 2026-10-07).
+  - **Done 2026-10-07, the backend (cost half):**
+    - Rules are CEL conditions over the call as the gateway sees it, via `pkg/policy`: `model`, `format`, `input_tokens` (estimated from bytes), `messages`, `max_tokens`, `has_tools`, `json`, `stream`, `family`, `tags`, `user`, `developer` and `route`.
+    - The request is a typed object, so a misspelt field or a wrong type is refused on save, with its line and column. A rule can be limited to one route.
+    - Pro feature, at most 50 per project. Statuses: draft, active, disabled. Priority sets the order.
+    - Dry-run, saved or not, over the most recent 20,000 calls of a range of up to 31 days: calls matched, their cost, and the cost on the rule's model with the same tokens. Project prices come first. Calls the gateway can't price are counted apart.
+    - The first active rule that holds puts its model first, and the model asked for stays the first fallback. The rule is logged with the call, and its savings count as routing.
+  - **Still open:**
+    - The quality half of the dry-run (win/tie/loss) and the activation gate, which needs S3's shadow tests. Until then, activating a rule is the customer's call, on cost evidence only.
+    - The rules UI is the owner's.
 - [ ] S2.6 Savings ledger (counterfactual pricing, reasons) and savings dashboard.
+  - **Done 2026-10-07, the backend:**
+    - Every call logs a counterfactual: what the model asked for would have cost at its price with no cache. Savings are the counterfactual minus the actual cost.
+    - Each saving carries a reason: response cache, prompt cache, routing or fallback.
+    - The `savings_hourly` rollup feeds `Get Savings`: the total, a breakdown by reason, the 20 families that saved most, and a daily series.
+  - The savings dashboard is the owner's.
 - **Exit:** at least 3 design partners show ≥ 15% verified savings from caching and manual rules alone.
 
 ### S3: Firewall and savings experiments (Thu Apr 1 – Mon Apr 12)
