@@ -50,6 +50,9 @@ type Route struct {
 
 // Target is one provider and model to send a call to.
 type Target struct {
+	// ID identifies the target's circuit breaker: a provider's model, as
+	// one project calls it (outages and rate limits are per key).
+	ID string
 	// Provider names the provider, e.g. "openai" or a project's
 	// "openai-backup", for logs and the X-Promptdam-Provider header.
 	Provider string
@@ -142,7 +145,8 @@ type ModelLister interface {
 
 // Handler serves the gateway's endpoints.
 type Handler struct {
-	cfg Config
+	cfg      Config
+	breakers *breakers
 }
 
 // New returns a Handler.
@@ -159,7 +163,7 @@ func New(cfg Config) *Handler {
 	if cfg.NewTrace == nil {
 		cfg.NewTrace = newTrace
 	}
-	return &Handler{cfg: cfg}
+	return &Handler{cfg: cfg, breakers: newBreakers()}
 }
 
 // ServeHTTP serves one call.

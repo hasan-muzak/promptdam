@@ -253,7 +253,8 @@ func (r *Resolver) targets(snap *snapshot.Snapshot, format, model string, skip [
 		if p.Format != format || !r.serves(p.Provider, model) || tried(skip, p.Name, model) {
 			continue
 		}
-		out = append(out, gateway.Target{Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL, Model: model, Header: p.Header})
+		out = append(out, gateway.Target{ID: p.ID.String() + ":" + model, Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL,
+			Model: model, Header: p.Header})
 	}
 	return out
 }
@@ -264,7 +265,8 @@ func (r *Resolver) fallback(snap *snapshot.Snapshot, format, f string, skip []ga
 	if name, model, ok := strings.Cut(f, "/"); ok {
 		for _, p := range snap.Providers {
 			if p.Name == name && p.Format == format && !tried(skip, p.Name, model) {
-				return []gateway.Target{{Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL, Model: model, Header: p.Header}}
+				return []gateway.Target{{ID: p.ID.String() + ":" + model, Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL,
+					Model: model, Header: p.Header}}
 			}
 		}
 	}

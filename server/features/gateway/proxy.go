@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math/rand/v2"
 	"mime"
 	"net/http"
 	"strconv"
@@ -91,25 +92,58 @@ func (c *call) serve() {
 		}
 	}
 
+	// Each target is tried, and retried after a jittered pause, until one
+	// answers; a target whose circuit is open is skipped, but for the last.
 	for i, t := range route.Targets {
 		last := i == len(route.Targets)-1
-		c.rec.Attempts++
-		if c.attempt(t, req, body, dropUsage, last) {
-			return
+		if !last && !c.h.breakers.allow(t.ID, time.Now()) {
+			continue
+		}
+		for try := 0; try <= max(route.Retries, 0); try++ {
+			if try > 0 && !pause(c.r.Context(), backoff(try)) {
+				c.rec.Status, c.rec.ErrorCode = statusClientClosed, "client_closed"
+				return
+			}
+			c.rec.Attempts++
+			done, failed := c.attempt(t, req, body, dropUsage, last && try == max(route.Retries, 0))
+			c.h.breakers.record(t.ID, !failed, time.Now())
+			if done {
+				return
+			}
 		}
 	}
 }
 
-// attempt sends the call to one target and relays the answer. It returns
-// false when the target failed before anything reached the client and
-// another target may be tried.
-func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, last bool) bool {
+// backoff is the pause before retry n (1, 2, …): full jitter up to
+// 250 ms × 2ⁿ⁻¹, at most 2 s.
+func backoff(n int) time.Duration {
+	ceiling := min(250*time.Millisecond<<(n-1), 2*time.Second)
+	return rand.N(ceiling)
+}
+
+// pause waits d; false when the client left first.
+func pause(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// attempt sends the call to one target and relays the answer. done is
+// false when the target failed before anything reached the client and the
+// call may go on (final is false); failed reports a failure of the provider
+// (unreachable, rate limiting, overloaded, a server error), for its circuit.
+func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, final bool) (done, failed bool) {
 	if t.Model != req.Model {
 		model, _ := json.Marshal(t.Model)
 		swapped, err := wire.SetField(body, "model", model)
 		if err != nil {
 			c.fail(&Error{Status: http.StatusBadRequest, Type: TypeInvalidRequest, Code: "invalid_request", Message: "the request body is not valid JSON"})
-			return true
+			return true, false
 		}
 		body = swapped
 	}
@@ -118,7 +152,7 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, last 
 	up, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+c.ep.path, bytes.NewReader(body))
 	if err != nil {
 		c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_misconfigured", Message: "the provider's base URL is invalid"})
-		return true
+		return true, false
 	}
 	upstreamHeader(up.Header, c.r.Header, c.ep.format, t.Header)
 
@@ -128,26 +162,26 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, last 
 	if err != nil {
 		if c.r.Context().Err() != nil {
 			c.rec.Status, c.rec.ErrorCode = statusClientClosed, "client_closed"
-			return true
+			return true, false
 		}
-		if !last {
-			return false
+		if !final {
+			return false, true
 		}
 		e := &Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_unreachable", Message: "the provider could not be reached"}
 		if errors.Is(err, context.DeadlineExceeded) || isTimeout(err) {
 			e.Status, e.Code, e.Message = http.StatusGatewayTimeout, "provider_timeout", "the provider did not answer in time"
 		}
 		c.fail(e)
-		return true
+		return true, true
 	}
-	if retryable(res.StatusCode) && !last {
+	if retryable(res.StatusCode) && !final {
 		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
 		_ = res.Body.Close()
-		return false
+		return false, true
 	}
 	defer func() { _ = res.Body.Close() }()
 	c.relay(res, t, cancel, dropUsage)
-	return true
+	return true, retryable(res.StatusCode)
 }
 
 // relay streams a provider's response to the client, reading its usage.

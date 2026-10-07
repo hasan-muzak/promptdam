@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -340,5 +341,62 @@ func TestQuietProvidersAreCut(t *testing.T) {
 	}
 	if rec := e.record(t); rec.ErrorCode != "provider_idle_timeout" {
 		t.Fatalf("record %+v", rec)
+	}
+}
+
+// routeResolver routes every call the same way, retries included.
+type routeResolver struct{ route gateway.Route }
+
+func (r routeResolver) Resolve(_ context.Context, c *gateway.Call) (*gateway.Route, error) {
+	out := r.route
+	out.Targets = append([]gateway.Target(nil), r.route.Targets...)
+	for i := range out.Targets {
+		if out.Targets[i].Model == "" {
+			out.Targets[i].Model = c.Request.Model
+		}
+	}
+	return &out, nil
+}
+
+func TestRetriesBeforeFallingBack(t *testing.T) {
+	e := setup(t, fakeupstream.Options{}, func(base string) gateway.Resolver {
+		return routeResolver{gateway.Route{Retries: 1, Targets: []gateway.Target{
+			{ID: "a", Provider: "openai", BaseURL: base + "/v1"},
+			{ID: "b", Provider: "backup", BaseURL: base + "/v1", Model: "gpt-5-nano"},
+		}}}
+	})
+	e.fake.Fail(http.StatusBadGateway)
+	res, _ := e.post(t, "/v1/chat/completions", `{"model":"gpt-5","messages":[]}`)
+	if res.StatusCode != 200 || res.Header.Get(brand.HeaderProvider) != "openai" {
+		t.Fatalf("%d via %s: the retry should have answered", res.StatusCode, res.Header.Get(brand.HeaderProvider))
+	}
+	if rec := e.record(t); rec.Attempts != 2 {
+		t.Fatalf("record %+v", rec)
+	}
+}
+
+func TestOpenCircuitsAreSkipped(t *testing.T) {
+	var failing atomic.Int32
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		failing.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer down.Close()
+	e := setup(t, fakeupstream.Options{}, func(base string) gateway.Resolver {
+		return routeResolver{gateway.Route{Targets: []gateway.Target{
+			{ID: "down", Provider: "down", BaseURL: down.URL + "/v1"},
+			{ID: "up", Provider: "up", BaseURL: base + "/v1"},
+		}}}
+	})
+	for i := range 8 {
+		res, _ := e.post(t, "/v1/chat/completions", `{"model":"gpt-5","messages":[]}`)
+		if res.StatusCode != 200 || res.Header.Get(brand.HeaderProvider) != "up" {
+			t.Fatalf("call %d: %d via %s", i, res.StatusCode, res.Header.Get(brand.HeaderProvider))
+		}
+	}
+	// Five failures open the circuit: the next calls go straight to the
+	// fallback.
+	if n := failing.Load(); n != 5 {
+		t.Fatalf("the failing provider got %d calls, want 5", n)
 	}
 }
