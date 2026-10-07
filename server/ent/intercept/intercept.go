@@ -8,6 +8,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 )
@@ -68,6 +69,33 @@ func (f TraverseFunc) Traverse(ctx context.Context, q ent.Query) error {
 	return f(ctx, query)
 }
 
+// The KeySettingFunc type is an adapter to allow the use of ordinary function as a Querier.
+type KeySettingFunc func(context.Context, *ent.KeySettingQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f KeySettingFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.KeySettingQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.KeySettingQuery", q)
+}
+
+// The TraverseKeySetting type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseKeySetting func(context.Context, *ent.KeySettingQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseKeySetting) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseKeySetting) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.KeySettingQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.KeySettingQuery", q)
+}
+
 // The ProviderFunc type is an adapter to allow the use of ordinary function as a Querier.
 type ProviderFunc func(context.Context, *ent.ProviderQuery) (ent.Value, error)
 
@@ -98,6 +126,8 @@ func (f TraverseProvider) Traverse(ctx context.Context, q ent.Query) error {
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
+	case *ent.KeySettingQuery:
+		return &query[*ent.KeySettingQuery, predicate.KeySetting, keysetting.OrderOption]{typ: ent.TypeKeySetting, tq: q}, nil
 	case *ent.ProviderQuery:
 		return &query[*ent.ProviderQuery, predicate.Provider, provider.OrderOption]{typ: ent.TypeProvider, tq: q}, nil
 	default:

@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 )
@@ -25,8 +26,895 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeProvider = "Provider"
+	TypeKeySetting = "KeySetting"
+	TypeProvider   = "Provider"
 )
+
+// KeySettingMutation represents an operation that mutates the KeySetting nodes in the graph.
+type KeySettingMutation struct {
+	config
+	op                   Op
+	typ                  string
+	id                   *uuid.UUID
+	created_at           *time.Time
+	updated_at           *time.Time
+	org_id               *uuid.UUID
+	project_id           *uuid.UUID
+	api_key_id           *uuid.UUID
+	allowed_models       *[]string
+	appendallowed_models []string
+	tags                 *[]string
+	appendtags           []string
+	developer            *string
+	rpm                  *int
+	addrpm               *int
+	route                *string
+	clearedFields        map[string]struct{}
+	done                 bool
+	oldValue             func(context.Context) (*KeySetting, error)
+	predicates           []predicate.KeySetting
+}
+
+var _ ent.Mutation = (*KeySettingMutation)(nil)
+
+// keysettingOption allows management of the mutation configuration using functional options.
+type keysettingOption func(*KeySettingMutation)
+
+// newKeySettingMutation creates new mutation for the KeySetting entity.
+func newKeySettingMutation(c config, op Op, opts ...keysettingOption) *KeySettingMutation {
+	m := &KeySettingMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeKeySetting,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withKeySettingID sets the ID field of the mutation.
+func withKeySettingID(id uuid.UUID) keysettingOption {
+	return func(m *KeySettingMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *KeySetting
+		)
+		m.oldValue = func(ctx context.Context) (*KeySetting, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().KeySetting.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withKeySetting sets the old KeySetting of the mutation.
+func withKeySetting(node *KeySetting) keysettingOption {
+	return func(m *KeySettingMutation) {
+		m.oldValue = func(context.Context) (*KeySetting, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m KeySettingMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m KeySettingMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of KeySetting entities.
+func (m *KeySettingMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *KeySettingMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *KeySettingMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().KeySetting.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *KeySettingMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *KeySettingMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the KeySetting entity.
+// If the KeySetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KeySettingMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *KeySettingMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *KeySettingMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *KeySettingMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the KeySetting entity.
+// If the KeySetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KeySettingMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *KeySettingMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *KeySettingMutation) SetOrgID(u uuid.UUID) {
+	m.org_id = &u
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *KeySettingMutation) OrgID() (r uuid.UUID, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the KeySetting entity.
+// If the KeySetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KeySettingMutation) OldOrgID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *KeySettingMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetProjectID sets the "project_id" field.
+func (m *KeySettingMutation) SetProjectID(u uuid.UUID) {
+	m.project_id = &u
+}
+
+// ProjectID returns the value of the "project_id" field in the mutation.
+func (m *KeySettingMutation) ProjectID() (r uuid.UUID, exists bool) {
+	v := m.project_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProjectID returns the old "project_id" field's value of the KeySetting entity.
+// If the KeySetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KeySettingMutation) OldProjectID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProjectID: %w", err)
+	}
+	return oldValue.ProjectID, nil
+}
+
+// ResetProjectID resets all changes to the "project_id" field.
+func (m *KeySettingMutation) ResetProjectID() {
+	m.project_id = nil
+}
+
+// SetAPIKeyID sets the "api_key_id" field.
+func (m *KeySettingMutation) SetAPIKeyID(u uuid.UUID) {
+	m.api_key_id = &u
+}
+
+// APIKeyID returns the value of the "api_key_id" field in the mutation.
+func (m *KeySettingMutation) APIKeyID() (r uuid.UUID, exists bool) {
+	v := m.api_key_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyID returns the old "api_key_id" field's value of the KeySetting entity.
+// If the KeySetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KeySettingMutation) OldAPIKeyID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyID: %w", err)
+	}
+	return oldValue.APIKeyID, nil
+}
+
+// ResetAPIKeyID resets all changes to the "api_key_id" field.
+func (m *KeySettingMutation) ResetAPIKeyID() {
+	m.api_key_id = nil
+}
+
+// SetAllowedModels sets the "allowed_models" field.
+func (m *KeySettingMutation) SetAllowedModels(s []string) {
+	m.allowed_models = &s
+	m.appendallowed_models = nil
+}
+
+// AllowedModels returns the value of the "allowed_models" field in the mutation.
+func (m *KeySettingMutation) AllowedModels() (r []string, exists bool) {
+	v := m.allowed_models
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowedModels returns the old "allowed_models" field's value of the KeySetting entity.
+// If the KeySetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KeySettingMutation) OldAllowedModels(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowedModels is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowedModels requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowedModels: %w", err)
+	}
+	return oldValue.AllowedModels, nil
+}
+
+// AppendAllowedModels adds s to the "allowed_models" field.
+func (m *KeySettingMutation) AppendAllowedModels(s []string) {
+	m.appendallowed_models = append(m.appendallowed_models, s...)
+}
+
+// AppendedAllowedModels returns the list of values that were appended to the "allowed_models" field in this mutation.
+func (m *KeySettingMutation) AppendedAllowedModels() ([]string, bool) {
+	if len(m.appendallowed_models) == 0 {
+		return nil, false
+	}
+	return m.appendallowed_models, true
+}
+
+// ResetAllowedModels resets all changes to the "allowed_models" field.
+func (m *KeySettingMutation) ResetAllowedModels() {
+	m.allowed_models = nil
+	m.appendallowed_models = nil
+}
+
+// SetTags sets the "tags" field.
+func (m *KeySettingMutation) SetTags(s []string) {
+	m.tags = &s
+	m.appendtags = nil
+}
+
+// Tags returns the value of the "tags" field in the mutation.
+func (m *KeySettingMutation) Tags() (r []string, exists bool) {
+	v := m.tags
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTags returns the old "tags" field's value of the KeySetting entity.
+// If the KeySetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KeySettingMutation) OldTags(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTags is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTags requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTags: %w", err)
+	}
+	return oldValue.Tags, nil
+}
+
+// AppendTags adds s to the "tags" field.
+func (m *KeySettingMutation) AppendTags(s []string) {
+	m.appendtags = append(m.appendtags, s...)
+}
+
+// AppendedTags returns the list of values that were appended to the "tags" field in this mutation.
+func (m *KeySettingMutation) AppendedTags() ([]string, bool) {
+	if len(m.appendtags) == 0 {
+		return nil, false
+	}
+	return m.appendtags, true
+}
+
+// ResetTags resets all changes to the "tags" field.
+func (m *KeySettingMutation) ResetTags() {
+	m.tags = nil
+	m.appendtags = nil
+}
+
+// SetDeveloper sets the "developer" field.
+func (m *KeySettingMutation) SetDeveloper(s string) {
+	m.developer = &s
+}
+
+// Developer returns the value of the "developer" field in the mutation.
+func (m *KeySettingMutation) Developer() (r string, exists bool) {
+	v := m.developer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeveloper returns the old "developer" field's value of the KeySetting entity.
+// If the KeySetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KeySettingMutation) OldDeveloper(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeveloper is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeveloper requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeveloper: %w", err)
+	}
+	return oldValue.Developer, nil
+}
+
+// ResetDeveloper resets all changes to the "developer" field.
+func (m *KeySettingMutation) ResetDeveloper() {
+	m.developer = nil
+}
+
+// SetRpm sets the "rpm" field.
+func (m *KeySettingMutation) SetRpm(i int) {
+	m.rpm = &i
+	m.addrpm = nil
+}
+
+// Rpm returns the value of the "rpm" field in the mutation.
+func (m *KeySettingMutation) Rpm() (r int, exists bool) {
+	v := m.rpm
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRpm returns the old "rpm" field's value of the KeySetting entity.
+// If the KeySetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KeySettingMutation) OldRpm(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRpm is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRpm requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRpm: %w", err)
+	}
+	return oldValue.Rpm, nil
+}
+
+// AddRpm adds i to the "rpm" field.
+func (m *KeySettingMutation) AddRpm(i int) {
+	if m.addrpm != nil {
+		*m.addrpm += i
+	} else {
+		m.addrpm = &i
+	}
+}
+
+// AddedRpm returns the value that was added to the "rpm" field in this mutation.
+func (m *KeySettingMutation) AddedRpm() (r int, exists bool) {
+	v := m.addrpm
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRpm resets all changes to the "rpm" field.
+func (m *KeySettingMutation) ResetRpm() {
+	m.rpm = nil
+	m.addrpm = nil
+}
+
+// SetRoute sets the "route" field.
+func (m *KeySettingMutation) SetRoute(s string) {
+	m.route = &s
+}
+
+// Route returns the value of the "route" field in the mutation.
+func (m *KeySettingMutation) Route() (r string, exists bool) {
+	v := m.route
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoute returns the old "route" field's value of the KeySetting entity.
+// If the KeySetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KeySettingMutation) OldRoute(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoute is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoute requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoute: %w", err)
+	}
+	return oldValue.Route, nil
+}
+
+// ResetRoute resets all changes to the "route" field.
+func (m *KeySettingMutation) ResetRoute() {
+	m.route = nil
+}
+
+// Where appends a list predicates to the KeySettingMutation builder.
+func (m *KeySettingMutation) Where(ps ...predicate.KeySetting) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the KeySettingMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *KeySettingMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.KeySetting, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *KeySettingMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *KeySettingMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (KeySetting).
+func (m *KeySettingMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *KeySettingMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.created_at != nil {
+		fields = append(fields, keysetting.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, keysetting.FieldUpdatedAt)
+	}
+	if m.org_id != nil {
+		fields = append(fields, keysetting.FieldOrgID)
+	}
+	if m.project_id != nil {
+		fields = append(fields, keysetting.FieldProjectID)
+	}
+	if m.api_key_id != nil {
+		fields = append(fields, keysetting.FieldAPIKeyID)
+	}
+	if m.allowed_models != nil {
+		fields = append(fields, keysetting.FieldAllowedModels)
+	}
+	if m.tags != nil {
+		fields = append(fields, keysetting.FieldTags)
+	}
+	if m.developer != nil {
+		fields = append(fields, keysetting.FieldDeveloper)
+	}
+	if m.rpm != nil {
+		fields = append(fields, keysetting.FieldRpm)
+	}
+	if m.route != nil {
+		fields = append(fields, keysetting.FieldRoute)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *KeySettingMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case keysetting.FieldCreatedAt:
+		return m.CreatedAt()
+	case keysetting.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case keysetting.FieldOrgID:
+		return m.OrgID()
+	case keysetting.FieldProjectID:
+		return m.ProjectID()
+	case keysetting.FieldAPIKeyID:
+		return m.APIKeyID()
+	case keysetting.FieldAllowedModels:
+		return m.AllowedModels()
+	case keysetting.FieldTags:
+		return m.Tags()
+	case keysetting.FieldDeveloper:
+		return m.Developer()
+	case keysetting.FieldRpm:
+		return m.Rpm()
+	case keysetting.FieldRoute:
+		return m.Route()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *KeySettingMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case keysetting.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case keysetting.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case keysetting.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case keysetting.FieldProjectID:
+		return m.OldProjectID(ctx)
+	case keysetting.FieldAPIKeyID:
+		return m.OldAPIKeyID(ctx)
+	case keysetting.FieldAllowedModels:
+		return m.OldAllowedModels(ctx)
+	case keysetting.FieldTags:
+		return m.OldTags(ctx)
+	case keysetting.FieldDeveloper:
+		return m.OldDeveloper(ctx)
+	case keysetting.FieldRpm:
+		return m.OldRpm(ctx)
+	case keysetting.FieldRoute:
+		return m.OldRoute(ctx)
+	}
+	return nil, fmt.Errorf("unknown KeySetting field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *KeySettingMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case keysetting.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case keysetting.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case keysetting.FieldOrgID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case keysetting.FieldProjectID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProjectID(v)
+		return nil
+	case keysetting.FieldAPIKeyID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyID(v)
+		return nil
+	case keysetting.FieldAllowedModels:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowedModels(v)
+		return nil
+	case keysetting.FieldTags:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTags(v)
+		return nil
+	case keysetting.FieldDeveloper:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeveloper(v)
+		return nil
+	case keysetting.FieldRpm:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRpm(v)
+		return nil
+	case keysetting.FieldRoute:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoute(v)
+		return nil
+	}
+	return fmt.Errorf("unknown KeySetting field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *KeySettingMutation) AddedFields() []string {
+	var fields []string
+	if m.addrpm != nil {
+		fields = append(fields, keysetting.FieldRpm)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *KeySettingMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case keysetting.FieldRpm:
+		return m.AddedRpm()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *KeySettingMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case keysetting.FieldRpm:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRpm(v)
+		return nil
+	}
+	return fmt.Errorf("unknown KeySetting numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *KeySettingMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *KeySettingMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *KeySettingMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown KeySetting nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *KeySettingMutation) ResetField(name string) error {
+	switch name {
+	case keysetting.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case keysetting.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case keysetting.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case keysetting.FieldProjectID:
+		m.ResetProjectID()
+		return nil
+	case keysetting.FieldAPIKeyID:
+		m.ResetAPIKeyID()
+		return nil
+	case keysetting.FieldAllowedModels:
+		m.ResetAllowedModels()
+		return nil
+	case keysetting.FieldTags:
+		m.ResetTags()
+		return nil
+	case keysetting.FieldDeveloper:
+		m.ResetDeveloper()
+		return nil
+	case keysetting.FieldRpm:
+		m.ResetRpm()
+		return nil
+	case keysetting.FieldRoute:
+		m.ResetRoute()
+		return nil
+	}
+	return fmt.Errorf("unknown KeySetting field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *KeySettingMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *KeySettingMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *KeySettingMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *KeySettingMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *KeySettingMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *KeySettingMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *KeySettingMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown KeySetting unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *KeySettingMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown KeySetting edge %s", name)
+}
 
 // ProviderMutation represents an operation that mutates the Provider nodes in the graph.
 type ProviderMutation struct {

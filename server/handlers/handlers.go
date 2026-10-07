@@ -5,6 +5,7 @@ package handlers
 import (
 	"github.com/hasan-muzak/keel/pkg/tenancy"
 
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 )
 
@@ -12,4 +13,5 @@ import (
 type Handlers struct {
 	Tenancy   *tenancy.Service
 	Providers *providers.Service
+	Keys      *keysettings.Service
 }

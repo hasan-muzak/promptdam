@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/schema"
 )
@@ -14,6 +15,53 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	keysettingMixin := schema.KeySetting{}.Mixin()
+	keysettingMixinHooks1 := keysettingMixin[1].Hooks()
+	keysetting.Hooks[0] = keysettingMixinHooks1[0]
+	keysettingMixinInters1 := keysettingMixin[1].Interceptors()
+	keysetting.Interceptors[0] = keysettingMixinInters1[0]
+	keysettingMixinFields0 := keysettingMixin[0].Fields()
+	_ = keysettingMixinFields0
+	keysettingFields := schema.KeySetting{}.Fields()
+	_ = keysettingFields
+	// keysettingDescCreatedAt is the schema descriptor for created_at field.
+	keysettingDescCreatedAt := keysettingMixinFields0[1].Descriptor()
+	// keysetting.DefaultCreatedAt holds the default value on creation for the created_at field.
+	keysetting.DefaultCreatedAt = keysettingDescCreatedAt.Default.(func() time.Time)
+	// keysettingDescUpdatedAt is the schema descriptor for updated_at field.
+	keysettingDescUpdatedAt := keysettingMixinFields0[2].Descriptor()
+	// keysetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	keysetting.DefaultUpdatedAt = keysettingDescUpdatedAt.Default.(func() time.Time)
+	// keysetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	keysetting.UpdateDefaultUpdatedAt = keysettingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// keysettingDescAllowedModels is the schema descriptor for allowed_models field.
+	keysettingDescAllowedModels := keysettingFields[1].Descriptor()
+	// keysetting.DefaultAllowedModels holds the default value on creation for the allowed_models field.
+	keysetting.DefaultAllowedModels = keysettingDescAllowedModels.Default.([]string)
+	// keysettingDescTags is the schema descriptor for tags field.
+	keysettingDescTags := keysettingFields[2].Descriptor()
+	// keysetting.DefaultTags holds the default value on creation for the tags field.
+	keysetting.DefaultTags = keysettingDescTags.Default.([]string)
+	// keysettingDescDeveloper is the schema descriptor for developer field.
+	keysettingDescDeveloper := keysettingFields[3].Descriptor()
+	// keysetting.DefaultDeveloper holds the default value on creation for the developer field.
+	keysetting.DefaultDeveloper = keysettingDescDeveloper.Default.(string)
+	// keysetting.DeveloperValidator is a validator for the "developer" field. It is called by the builders before save.
+	keysetting.DeveloperValidator = keysettingDescDeveloper.Validators[0].(func(string) error)
+	// keysettingDescRpm is the schema descriptor for rpm field.
+	keysettingDescRpm := keysettingFields[4].Descriptor()
+	// keysetting.DefaultRpm holds the default value on creation for the rpm field.
+	keysetting.DefaultRpm = keysettingDescRpm.Default.(int)
+	// keysettingDescRoute is the schema descriptor for route field.
+	keysettingDescRoute := keysettingFields[5].Descriptor()
+	// keysetting.DefaultRoute holds the default value on creation for the route field.
+	keysetting.DefaultRoute = keysettingDescRoute.Default.(string)
+	// keysetting.RouteValidator is a validator for the "route" field. It is called by the builders before save.
+	keysetting.RouteValidator = keysettingDescRoute.Validators[0].(func(string) error)
+	// keysettingDescID is the schema descriptor for id field.
+	keysettingDescID := keysettingMixinFields0[0].Descriptor()
+	// keysetting.DefaultID holds the default value on creation for the id field.
+	keysetting.DefaultID = keysettingDescID.Default.(func() uuid.UUID)
 	providerMixin := schema.Provider{}.Mixin()
 	providerMixinHooks1 := providerMixin[1].Hooks()
 	provider.Hooks[0] = providerMixinHooks1[0]

@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 
 	stdsql "database/sql"
@@ -25,6 +26,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// KeySetting is the client for interacting with the KeySetting builders.
+	KeySetting *KeySettingClient
 	// Provider is the client for interacting with the Provider builders.
 	Provider *ProviderClient
 }
@@ -38,6 +41,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.KeySetting = NewKeySettingClient(c.config)
 	c.Provider = NewProviderClient(c.config)
 }
 
@@ -129,9 +133,10 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:      ctx,
-		config:   cfg,
-		Provider: NewProviderClient(cfg),
+		ctx:        ctx,
+		config:     cfg,
+		KeySetting: NewKeySettingClient(cfg),
+		Provider:   NewProviderClient(cfg),
 	}, nil
 }
 
@@ -149,16 +154,17 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:      ctx,
-		config:   cfg,
-		Provider: NewProviderClient(cfg),
+		ctx:        ctx,
+		config:     cfg,
+		KeySetting: NewKeySettingClient(cfg),
+		Provider:   NewProviderClient(cfg),
 	}, nil
 }
 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		Provider.
+//		KeySetting.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -180,22 +186,161 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
+	c.KeySetting.Use(hooks...)
 	c.Provider.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
+	c.KeySetting.Intercept(interceptors...)
 	c.Provider.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *KeySettingMutation:
+		return c.KeySetting.mutate(ctx, m)
 	case *ProviderMutation:
 		return c.Provider.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// KeySettingClient is a client for the KeySetting schema.
+type KeySettingClient struct {
+	config
+}
+
+// NewKeySettingClient returns a client for the KeySetting from the given config.
+func NewKeySettingClient(c config) *KeySettingClient {
+	return &KeySettingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `keysetting.Hooks(f(g(h())))`.
+func (c *KeySettingClient) Use(hooks ...Hook) {
+	c.hooks.KeySetting = append(c.hooks.KeySetting, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `keysetting.Intercept(f(g(h())))`.
+func (c *KeySettingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.KeySetting = append(c.inters.KeySetting, interceptors...)
+}
+
+// Create returns a builder for creating a KeySetting entity.
+func (c *KeySettingClient) Create() *KeySettingCreate {
+	mutation := newKeySettingMutation(c.config, OpCreate)
+	return &KeySettingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of KeySetting entities.
+func (c *KeySettingClient) CreateBulk(builders ...*KeySettingCreate) *KeySettingCreateBulk {
+	return &KeySettingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *KeySettingClient) MapCreateBulk(slice any, setFunc func(*KeySettingCreate, int)) *KeySettingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &KeySettingCreateBulk{err: fmt.Errorf("calling to KeySettingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*KeySettingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &KeySettingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for KeySetting.
+func (c *KeySettingClient) Update() *KeySettingUpdate {
+	mutation := newKeySettingMutation(c.config, OpUpdate)
+	return &KeySettingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *KeySettingClient) UpdateOne(_m *KeySetting) *KeySettingUpdateOne {
+	mutation := newKeySettingMutation(c.config, OpUpdateOne, withKeySetting(_m))
+	return &KeySettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *KeySettingClient) UpdateOneID(id uuid.UUID) *KeySettingUpdateOne {
+	mutation := newKeySettingMutation(c.config, OpUpdateOne, withKeySettingID(id))
+	return &KeySettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for KeySetting.
+func (c *KeySettingClient) Delete() *KeySettingDelete {
+	mutation := newKeySettingMutation(c.config, OpDelete)
+	return &KeySettingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *KeySettingClient) DeleteOne(_m *KeySetting) *KeySettingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *KeySettingClient) DeleteOneID(id uuid.UUID) *KeySettingDeleteOne {
+	builder := c.Delete().Where(keysetting.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &KeySettingDeleteOne{builder}
+}
+
+// Query returns a query builder for KeySetting.
+func (c *KeySettingClient) Query() *KeySettingQuery {
+	return &KeySettingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeKeySetting},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a KeySetting entity by its id.
+func (c *KeySettingClient) Get(ctx context.Context, id uuid.UUID) (*KeySetting, error) {
+	return c.Query().Where(keysetting.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *KeySettingClient) GetX(ctx context.Context, id uuid.UUID) *KeySetting {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *KeySettingClient) Hooks() []Hook {
+	hooks := c.hooks.KeySetting
+	return append(hooks[:len(hooks):len(hooks)], keysetting.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *KeySettingClient) Interceptors() []Interceptor {
+	inters := c.inters.KeySetting
+	return append(inters[:len(inters):len(inters)], keysetting.Interceptors[:]...)
+}
+
+func (c *KeySettingClient) mutate(ctx context.Context, m *KeySettingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&KeySettingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&KeySettingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&KeySettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&KeySettingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown KeySetting mutation op: %q", m.Op())
 	}
 }
 
@@ -337,10 +482,10 @@ func (c *ProviderClient) mutate(ctx context.Context, m *ProviderMutation) (Value
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Provider []ent.Hook
+		KeySetting, Provider []ent.Hook
 	}
 	inters struct {
-		Provider []ent.Interceptor
+		KeySetting, Provider []ent.Interceptor
 	}
 )
 

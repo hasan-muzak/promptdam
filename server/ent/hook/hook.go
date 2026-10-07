@@ -9,6 +9,18 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent"
 )
 
+// The KeySettingFunc type is an adapter to allow the use of ordinary
+// function as KeySetting mutator.
+type KeySettingFunc func(context.Context, *ent.KeySettingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f KeySettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.KeySettingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.KeySettingMutation", m)
+}
+
 // The ProviderFunc type is an adapter to allow the use of ordinary
 // function as Provider mutator.
 type ProviderFunc func(context.Context, *ent.ProviderMutation) (ent.Value, error)

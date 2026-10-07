@@ -8,6 +8,38 @@ import (
 )
 
 var (
+	// KeySettingsColumns holds the columns for the "key_settings" table.
+	KeySettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "api_key_id", Type: field.TypeUUID},
+		{Name: "allowed_models", Type: field.TypeJSON},
+		{Name: "tags", Type: field.TypeJSON},
+		{Name: "developer", Type: field.TypeString, Size: 200, Default: ""},
+		{Name: "rpm", Type: field.TypeInt, Default: 0},
+		{Name: "route", Type: field.TypeString, Size: 100, Default: ""},
+	}
+	// KeySettingsTable holds the schema information for the "key_settings" table.
+	KeySettingsTable = &schema.Table{
+		Name:       "key_settings",
+		Columns:    KeySettingsColumns,
+		PrimaryKey: []*schema.Column{KeySettingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "keysetting_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{KeySettingsColumns[3], KeySettingsColumns[4]},
+			},
+			{
+				Name:    "keysetting_api_key_id",
+				Unique:  true,
+				Columns: []*schema.Column{KeySettingsColumns[5]},
+			},
+		},
+	}
 	// ProvidersColumns holds the columns for the "providers" table.
 	ProvidersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -47,6 +79,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		KeySettingsTable,
 		ProvidersTable,
 	}
 )

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"log/slog"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -12,6 +13,7 @@ import (
 	"github.com/hasan-muzak/keel/pkg/llm"
 
 	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/purge"
 )
@@ -28,6 +30,8 @@ type App struct {
 	GatewayURL string
 	// Providers keeps projects' LLM providers and their keys.
 	Providers *providers.Service
+	// Keys keeps what the gateway applies to each API key.
+	Keys *keysettings.Service
 	// Purge deletes what Promptdam keeps of deleted organizations and
 	// projects.
 	Purge *purge.Service
@@ -74,6 +78,13 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	}
 	a.Providers = providers.New(providers.Config{
 		Ent: a.Ent, Vault: c.Vault, AllowLoopback: c.Config.Env == config.Development, Changed: a.configChanged,
+	})
+	a.Keys = keysettings.New(keysettings.Config{Ent: a.Ent, Key: c.APIKeys.Get, Scope: ScopeGateway, Changed: a.configChanged})
+	c.APIKeys.OnRotated(func(ctx context.Context, org, old, replacement uuid.UUID) {
+		if err := a.Keys.Rotated(ctx, org, old, replacement); err != nil {
+			slog.Error("promptdam: carrying a rotated key's gateway settings over; set them again on the replacement",
+				"key", replacement, "err", err)
+		}
 	})
 	// No foreign keys cross the graphs (ADR 0004): deleting an organization
 	// or a project deletes Promptdam's rows in the deletion's transaction,

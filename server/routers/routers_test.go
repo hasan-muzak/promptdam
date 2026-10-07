@@ -11,6 +11,7 @@ import (
 	muzak "muzak.dev/framework"
 	"muzak.dev/framework/testclient"
 
+	"github.com/hasan-muzak/keel/pkg/apikeys"
 	"github.com/hasan-muzak/keel/pkg/config"
 	"github.com/hasan-muzak/keel/pkg/ids"
 	"github.com/hasan-muzak/keel/pkg/jobs"
@@ -171,6 +172,73 @@ func TestProviders(t *testing.T) {
 	e.client.Get(path, e.as("mallory")).AssertStatus(http.StatusNotFound)
 }
 
+func TestKeySettings(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	alice := e.as("alice")
+	org, prj, base := e.project("alice")
+	key := testclient.Decoded[platform.CreatedKeyOut](e.client.Post(base+"/keys", alice,
+		testclient.JSON(map[string]any{"name": "app", "kind": "secret", "scopes": []string{core.ScopeGateway}})).
+		AssertStatus(http.StatusCreated))
+	if !strings.HasPrefix(key.Key, "pd_sk_") {
+		t.Fatalf("key %q", key.Key)
+	}
+	path := base + "/keys/" + key.ID + "/gateway"
+
+	got := testclient.Decoded[handlers.KeySettings](e.client.Get(path, alice).AssertStatus(http.StatusOK))
+	if len(got.AllowedModels) != 0 || got.RPM != 0 || got.AllowedModels == nil {
+		t.Fatalf("defaults %+v", got)
+	}
+	set := testclient.Decoded[handlers.KeySettings](e.client.Put(path, alice, testclient.JSON(map[string]any{
+		"allowed_models": []string{"gpt-5-mini", "claude-*", "gpt-5-mini"}, "tags": []string{"team:search"},
+		"developer": "ana@acme.test", "rpm": 600, "route": "default",
+	})).AssertStatus(http.StatusOK))
+	if len(set.AllowedModels) != 2 || set.Developer != "ana@acme.test" || set.RPM != 600 {
+		t.Fatalf("set %+v", set)
+	}
+	if again := testclient.Decoded[handlers.KeySettings](e.client.Get(path, alice)); again.RPM != 600 || len(again.Tags) != 1 {
+		t.Fatalf("not stored: %+v", again)
+	}
+	for _, body := range []map[string]any{
+		{"allowed_models": []string{"gpt*-x"}}, {"tags": []string{"has space"}}, {"route": "Bad Route"},
+	} {
+		if res := e.client.Put(path, alice, testclient.JSON(body)); res.Status != http.StatusUnprocessableEntity ||
+			res.Error().Error.Code != handlers.CodeInvalidKeySettings {
+			t.Errorf("%v: %d %s", body, res.Status, res.String())
+		}
+	}
+
+	// A rotated key's replacement keeps the settings.
+	rotated := testclient.Decoded[platform.CreatedKeyOut](e.client.Post(base+"/keys/"+key.ID+"/rotate", alice).
+		AssertStatus(http.StatusOK))
+	kept := testclient.Decoded[handlers.KeySettings](e.client.Get(base+"/keys/"+rotated.ID+"/gateway", alice).
+		AssertStatus(http.StatusOK))
+	if kept.RPM != 600 || kept.Developer != "ana@acme.test" {
+		t.Fatalf("the replacement lost the settings: %+v", kept)
+	}
+
+	// A key that can't call the gateway has no gateway settings.
+	orgID, prjID := mustID(t, ids.Org, org.ID), mustID(t, ids.Project, prj.ID)
+	other, _, err := e.c.APIKeys.Issue(ctx, apikeys.IssueInput{Org: orgID, Project: &prjID, Name: "x", Kind: apikeys.Secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := e.client.Put(base+"/keys/"+ids.Encode(ids.APIKey, other.ID)+"/gateway", alice, testclient.JSON(map[string]any{}))
+	if res.Status != http.StatusUnprocessableEntity || res.Error().Error.Code != handlers.CodeKeyNotForGateway {
+		t.Fatalf("a key without the scope: %d %s", res.Status, res.String())
+	}
+	e.client.Get(base+"/keys/key_nope/gateway", alice).AssertStatus(http.StatusNotFound)
+}
+
+func mustID(t *testing.T, prefix, s string) uuid.UUID {
+	t.Helper()
+	id, err := ids.Decode(prefix, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
 // TestEveryRouteIsDocumented holds every route to a category and a title
 // in the API reference.
 func TestEveryRouteIsDocumented(t *testing.T) {
@@ -229,6 +297,7 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 		"webhook": ids.Encode(ids.WebhookEndpoint, ep.ID), "delivery": ids.Encode(ids.WebhookDelivery, del.ID),
 		"meter": "requests", "provider": p.ID,
 	}
+	e.client.Put(base+"/keys/"+key.ID+"/gateway", alice, testclient.JSON(map[string]any{"rpm": 10})).AssertStatus(http.StatusOK)
 	mallory := e.as("mallory")
 	testkit.AssertTenantIsolation(t, e.client, victim, mallory)
 
@@ -238,5 +307,6 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 		victim, []string{"meter"}, map[string]string{
 			"PATCH /v1/orgs/{org}/members/{user}":                        `{"role":"viewer"}`,
 			"PUT /v1/orgs/{org}/projects/{project}/providers/{provider}": `{"name":"x","kind":"openai","api_key":"sk-x-0000000000"}`,
+			"PUT /v1/orgs/{org}/projects/{project}/keys/{key}/gateway":   `{"rpm":1}`,
 		}, mallory)
 }

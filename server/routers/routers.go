@@ -17,7 +17,7 @@ import (
 // Mount registers Promptdam's routes on the API application.
 func Mount(a *muzak.App, app *core.App) {
 	c := app.Core
-	h := &handlers.Handlers{Tenancy: c.Tenancy, Providers: app.Providers}
+	h := &handlers.Handlers{Tenancy: c.Tenancy, Providers: app.Providers, Keys: app.Keys}
 	r := muzak.NewRouter(
 		muzak.WithTags(brand.Key),
 		muzak.Needs(identity.Authenticate(c.Verifier)),
@@ -53,5 +53,16 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Summary("Check a provider's key against the provider"),
 		muzak.Description("Lists the provider's models with the key, which costs nothing, and records whether the "+
 			"provider accepted it (checked_at, check_error)."))
+
+	keys := muzak.WithCategory("Gateway Keys")
+	kb := "/v1/orgs/{org}/projects/{project}/keys/{key}/gateway"
+	r.Get(kb, h.GetKeySettings, keys, muzak.Title("Get Key Settings"), project(tenancy.PermProjectsRead),
+		muzak.Summary("Get what the gateway applies to an API key"),
+		muzak.Description("A key without settings may call every model, without a rate limit of its own. Keys are "+
+			"issued with the gateway scope under the project's keys."))
+	r.Put(kb, h.PutKeySettings, keys, muzak.Title("Set Key Settings"), project(tenancy.PermProjectsManage),
+		muzak.Summary("Replace what the gateway applies to an API key"),
+		muzak.Description("Allowed models, the developer and tags for attribution, a rate limit and a default route. "+
+			"The gateway applies them within seconds; a rotated key's replacement keeps them."))
 	a.Include(r)
 }

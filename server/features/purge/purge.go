@@ -33,6 +33,7 @@ import (
 	"github.com/hasan-muzak/keel/pkg/tenancy"
 
 	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 )
 
@@ -156,6 +157,7 @@ type deleter interface {
 func deleteRows(ctx context.Context, c *pdent.Client, org uuid.UUID, projects []uuid.UUID) error {
 	scoped := len(projects) > 0
 	for _, d := range []deleter{
+		c.KeySetting.Delete().Where(keysetting.OrgID(org), only(scoped, keysetting.ProjectIDIn(projects...))),
 		c.Provider.Delete().Where(provider.OrgID(org), only(scoped, provider.ProjectIDIn(projects...))),
 	} {
 		if _, err := d.Exec(ctx); err != nil {
