@@ -211,6 +211,28 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 - **Headers returned:** `x-promptdam-trace`, `x-promptdam-served-model`, `x-promptdam-cache` (hit/miss/prompt), `x-promptdam-savings-micros`.
 
 ### 6.2 Families, experiments and the savings engine (`features/families`, `features/experiments`)
+
+**How a model is chosen: the principles (agreed 2026-10-07).**
+- **We don't guess difficulty from the message.** Length and other surface features say little about how hard a request is:
+  - A two-line question ("is this contract clause enforceable?") can need a strong reasoning model.
+  - Fifty paragraphs with a simple question ("how many times is word x used?") may not.
+  - So Promptdam never switches models on its own by length or any other guess.
+- **We answer a narrower question, by trying instead of predicting.** We never decide which model is best for a message in general. We ask: for *this customer's* task (a family, step 1), are a cheaper model's answers as good as those of the model they use today?
+  - Both models answer the same real requests, and the answers are compared (steps 3–4).
+  - A family switches only on evidence (step 5) and with the customer's approval.
+  - The baseline is always the customer's own choice. The claim is "not worse than what you use today, on your traffic", never "the best model".
+- **A family with hard cases mixed in doesn't switch.** The cheaper model loses those comparisons, and the match rate stays below the threshold. Most production calls are templated jobs (extract fields from an invoice, classify a ticket, summarise a call), so difficulty varies far less within a family than across messages in general.
+- **Per-request decisions are learned from outcomes, not length (step 8).**
+  - The classifier's label is "did the cheaper model's answer hold up for this request?"
+  - Its features include the words of the message, not only its size. In a family where "why / prove / is it legal" questions fail on the small model and "count / list / extract" ones pass, it learns that split.
+  - When it can't tell, it asks the Decisions API, which reads the meaning (it sees that counting a word is easy however long the text is). Without that, the request keeps the strong model.
+- **Safety is asymmetric.** A hard request sent to a weak model costs quality; an easy one sent to a strong model only costs money. Every threshold leans to the strong model, and the canary (step 6) keeps checking after a switch and reverts on its own.
+- **Limits, said plainly:**
+  - The judge can be wrong. Deterministic checks come first, and a calibration sample is judged by two judges.
+  - Free-form chat (one system prompt, anything from users) varies too much to switch per family. Its savings come from caching and the per-request router, or not at all.
+  - Customers can exclude critical routes from any switch.
+
+**The steps:**
 1. **Family ID:** hash of the normalised system prompt (numbers, dates, UUIDs and whitespace normalised) + tool names + response format, or an explicit `x-promptdam-route`. Stats are kept per family: volume, tokens, cost, model mix, latency, error rate.
 2. **Candidate selection:** a family qualifies with ≥ 1,000 requests/week and ≥ $50/week spend. Candidates are cheaper models with the required capabilities (tools, JSON/structured output, context ≥ p99 input, vision if needed), taken from the `pkg/llm` catalog.
 3. **Shadow sampling:**
@@ -358,6 +380,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - [ ] S2.3 Prompt-caching doctor: prefix divergence analysis, cause classification, dollar impact, fix snippets.
 - [ ] S2.4 Anthropic auto prompt caching (top-level automatic + stable-prefix breakpoint; respect the 4-breakpoint limit and minimum sizes); verify through `cache_read_input_tokens`.
 - [ ] S2.5 Routes + manual routing rules (CEL conditions, same-format targets only), rules UI with dry-run on recent traffic ("would have saved $X").
+  - A rule is a customer's guess (e.g. `request.input_tokens < 1500`), so it is shadow-tested like an experiment before it routes anything. The dry-run shows both the savings and the quality on the requests the rule would match (win/tie/loss from steps 3–4 of §6.2). Activating a rule whose matched traffic fails the route's quality threshold needs an explicit override (decided 2026-10-07).
 - [ ] S2.6 Savings ledger (counterfactual pricing, reasons) and savings dashboard.
 - **Exit:** at least 3 design partners show ≥ 15% verified savings from caching and manual rules alone.
 
