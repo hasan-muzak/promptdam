@@ -14,11 +14,13 @@ import (
 
 	"github.com/hasan-muzak/keel/pkg/billing"
 	"github.com/hasan-muzak/keel/pkg/events"
+	"github.com/hasan-muzak/keel/pkg/llm"
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
 )
 
@@ -44,7 +46,8 @@ type Row struct {
 	TTFBms, LatencyMs, UpstreamMs                           uint32
 	UsageKnown                                              bool
 	InputTokens, OutputTokens, CacheRead, CacheWrite, Think uint32
-	CostMicros                                              int64
+	CostMicros, Counterfactual, Savings                     int64
+	SavingsReason, Cache                                    string
 	RequestBytes                                            uint32
 	ResponseBytes                                           uint64
 	RetentionDays                                           uint16
@@ -55,7 +58,8 @@ var columns = []string{
 	"prefix_flags", "api_format", "provider",
 	"kind", "requested_model", "served_model", "stream", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
 	"upstream_ms", "usage_known", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
-	"reasoning_tokens", "cost_micros", "request_bytes", "response_bytes", "retention_days",
+	"reasoning_tokens", "cost_micros", "counterfactual_micros", "savings_micros", "savings_reason", "cache",
+	"request_bytes", "response_bytes", "retention_days",
 }
 
 func values(r Row) []any {
@@ -64,7 +68,7 @@ func values(r Row) []any {
 		r.PrefixFlags, r.APIFormat, r.Provider,
 		r.Kind, r.RequestedModel, r.ServedModel, r.Stream, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
 		r.UpstreamMs, r.UsageKnown, r.InputTokens, r.OutputTokens, r.CacheRead, r.CacheWrite, r.Think, r.CostMicros,
-		r.RequestBytes, r.ResponseBytes, r.RetentionDays,
+		r.Counterfactual, r.Savings, r.SavingsReason, r.Cache, r.RequestBytes, r.ResponseBytes, r.RetentionDays,
 	}
 }
 
@@ -130,14 +134,15 @@ func (l *Log) Record(r *gateway.Record) {
 		return
 	}
 	var cost int64
+	var led Ledger
 	if r.UsageKnown {
-		// The project's own price first, else the price list's.
-		if m, ok := m.Prices.Lookup(r.Provider, r.ServedModel); ok {
-			cost = CostAt(m, r.Usage)
-		} else {
-			cost, _ = Cost(l.cfg.Prices.Current(), r.Kind, r.ServedModel, r.Usage)
+		if r.Cache != "hit" { // a cached answer cost nothing
+			if price, ok := l.price(m, r.Provider, r.Kind, r.ServedModel); ok {
+				cost = CostAt(price, r.Usage)
+			}
+			l.cfg.Spend.Add(m.Who(), cost)
 		}
-		l.cfg.Spend.Add(m.Who(), cost)
+		led = l.ledger(r, m, cost)
 	}
 	if l.w == nil {
 		return
@@ -150,13 +155,54 @@ func (l *Log) Record(r *gateway.Record) {
 		ErrorCode: r.ErrorCode, Attempts: uint8(min(r.Attempts, 255)), TTFBms: ms(r.TTFB), LatencyMs: ms(r.Latency),
 		UpstreamMs: ms(r.Upstream), UsageKnown: r.UsageKnown, InputTokens: u32(r.Usage.Input),
 		OutputTokens: u32(r.Usage.Output), CacheRead: u32(r.Usage.CacheRead), CacheWrite: u32(r.Usage.CacheWrite),
-		Think: u32(r.Usage.Reasoning), CostMicros: cost, RequestBytes: uint32(min(r.RequestBytes, 1<<31)),
+		Think: u32(r.Usage.Reasoning), CostMicros: cost, Counterfactual: led.Counterfactual, Savings: led.Savings,
+		SavingsReason: led.Reason, Cache: r.Cache, RequestBytes: uint32(min(r.RequestBytes, 1<<31)),
 		ResponseBytes: uint64(max(r.ResponseBytes, 0)),
 	}
 	if row.Tags == nil {
 		row.Tags = []string{}
 	}
 	go l.write(m.Org, row)
+}
+
+// price is a model's price for the project: its own (for that provider,
+// then for any), else the price list's.
+func (l *Log) price(m *resolver.Meta, provider, kind, model string) (llm.Model, bool) {
+	if p, ok := m.Prices.Lookup(provider, model); ok {
+		return p, true
+	}
+	catalogName := ""
+	if k, ok := providers.LookupKind(kind); ok {
+		catalogName = k.Catalog
+	}
+	return l.cfg.Prices.Current().Lookup(catalogName, model)
+}
+
+// ledger weighs a call against the model asked for at list price, without
+// any cache. A model nobody prices claims no savings.
+func (l *Log) ledger(r *gateway.Record, m *resolver.Meta, cost int64) Ledger {
+	rerouted := r.TargetModel != "" && r.TargetModel != r.RequestedModel
+	provider, kind := r.Provider, r.Kind
+	if rerouted {
+		provider, kind = "", "" // the model asked for might be anyone's
+	}
+	price, ok := l.price(m, provider, kind, r.RequestedModel)
+	if !ok {
+		return Ledger{Counterfactual: cost}
+	}
+	led := Ledger{Counterfactual: counterfactual(price, r.Usage)}
+	led.Savings = led.Counterfactual - cost
+	switch {
+	case r.Cache == "hit":
+		led.Reason = ReasonResponseCache
+	case rerouted && r.Fallback:
+		led.Reason = ReasonFallback
+	case rerouted:
+		led.Reason = ReasonRouting
+	case r.Usage.CacheRead > 0 || r.Usage.CacheWrite > 0:
+		led.Reason = ReasonPromptCache
+	}
+	return led
 }
 
 func (l *Log) write(org uuid.UUID, row Row) {

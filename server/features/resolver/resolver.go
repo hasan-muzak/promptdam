@@ -224,7 +224,12 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		e.RetryAfter = time.Hour
 		return nil, e
 	}
-	return &gateway.Route{Targets: targets, Retries: route.Retries, Meta: m}, nil
+	out := &gateway.Route{Targets: targets, Retries: route.Retries, Meta: m}
+	if route.CacheTTL > 0 {
+		out.CacheTTL = time.Duration(route.CacheTTL) * time.Second
+		out.CacheScope = m.Project.String() + ":" + route.Name
+	}
+	return out, nil
 }
 
 // pickRoute is the route a call takes: the one it names, else its key's,

@@ -19,6 +19,7 @@ import (
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/responsecache"
 )
 
 // statusClientClosed is logged for calls the client gave up on (nginx's
@@ -38,6 +39,10 @@ type call struct {
 	r   *http.Request
 	ep  endpoint
 	rec Record
+	// cacheKey and cacheTTL store a successful answer for a route that
+	// caches them.
+	cacheKey string
+	cacheTTL time.Duration
 }
 
 func (c *call) serve() {
@@ -84,6 +89,18 @@ func (c *call) serve() {
 		c.fail(&Error{Status: http.StatusNotFound, Type: TypeNotFound, Code: "no_provider",
 			Message: "no provider is set up for model " + req.Model})
 		return
+	}
+
+	// Routes with the response cache answer identical non-streamed calls
+	// from it, once the caller passed every check.
+	if route.CacheTTL > 0 && c.h.cfg.Cache != nil && !req.Stream && c.ep.format != wire.AnthropicCountTokens {
+		if key, ok := responsecache.Key(route.CacheScope, c.ep.format, body); ok {
+			if e, hit := c.h.cfg.Cache.Get(c.r.Context(), key); hit {
+				c.serveCached(e)
+				return
+			}
+			c.cacheKey, c.cacheTTL, c.rec.Cache = key, route.CacheTTL, "miss"
+		}
 	}
 
 	// Token counts come in streams only when asked for: ask on the
@@ -191,11 +208,15 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, final
 // relay streams a provider's response to the client, reading its usage.
 func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dropUsage bool) {
 	c.rec.Provider, c.rec.Kind, c.rec.ServedModel, c.rec.Status = t.Provider, t.Kind, t.Model, res.StatusCode
+	c.rec.TargetModel = t.Model
 	h := c.w.Header()
 	responseHeader(h, res.Header)
 	h.Set(brand.HeaderTrace, c.rec.Trace)
 	h.Set(brand.HeaderProvider, t.Provider)
 	h.Set(brand.HeaderServedModel, t.Model)
+	if c.rec.Cache != "" {
+		h.Set(brand.HeaderCache, c.rec.Cache)
+	}
 
 	// An upstream that goes quiet for longer than the idle timeout is cut.
 	body := &idleReader{r: res.Body, d: c.h.cfg.IdleTimeout}
@@ -249,6 +270,9 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 		}
 		if keep {
 			meter.Body(kept)
+			if c.cacheKey != "" && res.StatusCode == http.StatusOK && readErr == nil {
+				c.store(res, t, meter, kept)
+			}
 		}
 	}
 
@@ -268,6 +292,41 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	case res.StatusCode >= 400:
 		c.rec.ErrorCode = "provider_" + strconv.Itoa(res.StatusCode)
 	}
+}
+
+// serveCached answers from the response cache.
+func (c *call) serveCached(e *responsecache.Entry) {
+	h := c.w.Header()
+	h.Set("Content-Type", e.ContentType)
+	h.Set(brand.HeaderTrace, c.rec.Trace)
+	h.Set(brand.HeaderProvider, e.Provider)
+	h.Set(brand.HeaderServedModel, e.Model)
+	h.Set(brand.HeaderCache, "hit")
+	c.w.WriteHeader(e.Status)
+	c.write(e.Body)
+	c.rec.Status, c.rec.Cache = e.Status, "hit"
+	c.rec.Provider, c.rec.Kind, c.rec.ServedModel, c.rec.TargetModel = e.Provider, e.Kind, e.Model, c.rec.RequestedModel
+	c.rec.Usage, c.rec.UsageKnown = e.Usage, true
+}
+
+// store caches a successful answer, in the background.
+func (c *call) store(res *http.Response, t Target, meter *wire.Meter, body []byte) {
+	if len(body) > responsecache.MaxEntry {
+		return
+	}
+	usage, _ := meter.Usage()
+	model := meter.Model()
+	if model == "" {
+		model = t.Model
+	}
+	e := &responsecache.Entry{Status: res.StatusCode, ContentType: res.Header.Get("Content-Type"), Body: bytes.Clone(body),
+		Provider: t.Provider, Kind: t.Kind, Model: model, Usage: usage}
+	key, ttl := c.cacheKey, c.cacheTTL
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		c.h.cfg.Cache.Put(ctx, key, e, ttl)
+	}()
 }
 
 // write sends bytes to the client; false when the client is gone.

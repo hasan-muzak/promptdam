@@ -29,6 +29,8 @@ const (
 	FieldFallbacks = "fallbacks"
 	// FieldRetries holds the string denoting the retries field in the database.
 	FieldRetries = "retries"
+	// FieldCacheTTLSeconds holds the string denoting the cache_ttl_seconds field in the database.
+	FieldCacheTTLSeconds = "cache_ttl_seconds"
 	// Table holds the table name of the route in the database.
 	Table = "routes"
 )
@@ -43,6 +45,7 @@ var Columns = []string{
 	FieldName,
 	FieldFallbacks,
 	FieldRetries,
+	FieldCacheTTLSeconds,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -75,6 +78,8 @@ var (
 	DefaultFallbacks []string
 	// DefaultRetries holds the default value on creation for the "retries" field.
 	DefaultRetries int
+	// DefaultCacheTTLSeconds holds the default value on creation for the "cache_ttl_seconds" field.
+	DefaultCacheTTLSeconds int
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() uuid.UUID
 )
@@ -115,4 +120,9 @@ func ByName(opts ...sql.OrderTermOption) OrderOption {
 // ByRetries orders the results by the retries field.
 func ByRetries(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRetries, opts...).ToFunc()
+}
+
+// ByCacheTTLSeconds orders the results by the cache_ttl_seconds field.
+func ByCacheTTLSeconds(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheTTLSeconds, opts...).ToFunc()
 }

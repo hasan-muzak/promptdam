@@ -16,6 +16,7 @@ import (
 	"github.com/hasan-muzak/keel/pkg/llm/wire"
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/responsecache"
 )
 
 // Resolver decides where a call goes: it authenticates the caller and picks
@@ -47,6 +48,10 @@ type Route struct {
 	// Retries is how often a target is retried, with jitter, before the
 	// next one.
 	Retries int
+	// CacheTTL, when set, answers identical non-streamed calls from the
+	// response cache, in CacheScope (the project and route).
+	CacheTTL   time.Duration
+	CacheScope string
 	// Meta is the resolver's own data about the call (the caller, its
 	// project…), handed back in the Record.
 	Meta any
@@ -103,6 +108,12 @@ type Record struct {
 	Shape families.Shape
 	// Fallback reports that a fallback target answered, not the first.
 	Fallback bool
+	// TargetModel is the model the gateway asked the provider for (the
+	// provider may report a dated name for it in ServedModel).
+	TargetModel string
+	// Cache is how the response cache answered: hit, miss, or "" when the
+	// call's route doesn't cache.
+	Cache string
 	// Status is the HTTP status the client got; ErrorCode says why a call
 	// failed ("" when it didn't).
 	Status    int
@@ -138,6 +149,14 @@ type Config struct {
 	NewTrace func() string
 	// ClientKey identifies a request's client (its address), for Call.Client.
 	ClientKey func(*http.Request) string
+	// Cache is the response cache (nil: none).
+	Cache Cache
+}
+
+// Cache keeps answers for routes that cache them (responsecache.Cache).
+type Cache interface {
+	Get(ctx context.Context, key string) (*responsecache.Entry, bool)
+	Put(ctx context.Context, key string, e *responsecache.Entry, ttl time.Duration)
 }
 
 // Model is a model the caller may use (GET /v1/models).

@@ -40,6 +40,9 @@ type Input struct {
 	Name      string
 	Fallbacks []string
 	Retries   int
+	// CacheTTL answers identical non-streamed requests from the response
+	// cache for this many seconds (0: off; at most a week).
+	CacheTTL int
 }
 
 var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,99}$`)
@@ -52,6 +55,9 @@ func check(in *Input) error {
 	}
 	if in.Retries < 0 || in.Retries > 3 {
 		return bad("retries are 0 to 3")
+	}
+	if in.CacheTTL < 0 || in.CacheTTL > 7*24*3600 {
+		return bad("the cache TTL is 0 (off) to 604800 seconds (a week)")
 	}
 	out := make([]string, 0, len(in.Fallbacks))
 	for _, f := range in.Fallbacks {
@@ -109,7 +115,7 @@ func (s *Service) Create(ctx context.Context, org, project uuid.UUID, in Input) 
 		return nil, ErrLimit
 	}
 	r, err := s.ent.Route.Create().SetOrgID(org).SetProjectID(project).
-		SetName(in.Name).SetFallbacks(in.Fallbacks).SetRetries(in.Retries).Save(ctx)
+		SetName(in.Name).SetFallbacks(in.Fallbacks).SetRetries(in.Retries).SetCacheTTLSeconds(in.CacheTTL).Save(ctx)
 	if pdent.IsConstraintError(err) {
 		return nil, ErrNameTaken
 	}
@@ -129,7 +135,8 @@ func (s *Service) Update(ctx context.Context, project, id uuid.UUID, in Input) (
 	if err != nil {
 		return nil, err
 	}
-	r, err := s.ent.Route.UpdateOne(cur).SetName(in.Name).SetFallbacks(in.Fallbacks).SetRetries(in.Retries).Save(ctx)
+	r, err := s.ent.Route.UpdateOne(cur).SetName(in.Name).SetFallbacks(in.Fallbacks).SetRetries(in.Retries).
+		SetCacheTTLSeconds(in.CacheTTL).Save(ctx)
 	if pdent.IsConstraintError(err) {
 		return nil, ErrNameTaken
 	}

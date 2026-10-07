@@ -2,7 +2,9 @@ package requestlog_test
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/hasan-muzak/keel/pkg/counter"
 	"github.com/hasan-muzak/keel/pkg/events"
@@ -10,12 +12,15 @@ import (
 	"github.com/hasan-muzak/keel/pkg/llm/wire"
 
 	"github.com/hasan-muzak/keel/products/promptdam/bench/fakeupstream"
+	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/analytics"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/gatewaytest"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/requestlog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
 )
 
 func TestCost(t *testing.T) {
@@ -177,5 +182,87 @@ func TestProjectLookup(t *testing.T) {
 	var none prices.Project
 	if _, ok := none.Lookup("groq", "x"); ok {
 		t.Fatal("no prices, no match")
+	}
+}
+
+// The ledger weighs each call against the model asked for at list price,
+// without any cache: with the fake provider's usage (100 input tokens, 40
+// of them cached, 10 output) and the embedded prices, gpt-5-mini costs 52
+// micro-USD against 70, and gpt-5 costs 228.
+func TestSavingsLedger(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true})
+	ctx := context.Background()
+	w.Provider("backup", providers.FormatOpenAI, []string{"gpt-5"})
+	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{
+		Name: "default", Fallbacks: []string{"backup/gpt-5"}, Retries: 0, CacheTTL: 60,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"model":"gpt-5-mini","messages":[{"role":"user","content":"hi"}],"temperature":0}`
+	w.Eventually(func() bool { // the route reached the gateway: answers are cached
+		_, h, _ := w.Call("/v1/chat/completions", body)
+		return h.Get(brand.HeaderCache) == "miss"
+	})
+	upstream := len(w.Fake.Requests())
+	// The same request, written differently: answered from the cache.
+	status, h, _ := w.Call("/v1/chat/completions", `{"temperature":0,"user":"u1","model":"gpt-5-mini","messages":[{"role":"user","content":"hi"}]}`)
+	if status != 200 || h.Get(brand.HeaderCache) != "hit" || len(w.Fake.Requests()) != upstream {
+		t.Fatalf("%d, cache %q, %d upstream calls", status, h.Get(brand.HeaderCache), len(w.Fake.Requests()))
+	}
+	// Streams aren't cached.
+	if _, h, _ := w.Call("/v1/chat/completions", strings.Replace(body, `"temperature"`, `"stream":true,"temperature"`, 1)); h.Get(brand.HeaderCache) != "" {
+		t.Fatalf("a stream: cache %q", h.Get(brand.HeaderCache))
+	}
+	// The model asked for fails: the fallback answers, at a higher price.
+	w.Fake.Fail(503)
+	other := strings.Replace(body, `"hi"`, `"hello"`, 1)
+	if status, h, _ := w.Call("/v1/chat/completions", other); status != 200 || h.Get(brand.HeaderProvider) != "backup" {
+		t.Fatalf("%d via %s", status, h.Get(brand.HeaderProvider))
+	}
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var rows []struct {
+		Cost           int64  `ch:"cost_micros"`
+		Counterfactual int64  `ch:"counterfactual_micros"`
+		Savings        int64  `ch:"savings_micros"`
+		Reason         string `ch:"savings_reason"`
+		Cache          string `ch:"cache"`
+	}
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT cost_micros, counterfactual_micros,
+		savings_micros, savings_reason, cache FROM requests WHERE {tenant} AND usage_known ORDER BY ts`); err != nil {
+		t.Fatal(err)
+	}
+	last := len(rows) - 1
+	hit, fallback := rows[last-2], rows[last]
+	miss := rows[0]
+	for _, r := range rows { // calls before the route reached the gateway didn't cache
+		if r.Cache == "miss" {
+			miss = r
+			break
+		}
+	}
+	if miss.Cost != 52 || miss.Counterfactual != 70 || miss.Savings != 18 || miss.Reason != "prompt_cache" ||
+		miss.Cache != "miss" {
+		t.Fatalf("a miss %+v", miss)
+	}
+	if hit.Cost != 0 || hit.Counterfactual != 70 || hit.Savings != 70 || hit.Reason != "response_cache" || hit.Cache != "hit" {
+		t.Fatalf("a hit %+v", hit)
+	}
+	if fallback.Cost != 228 || fallback.Counterfactual != 70 || fallback.Savings != -158 || fallback.Reason != "fallback" {
+		t.Fatalf("a fallback %+v", fallback)
+	}
+
+	report, err := analytics.New(w.C.Events).Savings(ctx, w.Project, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reasons := map[string]int64{}
+	for _, r := range report.ByReason {
+		reasons[r.Key] = r.Savings
+	}
+	if reasons["response_cache"] != 70 || reasons["fallback"] != -158 || report.Total.Requests != uint64(len(rows)) {
+		t.Fatalf("report %+v", report)
 	}
 }

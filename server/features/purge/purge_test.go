@@ -173,7 +173,7 @@ func (w *world) clickhouse(project uuid.UUID) uint64 {
 	w.t.Helper()
 	var total uint64
 	for _, table := range []string{"requests", "requests_hourly", "requests_hourly_developer", "requests_hourly_tag",
-		"families_hourly", "prefixes_hourly"} {
+		"families_hourly", "prefixes_hourly", "savings_hourly"} {
 		var n uint64
 		if err := w.c.Events.Unscoped().QueryRow(w.ctx, `SELECT count() FROM `+table+` WHERE project_id = ?`, project).Scan(&n); err != nil {
 			w.t.Fatal(err)
@@ -229,7 +229,7 @@ func TestDeletingAProjectThenItsOrgLeavesNothing(t *testing.T) {
 	if n := w.clickhouse(p); n != 0 {
 		t.Fatalf("%d ClickHouse rows of the deleted project are left", n)
 	}
-	if w.clickhouse(sibling) != 6 {
+	if w.clickhouse(sibling) != 7 {
 		t.Fatal("the purge took ClickHouse rows of a project that wasn't deleted")
 	}
 	if w.rows("project_id", sibling) == 0 || w.keys(sibling) == 0 || w.rows("org_id", b.org) == 0 || w.keys(b.projects[0]) == 0 {
@@ -252,7 +252,7 @@ func TestDeletingAProjectThenItsOrgLeavesNothing(t *testing.T) {
 	if n := w.clickhouse(sibling); n != 0 {
 		t.Fatalf("%d ClickHouse rows of the deleted organization are left", n)
 	}
-	if w.clickhouse(b.projects[0]) != 6 {
+	if w.clickhouse(b.projects[0]) != 7 {
 		t.Fatal("the purge took another organization's ClickHouse rows")
 	}
 	if w.rows("org_id", b.org) == 0 || w.keys(b.projects[0]) == 0 {

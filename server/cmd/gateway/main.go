@@ -23,6 +23,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/requestlog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/responsecache"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/snapshot"
 )
 
@@ -77,6 +78,7 @@ func run() error {
 		// provider runs on this machine.
 		Transport: safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: cfg.Env == config.Development}),
 		ClientKey: c.ClientIP.Key,
+		Cache:     responsecache.New(c.KV),
 	})
 
 	// Prices are loaded and kept current, usage, spend and rate counters

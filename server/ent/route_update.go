@@ -82,6 +82,27 @@ func (_u *RouteUpdate) AddRetries(v int) *RouteUpdate {
 	return _u
 }
 
+// SetCacheTTLSeconds sets the "cache_ttl_seconds" field.
+func (_u *RouteUpdate) SetCacheTTLSeconds(v int) *RouteUpdate {
+	_u.mutation.ResetCacheTTLSeconds()
+	_u.mutation.SetCacheTTLSeconds(v)
+	return _u
+}
+
+// SetNillableCacheTTLSeconds sets the "cache_ttl_seconds" field if the given value is not nil.
+func (_u *RouteUpdate) SetNillableCacheTTLSeconds(v *int) *RouteUpdate {
+	if v != nil {
+		_u.SetCacheTTLSeconds(*v)
+	}
+	return _u
+}
+
+// AddCacheTTLSeconds adds value to the "cache_ttl_seconds" field.
+func (_u *RouteUpdate) AddCacheTTLSeconds(v int) *RouteUpdate {
+	_u.mutation.AddCacheTTLSeconds(v)
+	return _u
+}
+
 // Mutation returns the RouteMutation object of the builder.
 func (_u *RouteUpdate) Mutation() *RouteMutation {
 	return _u.mutation
@@ -171,6 +192,12 @@ func (_u *RouteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRetries(); ok {
 		_spec.AddField(route.FieldRetries, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.CacheTTLSeconds(); ok {
+		_spec.SetField(route.FieldCacheTTLSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCacheTTLSeconds(); ok {
+		_spec.AddField(route.FieldCacheTTLSeconds, field.TypeInt, value)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{route.Label}
@@ -241,6 +268,27 @@ func (_u *RouteUpdateOne) SetNillableRetries(v *int) *RouteUpdateOne {
 // AddRetries adds value to the "retries" field.
 func (_u *RouteUpdateOne) AddRetries(v int) *RouteUpdateOne {
 	_u.mutation.AddRetries(v)
+	return _u
+}
+
+// SetCacheTTLSeconds sets the "cache_ttl_seconds" field.
+func (_u *RouteUpdateOne) SetCacheTTLSeconds(v int) *RouteUpdateOne {
+	_u.mutation.ResetCacheTTLSeconds()
+	_u.mutation.SetCacheTTLSeconds(v)
+	return _u
+}
+
+// SetNillableCacheTTLSeconds sets the "cache_ttl_seconds" field if the given value is not nil.
+func (_u *RouteUpdateOne) SetNillableCacheTTLSeconds(v *int) *RouteUpdateOne {
+	if v != nil {
+		_u.SetCacheTTLSeconds(*v)
+	}
+	return _u
+}
+
+// AddCacheTTLSeconds adds value to the "cache_ttl_seconds" field.
+func (_u *RouteUpdateOne) AddCacheTTLSeconds(v int) *RouteUpdateOne {
+	_u.mutation.AddCacheTTLSeconds(v)
 	return _u
 }
 
@@ -362,6 +410,12 @@ func (_u *RouteUpdateOne) sqlSave(ctx context.Context) (_node *Route, err error)
 	}
 	if value, ok := _u.mutation.AddedRetries(); ok {
 		_spec.AddField(route.FieldRetries, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.CacheTTLSeconds(); ok {
+		_spec.SetField(route.FieldCacheTTLSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedCacheTTLSeconds(); ok {
+		_spec.AddField(route.FieldCacheTTLSeconds, field.TypeInt, value)
 	}
 	_node = &Route{config: _u.config}
 	_spec.Assign = _node.assignValues

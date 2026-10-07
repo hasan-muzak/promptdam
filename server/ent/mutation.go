@@ -5528,22 +5528,24 @@ func (m *ProviderMutation) ResetEdge(name string) error {
 // RouteMutation represents an operation that mutates the Route nodes in the graph.
 type RouteMutation struct {
 	config
-	op              Op
-	typ             string
-	id              *uuid.UUID
-	created_at      *time.Time
-	updated_at      *time.Time
-	org_id          *uuid.UUID
-	project_id      *uuid.UUID
-	name            *string
-	fallbacks       *[]string
-	appendfallbacks []string
-	retries         *int
-	addretries      *int
-	clearedFields   map[string]struct{}
-	done            bool
-	oldValue        func(context.Context) (*Route, error)
-	predicates      []predicate.Route
+	op                   Op
+	typ                  string
+	id                   *uuid.UUID
+	created_at           *time.Time
+	updated_at           *time.Time
+	org_id               *uuid.UUID
+	project_id           *uuid.UUID
+	name                 *string
+	fallbacks            *[]string
+	appendfallbacks      []string
+	retries              *int
+	addretries           *int
+	cache_ttl_seconds    *int
+	addcache_ttl_seconds *int
+	clearedFields        map[string]struct{}
+	done                 bool
+	oldValue             func(context.Context) (*Route, error)
+	predicates           []predicate.Route
 }
 
 var _ ent.Mutation = (*RouteMutation)(nil)
@@ -5937,6 +5939,62 @@ func (m *RouteMutation) ResetRetries() {
 	m.addretries = nil
 }
 
+// SetCacheTTLSeconds sets the "cache_ttl_seconds" field.
+func (m *RouteMutation) SetCacheTTLSeconds(i int) {
+	m.cache_ttl_seconds = &i
+	m.addcache_ttl_seconds = nil
+}
+
+// CacheTTLSeconds returns the value of the "cache_ttl_seconds" field in the mutation.
+func (m *RouteMutation) CacheTTLSeconds() (r int, exists bool) {
+	v := m.cache_ttl_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheTTLSeconds returns the old "cache_ttl_seconds" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldCacheTTLSeconds(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheTTLSeconds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheTTLSeconds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheTTLSeconds: %w", err)
+	}
+	return oldValue.CacheTTLSeconds, nil
+}
+
+// AddCacheTTLSeconds adds i to the "cache_ttl_seconds" field.
+func (m *RouteMutation) AddCacheTTLSeconds(i int) {
+	if m.addcache_ttl_seconds != nil {
+		*m.addcache_ttl_seconds += i
+	} else {
+		m.addcache_ttl_seconds = &i
+	}
+}
+
+// AddedCacheTTLSeconds returns the value that was added to the "cache_ttl_seconds" field in this mutation.
+func (m *RouteMutation) AddedCacheTTLSeconds() (r int, exists bool) {
+	v := m.addcache_ttl_seconds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCacheTTLSeconds resets all changes to the "cache_ttl_seconds" field.
+func (m *RouteMutation) ResetCacheTTLSeconds() {
+	m.cache_ttl_seconds = nil
+	m.addcache_ttl_seconds = nil
+}
+
 // Where appends a list predicates to the RouteMutation builder.
 func (m *RouteMutation) Where(ps ...predicate.Route) {
 	m.predicates = append(m.predicates, ps...)
@@ -5971,7 +6029,7 @@ func (m *RouteMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.created_at != nil {
 		fields = append(fields, route.FieldCreatedAt)
 	}
@@ -5992,6 +6050,9 @@ func (m *RouteMutation) Fields() []string {
 	}
 	if m.retries != nil {
 		fields = append(fields, route.FieldRetries)
+	}
+	if m.cache_ttl_seconds != nil {
+		fields = append(fields, route.FieldCacheTTLSeconds)
 	}
 	return fields
 }
@@ -6015,6 +6076,8 @@ func (m *RouteMutation) Field(name string) (ent.Value, bool) {
 		return m.Fallbacks()
 	case route.FieldRetries:
 		return m.Retries()
+	case route.FieldCacheTTLSeconds:
+		return m.CacheTTLSeconds()
 	}
 	return nil, false
 }
@@ -6038,6 +6101,8 @@ func (m *RouteMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldFallbacks(ctx)
 	case route.FieldRetries:
 		return m.OldRetries(ctx)
+	case route.FieldCacheTTLSeconds:
+		return m.OldCacheTTLSeconds(ctx)
 	}
 	return nil, fmt.Errorf("unknown Route field %s", name)
 }
@@ -6096,6 +6161,13 @@ func (m *RouteMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRetries(v)
 		return nil
+	case route.FieldCacheTTLSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheTTLSeconds(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Route field %s", name)
 }
@@ -6107,6 +6179,9 @@ func (m *RouteMutation) AddedFields() []string {
 	if m.addretries != nil {
 		fields = append(fields, route.FieldRetries)
 	}
+	if m.addcache_ttl_seconds != nil {
+		fields = append(fields, route.FieldCacheTTLSeconds)
+	}
 	return fields
 }
 
@@ -6117,6 +6192,8 @@ func (m *RouteMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case route.FieldRetries:
 		return m.AddedRetries()
+	case route.FieldCacheTTLSeconds:
+		return m.AddedCacheTTLSeconds()
 	}
 	return nil, false
 }
@@ -6132,6 +6209,13 @@ func (m *RouteMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRetries(v)
+		return nil
+	case route.FieldCacheTTLSeconds:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCacheTTLSeconds(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Route numeric field %s", name)
@@ -6180,6 +6264,9 @@ func (m *RouteMutation) ResetField(name string) error {
 		return nil
 	case route.FieldRetries:
 		m.ResetRetries()
+		return nil
+	case route.FieldCacheTTLSeconds:
+		m.ResetCacheTTLSeconds()
 		return nil
 	}
 	return fmt.Errorf("unknown Route field %s", name)

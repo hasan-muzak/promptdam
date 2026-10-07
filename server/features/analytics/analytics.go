@@ -73,11 +73,16 @@ type Request struct {
 	CacheWriteTokens uint32    `ch:"cache_write_tokens"`
 	ReasoningTokens  uint32    `ch:"reasoning_tokens"`
 	CostMicros       int64     `ch:"cost_micros"`
+	Savings          int64     `ch:"savings_micros"`
+	SavingsReason    string    `ch:"savings_reason"`
+	Cache            string    `ch:"cache"`
+	Family           string    `ch:"family_id"`
 }
 
 const requestColumns = `ts, trace, key_id, developer, end_user, tags, route, api_format, provider, requested_model,
 	served_model, stream, status, error_code, attempts, ttfb_ms, latency_ms, upstream_ms, usage_known, input_tokens,
-	output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_micros`
+	output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_micros, savings_micros,
+	savings_reason, cache, family_id`
 
 // Filter narrows the request log.
 type Filter struct {
@@ -320,6 +325,68 @@ func (s *Service) Latency(ctx context.Context, project uuid.UUID, from, to time.
 		GROUP BY grp ORDER BY requests DESC LIMIT 100`, from.UnixMilli(), to.UnixMilli())
 	if err != nil {
 		return nil, fmt.Errorf("analytics: latency: %w", err)
+	}
+	return out, nil
+}
+
+// SavingsSums are calls' counterfactual cost (the model asked for at list
+// price, without any cache), what they cost, and the difference.
+type SavingsSums struct {
+	Key            string `ch:"grp"`
+	Requests       uint64 `ch:"requests"`
+	Counterfactual int64  `ch:"counterfactual_micros"`
+	Cost           int64  `ch:"cost_micros"`
+	Savings        int64  `ch:"savings_micros"`
+}
+
+// SavingsPoint is one interval of savings.
+type SavingsPoint struct {
+	T       time.Time `ch:"t"`
+	Cost    int64     `ch:"cost_micros"`
+	Savings int64     `ch:"savings_micros"`
+}
+
+// SavingsReport is a project's savings ledger over a range.
+type SavingsReport struct {
+	Total    SavingsSums
+	ByReason []SavingsSums
+	Families []SavingsSums
+	Series   []SavingsPoint
+}
+
+// Savings sums a project's savings ledger over [from, to) from the hourly
+// rollup: in total, per reason, for the 20 families that saved most, and
+// per day.
+func (s *Service) Savings(ctx context.Context, project uuid.UUID, from, to time.Time) (SavingsReport, error) {
+	if err := checkRange(from, to, MaxRange); err != nil {
+		return SavingsReport{}, err
+	}
+	out := SavingsReport{ByReason: []SavingsSums{}, Families: []SavingsSums{}, Series: []SavingsPoint{}}
+	if s.db == nil {
+		return out, nil
+	}
+	sums := `sum(requests) AS requests, sum(counterfactual_micros) AS counterfactual_micros,
+		sum(cost_micros) AS cost_micros, sum(savings_micros) AS savings_micros`
+	where := ` FROM savings_hourly WHERE {tenant} AND hour >= toStartOfHour(fromUnixTimestamp64Milli(?)) AND hour < fromUnixTimestamp64Milli(?)`
+	args := []any{from.UnixMilli(), to.UnixMilli()}
+	var total []SavingsSums
+	if err := s.db.Select(ctx, &total, events.Project(project), `SELECT '' AS grp, `+sums+where, args...); err != nil {
+		return SavingsReport{}, fmt.Errorf("analytics: savings: %w", err)
+	}
+	if len(total) > 0 {
+		out.Total = total[0]
+	}
+	if err := s.db.Select(ctx, &out.ByReason, events.Project(project), `SELECT savings_reason AS grp, `+sums+where+
+		` GROUP BY grp ORDER BY savings_micros DESC`, args...); err != nil {
+		return SavingsReport{}, fmt.Errorf("analytics: savings by reason: %w", err)
+	}
+	if err := s.db.Select(ctx, &out.Families, events.Project(project), `SELECT family_id AS grp, `+sums+where+
+		` AND family_id != '' GROUP BY grp ORDER BY savings_micros DESC LIMIT 20`, args...); err != nil {
+		return SavingsReport{}, fmt.Errorf("analytics: savings by family: %w", err)
+	}
+	if err := s.db.Select(ctx, &out.Series, events.Project(project), `SELECT toStartOfDay(hour) AS t,
+		sum(cost_micros) AS cost_micros, sum(savings_micros) AS savings_micros`+where+` GROUP BY t ORDER BY t`, args...); err != nil {
+		return SavingsReport{}, fmt.Errorf("analytics: savings series: %w", err)
 	}
 	return out, nil
 }

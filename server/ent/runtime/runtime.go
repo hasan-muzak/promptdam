@@ -447,6 +447,10 @@ func init() {
 	routeDescRetries := routeFields[2].Descriptor()
 	// route.DefaultRetries holds the default value on creation for the retries field.
 	route.DefaultRetries = routeDescRetries.Default.(int)
+	// routeDescCacheTTLSeconds is the schema descriptor for cache_ttl_seconds field.
+	routeDescCacheTTLSeconds := routeFields[3].Descriptor()
+	// route.DefaultCacheTTLSeconds holds the default value on creation for the cache_ttl_seconds field.
+	route.DefaultCacheTTLSeconds = routeDescCacheTTLSeconds.Default.(int)
 	// routeDescID is the schema descriptor for id field.
 	routeDescID := routeMixinFields0[0].Descriptor()
 	// route.DefaultID holds the default value on creation for the id field.

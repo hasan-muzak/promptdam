@@ -32,8 +32,10 @@ type Route struct {
 	// Tried in order when the model asked for fails: model, or provider/model
 	Fallbacks []string `json:"fallbacks,omitempty"`
 	// Retries of a target, with jitter, before the next one
-	Retries      int `json:"retries,omitempty"`
-	selectValues sql.SelectValues
+	Retries int `json:"retries,omitempty"`
+	// Answer identical non-streamed requests from the response cache for this long; 0: off
+	CacheTTLSeconds int `json:"cache_ttl_seconds,omitempty"`
+	selectValues    sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -43,7 +45,7 @@ func (*Route) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case route.FieldFallbacks:
 			values[i] = new([]byte)
-		case route.FieldRetries:
+		case route.FieldRetries, route.FieldCacheTTLSeconds:
 			values[i] = new(sql.NullInt64)
 		case route.FieldName:
 			values[i] = new(sql.NullString)
@@ -116,6 +118,12 @@ func (_m *Route) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Retries = int(value.Int64)
 			}
+		case route.FieldCacheTTLSeconds:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field cache_ttl_seconds", values[i])
+			} else if value.Valid {
+				_m.CacheTTLSeconds = int(value.Int64)
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -172,6 +180,9 @@ func (_m *Route) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("retries=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Retries))
+	builder.WriteString(", ")
+	builder.WriteString("cache_ttl_seconds=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CacheTTLSeconds))
 	builder.WriteByte(')')
 	return builder.String()
 }

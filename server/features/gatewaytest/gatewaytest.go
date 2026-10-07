@@ -32,6 +32,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/requestlog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/responsecache"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/snapshot"
 	"github.com/hasan-muzak/keel/products/promptdam/server/migrations"
 )
@@ -126,6 +127,7 @@ func New(t *testing.T, opts Options) *World {
 	})
 	w.Gateway = httptest.NewServer(gateway.New(gateway.Config{
 		Resolver: res, Transport: safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true}),
+		Cache: responsecache.New(c.KV),
 		Done: func(r *gateway.Record) {
 			w.Log.Record(r)
 			w.mu.Lock()

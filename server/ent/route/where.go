@@ -85,6 +85,11 @@ func Retries(v int) predicate.Route {
 	return predicate.Route(sql.FieldEQ(FieldRetries, v))
 }
 
+// CacheTTLSeconds applies equality check predicate on the "cache_ttl_seconds" field. It's identical to CacheTTLSecondsEQ.
+func CacheTTLSeconds(v int) predicate.Route {
+	return predicate.Route(sql.FieldEQ(FieldCacheTTLSeconds, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Route {
 	return predicate.Route(sql.FieldEQ(FieldCreatedAt, v))
@@ -348,6 +353,46 @@ func RetriesLT(v int) predicate.Route {
 // RetriesLTE applies the LTE predicate on the "retries" field.
 func RetriesLTE(v int) predicate.Route {
 	return predicate.Route(sql.FieldLTE(FieldRetries, v))
+}
+
+// CacheTTLSecondsEQ applies the EQ predicate on the "cache_ttl_seconds" field.
+func CacheTTLSecondsEQ(v int) predicate.Route {
+	return predicate.Route(sql.FieldEQ(FieldCacheTTLSeconds, v))
+}
+
+// CacheTTLSecondsNEQ applies the NEQ predicate on the "cache_ttl_seconds" field.
+func CacheTTLSecondsNEQ(v int) predicate.Route {
+	return predicate.Route(sql.FieldNEQ(FieldCacheTTLSeconds, v))
+}
+
+// CacheTTLSecondsIn applies the In predicate on the "cache_ttl_seconds" field.
+func CacheTTLSecondsIn(vs ...int) predicate.Route {
+	return predicate.Route(sql.FieldIn(FieldCacheTTLSeconds, vs...))
+}
+
+// CacheTTLSecondsNotIn applies the NotIn predicate on the "cache_ttl_seconds" field.
+func CacheTTLSecondsNotIn(vs ...int) predicate.Route {
+	return predicate.Route(sql.FieldNotIn(FieldCacheTTLSeconds, vs...))
+}
+
+// CacheTTLSecondsGT applies the GT predicate on the "cache_ttl_seconds" field.
+func CacheTTLSecondsGT(v int) predicate.Route {
+	return predicate.Route(sql.FieldGT(FieldCacheTTLSeconds, v))
+}
+
+// CacheTTLSecondsGTE applies the GTE predicate on the "cache_ttl_seconds" field.
+func CacheTTLSecondsGTE(v int) predicate.Route {
+	return predicate.Route(sql.FieldGTE(FieldCacheTTLSeconds, v))
+}
+
+// CacheTTLSecondsLT applies the LT predicate on the "cache_ttl_seconds" field.
+func CacheTTLSecondsLT(v int) predicate.Route {
+	return predicate.Route(sql.FieldLT(FieldCacheTTLSeconds, v))
+}
+
+// CacheTTLSecondsLTE applies the LTE predicate on the "cache_ttl_seconds" field.
+func CacheTTLSecondsLTE(v int) predicate.Route {
+	return predicate.Route(sql.FieldLTE(FieldCacheTTLSeconds, v))
 }
 
 // And groups predicates with the AND operator between them.

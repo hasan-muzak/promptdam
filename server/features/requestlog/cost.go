@@ -42,3 +42,23 @@ func CostAt(m llm.Model, u wire.Usage) int64 {
 	}
 	return int64(math.Round(cost))
 }
+
+// Savings reasons, in the order they explain a difference.
+const (
+	ReasonResponseCache = "response_cache"
+	ReasonRouting       = "routing"
+	ReasonFallback      = "fallback"
+	ReasonPromptCache   = "prompt_cache"
+)
+
+// Ledger is what a call would have cost on the model asked for at list
+// price without any cache, what it saved against that, and why.
+type Ledger struct {
+	Counterfactual, Savings int64
+	Reason                  string
+}
+
+// counterfactual prices usage on model m with every input token fresh.
+func counterfactual(m llm.Model, u wire.Usage) int64 {
+	return int64(m.CostMicros(llm.Usage{Input: u.Input, Output: u.Output}))
+}

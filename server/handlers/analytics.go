@@ -69,6 +69,10 @@ type RequestOut struct {
 	CacheWriteTokens int       `json:"cache_write_tokens"`
 	ReasoningTokens  int       `json:"reasoning_tokens"`
 	CostMicros       int64     `json:"cost_micros" doc:"At list prices, in millionths of a dollar"`
+	SavingsMicros    int64     `json:"savings_micros" doc:"Against the model asked for at list price without any cache"`
+	SavingsReason    string    `json:"savings_reason"`
+	Cache            string    `json:"cache" doc:"hit or miss on routes with the response cache"`
+	Family           string    `json:"family"`
 }
 
 func requestOut(r analytics.Request) RequestOut {
@@ -79,6 +83,7 @@ func requestOut(r analytics.Request) RequestOut {
 		TTFBms: int(r.TTFBms), LatencyMs: int(r.LatencyMs), UpstreamMs: int(r.UpstreamMs), UsageKnown: r.UsageKnown,
 		InputTokens: int(r.InputTokens), OutputTokens: int(r.OutputTokens), CacheReadTokens: int(r.CacheReadTokens),
 		CacheWriteTokens: int(r.CacheWriteTokens), ReasoningTokens: int(r.ReasoningTokens), CostMicros: r.CostMicros,
+		SavingsMicros: r.Savings, SavingsReason: r.SavingsReason, Cache: r.Cache, Family: r.Family,
 	}
 }
 
@@ -283,4 +288,66 @@ func analyticsFail(err error) error {
 		return muzak.UnprocessableEntity("unknown group_by").WithCode(CodeInvalidQuery)
 	}
 	return err
+}
+
+// SavingsIn asks for a project's savings.
+type SavingsIn struct {
+	platform.ProjectPath
+	TimeRange
+}
+
+// SavingsSumsOut are calls' counterfactual cost, actual cost and savings.
+type SavingsSumsOut struct {
+	Key                  string `json:"key,omitempty" doc:"The reason or family"`
+	Requests             uint64 `json:"requests"`
+	CounterfactualMicros int64  `json:"counterfactual_micros" doc:"On the model asked for at list price, without any cache"`
+	CostMicros           int64  `json:"cost_micros"`
+	SavingsMicros        int64  `json:"savings_micros" doc:"Counterfactual minus cost: negative when a fallback or a cache write cost more"`
+}
+
+// SavingsPointOut is one day of savings.
+type SavingsPointOut struct {
+	Time          time.Time `json:"time"`
+	CostMicros    int64     `json:"cost_micros"`
+	SavingsMicros int64     `json:"savings_micros"`
+}
+
+// SavingsOut is a project's savings ledger over a range.
+type SavingsOut struct {
+	From     time.Time         `json:"from"`
+	To       time.Time         `json:"to"`
+	Total    SavingsSumsOut    `json:"total"`
+	ByReason []SavingsSumsOut  `json:"by_reason" doc:"response_cache, routing, fallback, prompt_cache, or empty for calls nothing changed"`
+	Families []SavingsSumsOut  `json:"families" doc:"The 20 families that saved most"`
+	Series   []SavingsPointOut `json:"series" doc:"Per day"`
+}
+
+func savingsSums(s analytics.SavingsSums) SavingsSumsOut {
+	return SavingsSumsOut{Key: s.Key, Requests: s.Requests, CounterfactualMicros: s.Counterfactual, CostMicros: s.Cost,
+		SavingsMicros: s.Savings}
+}
+
+// GetSavings returns a project's savings ledger over a range.
+func (h *Handlers) GetSavings(ctx *muzak.Context, in SavingsIn) (SavingsOut, error) {
+	pa := muzak.From[tenancy.ProjectAccess](ctx)
+	from, to, err := in.bounds(30 * 24 * time.Hour)
+	if err != nil {
+		return SavingsOut{}, err
+	}
+	r, err := h.Analytics.Savings(ctx.Context(), pa.Project.ID, from, to)
+	if err != nil {
+		return SavingsOut{}, analyticsFail(err)
+	}
+	out := SavingsOut{From: from, To: to, Total: savingsSums(r.Total), ByReason: make([]SavingsSumsOut, len(r.ByReason)),
+		Families: make([]SavingsSumsOut, len(r.Families)), Series: make([]SavingsPointOut, len(r.Series))}
+	for i, s := range r.ByReason {
+		out.ByReason[i] = savingsSums(s)
+	}
+	for i, s := range r.Families {
+		out.Families[i] = savingsSums(s)
+	}
+	for i, p := range r.Series {
+		out.Series[i] = SavingsPointOut{Time: p.T.UTC(), CostMicros: p.Cost, SavingsMicros: p.Savings}
+	}
+	return out, nil
 }

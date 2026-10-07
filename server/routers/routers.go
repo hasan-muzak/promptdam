@@ -147,6 +147,11 @@ func Mount(a *muzak.App, app *core.App) {
 		project(tenancy.PermProjectsRead), muzak.Summary("Calls, errors, tokens and spend over a range"),
 		muzak.Description("Totals, a series per hour or day, and groups by model, provider, key, route, developer or "+
 			"tag (at most 100, by spend). Default the last 7 days; at most 400 days."))
+	r.Get("/v1/orgs/{org}/projects/{project}/analytics/savings", h.GetSavings, ana, muzak.Title("Get Savings"),
+		project(tenancy.PermProjectsRead), muzak.Summary("The savings ledger: what calls cost against the model asked for"),
+		muzak.Description("Each call's counterfactual is the model asked for at list price without any cache; savings "+
+			"are the difference, by reason (response_cache, routing, fallback, prompt_cache) and family. Default the "+
+			"last 30 days."))
 	r.Get("/v1/orgs/{org}/projects/{project}/analytics/latency", h.GetLatency, ana, muzak.Title("Get Latency"),
 		project(tenancy.PermProjectsRead), muzak.Summary("Latency and time-to-first-byte percentiles per model or provider"))
 	a.Include(r)

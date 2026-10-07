@@ -90,6 +90,20 @@ func (_c *RouteCreate) SetNillableRetries(v *int) *RouteCreate {
 	return _c
 }
 
+// SetCacheTTLSeconds sets the "cache_ttl_seconds" field.
+func (_c *RouteCreate) SetCacheTTLSeconds(v int) *RouteCreate {
+	_c.mutation.SetCacheTTLSeconds(v)
+	return _c
+}
+
+// SetNillableCacheTTLSeconds sets the "cache_ttl_seconds" field if the given value is not nil.
+func (_c *RouteCreate) SetNillableCacheTTLSeconds(v *int) *RouteCreate {
+	if v != nil {
+		_c.SetCacheTTLSeconds(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *RouteCreate) SetID(v uuid.UUID) *RouteCreate {
 	_c.mutation.SetID(v)
@@ -163,6 +177,10 @@ func (_c *RouteCreate) defaults() error {
 		v := route.DefaultRetries
 		_c.mutation.SetRetries(v)
 	}
+	if _, ok := _c.mutation.CacheTTLSeconds(); !ok {
+		v := route.DefaultCacheTTLSeconds
+		_c.mutation.SetCacheTTLSeconds(v)
+	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if route.DefaultID == nil {
 			return fmt.Errorf("ent: uninitialized route.DefaultID (forgotten import ent/runtime?)")
@@ -200,6 +218,9 @@ func (_c *RouteCreate) check() error {
 	}
 	if _, ok := _c.mutation.Retries(); !ok {
 		return &ValidationError{Name: "retries", err: errors.New(`ent: missing required field "Route.retries"`)}
+	}
+	if _, ok := _c.mutation.CacheTTLSeconds(); !ok {
+		return &ValidationError{Name: "cache_ttl_seconds", err: errors.New(`ent: missing required field "Route.cache_ttl_seconds"`)}
 	}
 	return nil
 }
@@ -264,6 +285,10 @@ func (_c *RouteCreate) createSpec() (*Route, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Retries(); ok {
 		_spec.SetField(route.FieldRetries, field.TypeInt, value)
 		_node.Retries = value
+	}
+	if value, ok := _c.mutation.CacheTTLSeconds(); ok {
+		_spec.SetField(route.FieldCacheTTLSeconds, field.TypeInt, value)
+		_node.CacheTTLSeconds = value
 	}
 	return _node, _spec
 }
@@ -368,6 +393,24 @@ func (u *RouteUpsert) UpdateRetries() *RouteUpsert {
 // AddRetries adds v to the "retries" field.
 func (u *RouteUpsert) AddRetries(v int) *RouteUpsert {
 	u.Add(route.FieldRetries, v)
+	return u
+}
+
+// SetCacheTTLSeconds sets the "cache_ttl_seconds" field.
+func (u *RouteUpsert) SetCacheTTLSeconds(v int) *RouteUpsert {
+	u.Set(route.FieldCacheTTLSeconds, v)
+	return u
+}
+
+// UpdateCacheTTLSeconds sets the "cache_ttl_seconds" field to the value that was provided on create.
+func (u *RouteUpsert) UpdateCacheTTLSeconds() *RouteUpsert {
+	u.SetExcluded(route.FieldCacheTTLSeconds)
+	return u
+}
+
+// AddCacheTTLSeconds adds v to the "cache_ttl_seconds" field.
+func (u *RouteUpsert) AddCacheTTLSeconds(v int) *RouteUpsert {
+	u.Add(route.FieldCacheTTLSeconds, v)
 	return u
 }
 
@@ -488,6 +531,27 @@ func (u *RouteUpsertOne) AddRetries(v int) *RouteUpsertOne {
 func (u *RouteUpsertOne) UpdateRetries() *RouteUpsertOne {
 	return u.Update(func(s *RouteUpsert) {
 		s.UpdateRetries()
+	})
+}
+
+// SetCacheTTLSeconds sets the "cache_ttl_seconds" field.
+func (u *RouteUpsertOne) SetCacheTTLSeconds(v int) *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetCacheTTLSeconds(v)
+	})
+}
+
+// AddCacheTTLSeconds adds v to the "cache_ttl_seconds" field.
+func (u *RouteUpsertOne) AddCacheTTLSeconds(v int) *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.AddCacheTTLSeconds(v)
+	})
+}
+
+// UpdateCacheTTLSeconds sets the "cache_ttl_seconds" field to the value that was provided on create.
+func (u *RouteUpsertOne) UpdateCacheTTLSeconds() *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateCacheTTLSeconds()
 	})
 }
 
@@ -775,6 +839,27 @@ func (u *RouteUpsertBulk) AddRetries(v int) *RouteUpsertBulk {
 func (u *RouteUpsertBulk) UpdateRetries() *RouteUpsertBulk {
 	return u.Update(func(s *RouteUpsert) {
 		s.UpdateRetries()
+	})
+}
+
+// SetCacheTTLSeconds sets the "cache_ttl_seconds" field.
+func (u *RouteUpsertBulk) SetCacheTTLSeconds(v int) *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetCacheTTLSeconds(v)
+	})
+}
+
+// AddCacheTTLSeconds adds v to the "cache_ttl_seconds" field.
+func (u *RouteUpsertBulk) AddCacheTTLSeconds(v int) *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.AddCacheTTLSeconds(v)
+	})
+}
+
+// UpdateCacheTTLSeconds sets the "cache_ttl_seconds" field to the value that was provided on create.
+func (u *RouteUpsertBulk) UpdateCacheTTLSeconds() *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateCacheTTLSeconds()
 	})
 }
 
