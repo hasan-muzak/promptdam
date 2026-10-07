@@ -1,6 +1,6 @@
 # Promptdam: cut the LLM bill, block the leaks
 
-> **Status:** planning · **Owner:** Hasan · **Written:** 2026-10-03
+> **Status:** building (S0 done 2026-10-07; S1 next) · **Owner:** Hasan · **Written:** 2026-10-03
 > **MVP build:** Mar 8 – Apr 23, 2027 · **Beta:** Apr 26, 2027 · **Public launch:** Tue May 18, 2027 (moved 5 weeks later to make room for Fixwire for Mobile)
 > **Catalog:** #10 "AI Cost Optimization API" + #17 "AI Firewall". Revenue potential: High.
 > **Location:** `keel/products/promptdam/` inside the root monorepo. Shared Go packages are in `../../pkg/`, shared Nuxt layers in `../../packages/`.
@@ -312,11 +312,20 @@ products/promptdam/
 Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from v0.2. Keel K7 (streaming redact, hybrid limiter, budget counters) is built inside S1–S3 and tagged `core-v0.4.0`. Fixwire and Plugport post-launch work takes about 20% of time during this build.
 
 ### S0: Scaffold and spikes (Mon Mar 8 – Wed Mar 10)
-- [ ] S0.1 `keelctl new-product promptdam --prefix pd --domain <domain>` scaffolds `products/promptdam/`; CI path filter and the deploy workflow are green.
-- [ ] S0.2 Spike: streaming passthrough + usage tee for OpenAI Chat Completions, OpenAI Responses, Anthropic Messages and Gemini OpenAI-compat. Measure the added latency against direct calls.
-- [ ] S0.3 `bench/` harness with a fake upstream (configurable latency and streaming) for repeatable overhead measurement in CI.
+- [x] S0.1 `keelctl new-product promptdam --prefix pd --domain <domain>` scaffolds `products/promptdam/`; CI path filter and the deploy workflow are green.
+  - **Done 2026-10-07, by hand** (keelctl arrives with K4), on Fixwire's layout: `server/{brand,core,catalog,routers,features,cmd/{api,gateway,worker,migrate}}`, `deploy/Dockerfile`, Taskfile, `.env.example`; CI runs Go when `products/promptdam/{server,bench}` changes. The deploy workflow comes with the first VPS (S4.6).
+  - Every outward-facing name (product key, key prefix `pd`, domain, `X-Promptdam-*` headers) lives in `server/brand`, because the product will be renamed (decided 2026-10-07).
+  - Locally Promptdam runs on **its own stack** (`infra/compose/product.yaml` with `stack.env`, ports 2xxxx: `task promptdam:dev:stack`), never a database server shared with another product (decided 2026-10-07).
+- [x] S0.2 Spike: streaming passthrough + usage tee for OpenAI Chat Completions, OpenAI Responses, Anthropic Messages and Gemini OpenAI-compat. Measure the added latency against direct calls.
+  - **Done 2026-10-07:** not a throwaway spike but the gateway's core (`features/gateway`) on `pkg/llm/wire` (request inspection, byte-preserving field splice, SSE scanner, usage meter incl. DeepSeek cache hits, Gemini thinking in `total_tokens`, Anthropic 1-hour cache writes) and `safehttp.NewTransport` (SSRF-safe, no whole-request timeout). Chat streams that don't ask for usage get it asked for, and the extra chunk is hidden from the client.
+- [x] S0.3 `bench/` harness with a fake upstream (configurable latency and streaming) for repeatable overhead measurement in CI.
+  - **Done 2026-10-07:** `bench/fakeupstream` (all four formats) and `task promptdam:bench`. The timing gate runs on demand (`PROMPTDAM_BENCH=1`), not in CI: shared CI runners are too noisy for p99s. The functional tests run in CI.
 - [ ] S0.4 Catalog (`plans.go`), Stripe sync (test), real landing page; recruit 10 design partners with ≥ $2k/mo LLM spend (waitlist, interviews, Fixwire customers with high cost-per-run).
-- **Exit:** proxy overhead p99 < 40 ms on the bench with streaming; OpenAI and Anthropic SDKs work unmodified with only `base_url` changed.
+  - **Done 2026-10-07, catalog:** `server/catalog/plans.go` per §5; the savings plan's $500 base covers the first 50,000 cents of the `savings_share` meter, and it isn't publicly checked out. `ai_credits` waits for the judge decision (S3); seats are 3 on Free and 10 on Pro (my numbers, change freely).
+  - **Needs you:** a Promptdam Stripe sub-account's test keys for `task promptdam:stripe:sync`; the landing page and design partners.
+- **Exit (met 2026-10-07):** proxy overhead p99 < 40 ms on the bench with streaming; OpenAI and Anthropic SDKs work unmodified with only `base_url` changed.
+  - Bench on a laptop running client, fake provider and gateway at once: p99 overhead +2.4 ms (chat), +13.7 ms (chat stream), +19.1 ms (Anthropic stream). To re-measure on the VPS in S4.4.
+  - `openai-go` (Chat stream and not, Responses stream and not, error codes) and `anthropic-sdk-go` (Messages stream and not, count_tokens) pass through the gateway in `features/gateway/sdk_test.go`.
 
 ### S1: Gateway core (Thu Mar 11 – Mon Mar 22)
 - [ ] S1.1 Provider registry + BYOK credentials in `pkg/vault`, provider key validation call, per-provider settings.
@@ -426,4 +435,4 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - [ ] `DECISION NEEDED:` savings-share percentage and minimum (recommendation: 15%, $500/mo minimum, offered only above $5k/mo LLM spend).
 - [ ] `DECISION NEEDED:` default judge model for experiments (recommendation: `claude-sonnet-5-5` pairwise judge, run on the customer's Anthropic key when present; otherwise billed as AI credits).
 - [ ] `DECISION NEEDED:` firewall fail-closed default for `block` policies (recommendation: fail closed for secrets, fail open for everything else).
-- [ ] `DECISION NEEDED:` include OpenAI Responses API routing at MVP (recommendation: passthrough only; routing later).
+- [x] Include OpenAI Responses API routing at MVP: **passthrough only** (auth, budgets, usage, cost, log; no model routing or caching), routing later (decided 2026-10-07).
