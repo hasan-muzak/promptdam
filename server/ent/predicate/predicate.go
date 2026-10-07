@@ -26,3 +26,6 @@ type Provider func(*sql.Selector)
 
 // Route is the predicate function for route builders.
 type Route func(*sql.Selector)
+
+// RoutingRule is the predicate function for routingrule builders.
+type RoutingRule func(*sql.Selector)

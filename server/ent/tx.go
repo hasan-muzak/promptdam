@@ -28,6 +28,8 @@ type Tx struct {
 	Provider *ProviderClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
+	// RoutingRule is the client for interacting with the RoutingRule builders.
+	RoutingRule *RoutingRuleClient
 
 	// lazily loaded.
 	client     *Client
@@ -166,6 +168,7 @@ func (tx *Tx) init() {
 	tx.PriceOverride = NewPriceOverrideClient(tx.config)
 	tx.Provider = NewProviderClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
+	tx.RoutingRule = NewRoutingRuleClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

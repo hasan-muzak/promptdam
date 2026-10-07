@@ -39,6 +39,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/routingrule"
 )
 
 // LateWrites is how long after a deletion its data can still be written,
@@ -167,6 +168,7 @@ func deleteRows(ctx context.Context, c *pdent.Client, org uuid.UUID, projects []
 		c.PriceOverride.Delete().Where(priceoverride.OrgID(org), only(scoped, priceoverride.ProjectIDIn(projects...))),
 		c.Provider.Delete().Where(provider.OrgID(org), only(scoped, provider.ProjectIDIn(projects...))),
 		c.Route.Delete().Where(route.OrgID(org), only(scoped, route.ProjectIDIn(projects...))),
+		c.RoutingRule.Delete().Where(routingrule.OrgID(org), only(scoped, routingrule.ProjectIDIn(projects...))),
 	} {
 		if _, err := d.Exec(ctx); err != nil {
 			return err

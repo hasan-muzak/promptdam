@@ -74,12 +74,12 @@ func (c *call) serve() {
 		c.fail(&Error{Status: http.StatusBadRequest, Type: TypeInvalidRequest, Code: "invalid_request", Message: msg})
 		return
 	}
-	c.rec.RequestedModel, c.rec.Stream = req.Model, req.Stream
+	c.rec.RequestedModel, c.rec.Stream, c.rec.Request = req.Model, req.Stream, req
 	c.rec.Shape = families.Of(req.Prefix, c.r.Header.Get(brand.HeaderFamily))
 
 	route, err := c.h.cfg.Resolver.Resolve(c.r.Context(), &Call{
 		Format: c.ep.format, Request: req, Header: c.r.Header, Trace: c.rec.Trace, Client: c.h.clientKey(c.r),
-		Shape: c.rec.Shape,
+		Shape: c.rec.Shape, BodyBytes: len(body),
 	})
 	if err != nil {
 		c.fail(err)

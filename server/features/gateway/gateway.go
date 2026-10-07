@@ -38,6 +38,8 @@ type Call struct {
 	Client string
 	// Shape is the call's prompt family and how its prefix looks.
 	Shape families.Shape
+	// BodyBytes is the request body's size.
+	BodyBytes int
 }
 
 // Route is where a call goes.
@@ -108,6 +110,8 @@ type Record struct {
 	Stream      bool
 	// Shape is the call's prompt family and how its prefix looks.
 	Shape families.Shape
+	// Request is what the gateway read of the request.
+	Request wire.Request
 	// Fallback reports that a fallback target answered, not the first.
 	Fallback bool
 	// TargetModel is the model the gateway asked the provider for (the

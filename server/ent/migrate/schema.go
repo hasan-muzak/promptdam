@@ -228,6 +228,44 @@ var (
 			},
 		},
 	}
+	// RoutingRulesColumns holds the columns for the "routing_rules" table.
+	RoutingRulesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "route", Type: field.TypeString, Size: 100, Default: ""},
+		{Name: "when", Type: field.TypeString, Size: 4096},
+		{Name: "to_model", Type: field.TypeString, Size: 300},
+		{Name: "priority", Type: field.TypeInt, Default: 0},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"draft", "active", "disabled"}, Default: "draft"},
+		{Name: "activated_at", Type: field.TypeTime, Nullable: true},
+	}
+	// RoutingRulesTable holds the schema information for the "routing_rules" table.
+	RoutingRulesTable = &schema.Table{
+		Name:       "routing_rules",
+		Columns:    RoutingRulesColumns,
+		PrimaryKey: []*schema.Column{RoutingRulesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routingrule_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{RoutingRulesColumns[3], RoutingRulesColumns[4]},
+			},
+			{
+				Name:    "routingrule_project_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{RoutingRulesColumns[4], RoutingRulesColumns[5]},
+			},
+			{
+				Name:    "routingrule_project_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{RoutingRulesColumns[4], RoutingRulesColumns[10]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		BudgetsTable,
@@ -237,6 +275,7 @@ var (
 		PriceOverridesTable,
 		ProvidersTable,
 		RoutesTable,
+		RoutingRulesTable,
 	}
 )
 

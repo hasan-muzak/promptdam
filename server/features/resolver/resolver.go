@@ -21,6 +21,7 @@ import (
 	"github.com/hasan-muzak/keel/pkg/llm/wire"
 	"github.com/hasan-muzak/keel/pkg/memcache"
 	"github.com/hasan-muzak/keel/pkg/metering"
+	"github.com/hasan-muzak/keel/pkg/policy"
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
 	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
@@ -29,6 +30,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/rules"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/snapshot"
 )
 
@@ -46,6 +48,8 @@ type Meta struct {
 	Route string
 	// Prices are the project's own prices, over the price list.
 	Prices prices.Project
+	// Rule is the routing rule that sent the call to another model.
+	Rule string
 }
 
 // Who is what the call's spend counts against.
@@ -74,6 +78,8 @@ type Config struct {
 	Prices prices.Prices
 	// Scope is the scope a key needs.
 	Scope string
+	// Rules is the environment routing rules are compiled in.
+	Rules *policy.Env
 }
 
 // Resolver implements gateway.Resolver and gateway.ModelLister.
@@ -209,6 +215,25 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		format = providers.FormatAnthropic
 	}
 	targets := r.targets(snap, format, model, nil)
+	// An active rule that holds sends the call to its model first; the
+	// model asked for stays the first fallback.
+	if len(snap.Rules) > 0 && r.cfg.Rules != nil {
+		req := rules.Request{Model: model, Format: c.Format.String(), Family: c.Shape.Family, User: m.User,
+			Developer: m.Developer, Route: m.Route, InputTokens: c.BodyBytes / 4, Messages: c.Request.Messages,
+			MaxTokens: c.Request.MaxTokens, HasTools: c.Request.Tools, JSON: c.Request.Prefix.Format != "",
+			Stream: c.Request.Stream, Tags: m.Tags}
+		if rule, ok := rules.Match(r.cfg.Rules, snap.Rules, m.Route, req); ok {
+			if routed := r.fallback(snap, format, rule.ToModel, nil); len(routed) > 0 {
+				m.Rule = rule.Name
+				for _, t := range targets {
+					if !tried(routed, t.Provider, t.Model) {
+						routed = append(routed, t)
+					}
+				}
+				targets = routed
+			}
+		}
+	}
 	if len(targets) == 0 {
 		return nil, refuse(http.StatusNotFound, gateway.TypeNotFound, "no_provider",
 			"no provider of the project serves model "+model+" in the "+format+" API format: add one, or list the model on a provider")

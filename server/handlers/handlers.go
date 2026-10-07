@@ -14,6 +14,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/rules"
 )
 
 // Handlers hold Promptdam's services.
@@ -28,4 +29,6 @@ type Handlers struct {
 	Prices      *prices.Overrides
 	Families    *families.Service
 	CacheDoctor *cachedoctor.Service
+	Rules       *rules.Service
+	RuleDeps    RuleDeps
 }

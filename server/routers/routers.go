@@ -25,7 +25,8 @@ func Mount(a *muzak.App, app *core.App) {
 	h := &handlers.Handlers{
 		Tenancy: c.Tenancy, Providers: app.Providers, Keys: app.Keys, Routes: app.Routes, Budgets: app.Budgets, Notifier: c.Notifier,
 		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides, Families: families.NewService(app.Ent, c.Events),
-		CacheDoctor: cachedoctor.New(c.Events, app.Prices),
+		CacheDoctor: cachedoctor.New(c.Events, app.Prices), Rules: app.Rules,
+		RuleDeps: handlers.RuleDeps{Env: app.RuleEnv, Events: c.Events, Prices: app.Prices},
 	}
 	r := muzak.NewRouter(
 		muzak.WithTags(brand.Key),
@@ -93,6 +94,7 @@ func Mount(a *muzak.App, app *core.App) {
 
 	bcat := muzak.WithCategory("Budgets")
 	feature := muzak.Needs(platform.RequireFeature(c.Billing, c.Config.AppURL, catalog.Budgets))
+	routing := muzak.Needs(platform.RequireFeature(c.Billing, c.Config.AppURL, catalog.RoutingRules))
 	bb := "/v1/orgs/{org}/projects/{project}/budgets"
 	r.Get(bb, h.ListBudgets, bcat, muzak.Title("List Budgets"), project(tenancy.PermProjectsRead),
 		muzak.Summary("List a project's LLM budgets with their current window"))
@@ -116,6 +118,29 @@ func Mount(a *muzak.App, app *core.App) {
 			"Covers at most 31 days per query (default the last 24 hours) and what the plan keeps."))
 	r.Get(lb+"/{request}", h.GetRequest, log, muzak.Title("Get Request"), project(tenancy.PermProjectsRead),
 		muzak.Summary("Get one gateway call by its trace (X-Promptdam-Trace)"))
+
+	rucat := muzak.WithCategory("Routing Rules")
+	rb2 := "/v1/orgs/{org}/projects/{project}/rules"
+	r.Get(rb2, h.ListRules, rucat, muzak.Title("List Rules"), project(tenancy.PermProjectsRead),
+		muzak.Summary("A project's routing rules, in evaluation order"))
+	r.Post(rb2, h.CreateRule, rucat, muzak.Title("Create Rule"), project(tenancy.PermProjectsManage), routing,
+		muzak.Status(http.StatusCreated), muzak.Summary("Add a routing rule"),
+		muzak.Description("A rule sends the calls its CEL condition holds for to another model (same API format). "+
+			"Rules start as drafts; try them with a dry-run, then make them active. Compile errors come back "+
+			"with their line and column."))
+	r.Post(rb2+"/dry-run", h.DryRunRule, rucat, muzak.Title("Dry-Run Rule"), project(tenancy.PermProjectsRead),
+		muzak.Summary("Try a rule on recent calls before saving it"),
+		muzak.Description("Reads the range's most recent 20,000 calls (default the last 7 days) and tells how many the "+
+			"rule would have routed and what they would have cost on its model. Cost only: quality needs trying the "+
+			"model on them."))
+	r.Get(rb2+"/{rule}", h.GetRule, rucat, muzak.Title("Get Rule"), project(tenancy.PermProjectsRead),
+		muzak.Summary("Get a routing rule"))
+	r.Put(rb2+"/{rule}", h.UpdateRule, rucat, muzak.Title("Update Rule"), project(tenancy.PermProjectsManage), routing,
+		muzak.Summary("Replace a routing rule"), muzak.Description("Activate it with status active; the gateway applies it within seconds."))
+	r.Delete(rb2+"/{rule}", h.DeleteRule, rucat, muzak.Title("Delete Rule"), project(tenancy.PermProjectsManage),
+		muzak.Status(http.StatusNoContent), muzak.Summary("Remove a routing rule"))
+	r.Post(rb2+"/{rule}/dry-run", h.DryRunSavedRule, rucat, muzak.Title("Dry-Run Saved Rule"),
+		project(tenancy.PermProjectsRead), muzak.Summary("Try a saved rule on recent calls"))
 
 	pcat := muzak.WithCategory("Prices")
 	pr := "/v1/orgs/{org}/projects/{project}/prices"

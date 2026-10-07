@@ -123,7 +123,7 @@ func New(t *testing.T, opts Options) *World {
 	}
 	res := resolver.New(resolver.Config{
 		Keys: c.APIKeys, Snapshots: snaps, Quota: c.Metering, Spend: w.App.Spend, Rates: rates, Prices: w.App.Prices,
-		Scope: core.ScopeGateway,
+		Scope: core.ScopeGateway, Rules: w.App.RuleEnv,
 	})
 	w.Gateway = httptest.NewServer(gateway.New(gateway.Config{
 		Resolver: res, Transport: safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true}),

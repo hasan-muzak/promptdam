@@ -32,6 +32,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/rules"
 )
 
 // MaxAge is how long a gateway keeps a snapshot without hearing of a
@@ -70,6 +71,7 @@ type Data struct {
 	Routes    []Route                         `json:"routes"`
 	Budgets   []budgets.Blocking              `json:"budgets"`
 	Prices    []prices.Override               `json:"prices"`
+	Rules     []rules.Rule                    `json:"rules"`
 }
 
 // Snapshot is a project's configuration as a gateway holds it in memory.
@@ -82,6 +84,8 @@ type Snapshot struct {
 	Budgets   []budgets.Blocking
 	// Prices are the project's own prices, over the price list.
 	Prices prices.Project
+	// Rules are the active routing rules, in evaluation order.
+	Rules []rules.Rule
 }
 
 // Opened is a provider with its key's headers.
@@ -97,6 +101,7 @@ type Sources struct {
 	Routes    *routes.Service
 	Budgets   *budgets.Service
 	Prices    *prices.Overrides
+	Rules     *rules.Service
 }
 
 // Build reads a project's configuration from Postgres.
@@ -135,6 +140,9 @@ func (s Sources) Build(ctx context.Context, org, project uuid.UUID) (Data, error
 	}
 	if d.Prices, err = s.Prices.All(ctx, project); err != nil {
 		return Data{}, fmt.Errorf("snapshot: prices: %w", err)
+	}
+	if d.Rules, err = s.Rules.Actives(ctx, project); err != nil {
+		return Data{}, fmt.Errorf("snapshot: rules: %w", err)
 	}
 	return d, nil
 }
@@ -216,6 +224,7 @@ func (s *Store) open(project uuid.UUID, d Data) (*Snapshot, error) {
 	snap := &Snapshot{
 		Org: d.Org, Project: project, Keys: make(map[uuid.UUID]keysettings.Settings, len(d.Keys)),
 		Routes: make(map[string]Route, len(d.Routes)), Budgets: d.Budgets, Prices: prices.ProjectPrices(d.Prices),
+		Rules: d.Rules,
 	}
 	for _, p := range d.Providers {
 		h, err := s.sources.Providers.HeaderFor(d.Org, p.Format, p.Sealed)

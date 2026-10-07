@@ -12,6 +12,7 @@ import (
 	"github.com/hasan-muzak/keel/pkg/counter"
 	"github.com/hasan-muzak/keel/pkg/keel"
 	"github.com/hasan-muzak/keel/pkg/llm"
+	"github.com/hasan-muzak/keel/pkg/policy"
 
 	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
@@ -20,6 +21,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/purge"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/rules"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/snapshot"
 )
 
@@ -34,6 +36,9 @@ type App struct {
 	Prices *prices.Store
 	// PriceOverrides are projects' own prices for models.
 	PriceOverrides *prices.Overrides
+	// Rules keeps routing rules; RuleEnv compiles them.
+	Rules   *rules.Service
+	RuleEnv *policy.Env
 	// GatewayURL is where clients reach the gateway, for setup instructions.
 	GatewayURL string
 	// Providers keeps projects' LLM providers and their keys.
@@ -89,6 +94,12 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	}
 	a.Prices = prices.New(prices.Config{Ent: a.Ent, KV: c.KV, Fallback: a.fallback})
 	a.PriceOverrides = prices.NewOverrides(a.Ent, a.configChanged)
+	env, err := rules.NewEnv()
+	if err != nil {
+		panic(err) // the environment is declared here, never from input
+	}
+	a.RuleEnv = env
+	a.Rules = rules.New(a.Ent, env, a.configChanged)
 	if a.GatewayURL == "" {
 		a.GatewayURL = "http://localhost:8282"
 	}
@@ -122,5 +133,6 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 
 // Sources are where the gateway's snapshots are built from.
 func (a *App) Sources() snapshot.Sources {
-	return snapshot.Sources{Providers: a.Providers, Keys: a.Keys, Routes: a.Routes, Budgets: a.Budgets, Prices: a.PriceOverrides}
+	return snapshot.Sources{Providers: a.Providers, Keys: a.Keys, Routes: a.Routes, Budgets: a.Budgets, Prices: a.PriceOverrides,
+		Rules: a.Rules}
 }

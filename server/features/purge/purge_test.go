@@ -23,6 +23,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/routingrule"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/purge"
 	"github.com/hasan-muzak/keel/products/promptdam/server/migrations"
 )
@@ -100,6 +101,10 @@ func seeds(c *pdent.Client) []seed {
 		{"PriceOverride", priceoverride.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.PriceOverride.Create().SetOrgID(org).SetProjectID(p).SetModel("llama-3.3-70b").SetInput(0.5).
 				SetCachedInput(0.5).SetCacheWrite(0.5).SetOutput(1).Exec(ctx)
+		}},
+		{"RoutingRule", routingrule.Table, func(ctx context.Context, org, p uuid.UUID) error {
+			return c.RoutingRule.Create().SetOrgID(org).SetProjectID(p).SetName("small").SetWhen("true").
+				SetToModel("gpt-5-mini").Exec(ctx)
 		}},
 		{"Provider", provider.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.Provider.Create().SetOrgID(org).SetProjectID(p).SetName("openai").SetKind("openai").

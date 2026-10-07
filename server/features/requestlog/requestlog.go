@@ -38,7 +38,9 @@ type Row struct {
 	Trace, Developer, User, Route                           string
 	FamilyID, PrefixHash                                    string
 	PrefixFlags                                             uint16
-	PrefixTokens                                            uint32
+	PrefixTokens, EstInput, Messages, MaxTokens             uint32
+	HasTools, JSONOutput                                    bool
+	Rule                                                    string
 	Tags                                                    []string
 	APIFormat, Provider, Kind, RequestedModel, ServedModel  string
 	Stream                                                  bool
@@ -57,7 +59,8 @@ type Row struct {
 
 var columns = []string{
 	"project_id", "ts", "trace", "org_id", "key_id", "developer", "end_user", "tags", "route", "family_id", "prefix_hash",
-	"prefix_flags", "prefix_tokens", "api_format", "provider",
+	"prefix_flags", "prefix_tokens", "est_input_tokens", "messages", "max_tokens", "has_tools", "json_output", "rule",
+	"api_format", "provider",
 	"kind", "requested_model", "served_model", "stream", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
 	"upstream_ms", "usage_known", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
 	"reasoning_tokens", "cost_micros", "counterfactual_micros", "savings_micros", "savings_reason", "cache",
@@ -67,7 +70,8 @@ var columns = []string{
 func values(r Row) []any {
 	return []any{
 		r.ProjectID, r.TS, r.Trace, r.OrgID, r.KeyID, r.Developer, r.User, r.Tags, r.Route, r.FamilyID, r.PrefixHash,
-		r.PrefixFlags, r.PrefixTokens, r.APIFormat, r.Provider,
+		r.PrefixFlags, r.PrefixTokens, r.EstInput, r.Messages, r.MaxTokens, r.HasTools, r.JSONOutput, r.Rule,
+		r.APIFormat, r.Provider,
 		r.Kind, r.RequestedModel, r.ServedModel, r.Stream, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
 		r.UpstreamMs, r.UsageKnown, r.InputTokens, r.OutputTokens, r.CacheRead, r.CacheWrite, r.Think, r.CostMicros,
 		r.Counterfactual, r.Savings, r.SavingsReason, r.Cache, r.RequestBytes, r.ResponseBytes, r.RetentionDays,
@@ -152,7 +156,10 @@ func (l *Log) Record(r *gateway.Record) {
 	row := Row{
 		ProjectID: m.Project, OrgID: m.Org, KeyID: m.Key, TS: r.Start.UTC(), Trace: r.Trace, Developer: m.Developer,
 		User: m.User, Tags: m.Tags, Route: m.Route, FamilyID: r.Shape.Family, PrefixHash: r.Shape.Prefix,
-		PrefixFlags: uint16(flags(r)), PrefixTokens: uint32(min(r.Shape.PrefixTokens, 1<<31)), APIFormat: r.Format.String(),
+		PrefixFlags: uint16(flags(r)), PrefixTokens: uint32(min(r.Shape.PrefixTokens, 1<<31)),
+		EstInput: uint32(min(r.RequestBytes/4, 1<<31)), Messages: uint32(min(r.Request.Messages, 1<<31)),
+		MaxTokens: uint32(min(r.Request.MaxTokens, 1<<31)), HasTools: r.Request.Tools, JSONOutput: r.Request.Prefix.Format != "",
+		Rule: m.Rule, APIFormat: r.Format.String(),
 		Provider: r.Provider, Kind: r.Kind,
 		RequestedModel: r.RequestedModel, ServedModel: r.ServedModel, Stream: r.Stream, Status: uint16(min(r.Status, 65535)),
 		ErrorCode: r.ErrorCode, Attempts: uint8(min(r.Attempts, 255)), TTFBms: ms(r.TTFB), LatencyMs: ms(r.Latency),

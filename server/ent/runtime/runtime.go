@@ -13,6 +13,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/routingrule"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/schema"
 )
 
@@ -459,6 +460,93 @@ func init() {
 	routeDescID := routeMixinFields0[0].Descriptor()
 	// route.DefaultID holds the default value on creation for the id field.
 	route.DefaultID = routeDescID.Default.(func() uuid.UUID)
+	routingruleMixin := schema.RoutingRule{}.Mixin()
+	routingruleMixinHooks1 := routingruleMixin[1].Hooks()
+	routingrule.Hooks[0] = routingruleMixinHooks1[0]
+	routingruleMixinInters1 := routingruleMixin[1].Interceptors()
+	routingrule.Interceptors[0] = routingruleMixinInters1[0]
+	routingruleMixinFields0 := routingruleMixin[0].Fields()
+	_ = routingruleMixinFields0
+	routingruleFields := schema.RoutingRule{}.Fields()
+	_ = routingruleFields
+	// routingruleDescCreatedAt is the schema descriptor for created_at field.
+	routingruleDescCreatedAt := routingruleMixinFields0[1].Descriptor()
+	// routingrule.DefaultCreatedAt holds the default value on creation for the created_at field.
+	routingrule.DefaultCreatedAt = routingruleDescCreatedAt.Default.(func() time.Time)
+	// routingruleDescUpdatedAt is the schema descriptor for updated_at field.
+	routingruleDescUpdatedAt := routingruleMixinFields0[2].Descriptor()
+	// routingrule.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	routingrule.DefaultUpdatedAt = routingruleDescUpdatedAt.Default.(func() time.Time)
+	// routingrule.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	routingrule.UpdateDefaultUpdatedAt = routingruleDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// routingruleDescName is the schema descriptor for name field.
+	routingruleDescName := routingruleFields[0].Descriptor()
+	// routingrule.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	routingrule.NameValidator = func() func(string) error {
+		validators := routingruleDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// routingruleDescRoute is the schema descriptor for route field.
+	routingruleDescRoute := routingruleFields[1].Descriptor()
+	// routingrule.DefaultRoute holds the default value on creation for the route field.
+	routingrule.DefaultRoute = routingruleDescRoute.Default.(string)
+	// routingrule.RouteValidator is a validator for the "route" field. It is called by the builders before save.
+	routingrule.RouteValidator = routingruleDescRoute.Validators[0].(func(string) error)
+	// routingruleDescWhen is the schema descriptor for when field.
+	routingruleDescWhen := routingruleFields[2].Descriptor()
+	// routingrule.WhenValidator is a validator for the "when" field. It is called by the builders before save.
+	routingrule.WhenValidator = func() func(string) error {
+		validators := routingruleDescWhen.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(when string) error {
+			for _, fn := range fns {
+				if err := fn(when); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// routingruleDescToModel is the schema descriptor for to_model field.
+	routingruleDescToModel := routingruleFields[3].Descriptor()
+	// routingrule.ToModelValidator is a validator for the "to_model" field. It is called by the builders before save.
+	routingrule.ToModelValidator = func() func(string) error {
+		validators := routingruleDescToModel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(to_model string) error {
+			for _, fn := range fns {
+				if err := fn(to_model); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// routingruleDescPriority is the schema descriptor for priority field.
+	routingruleDescPriority := routingruleFields[4].Descriptor()
+	// routingrule.DefaultPriority holds the default value on creation for the priority field.
+	routingrule.DefaultPriority = routingruleDescPriority.Default.(int)
+	// routingruleDescID is the schema descriptor for id field.
+	routingruleDescID := routingruleMixinFields0[0].Descriptor()
+	// routingrule.DefaultID holds the default value on creation for the id field.
+	routingrule.DefaultID = routingruleDescID.Default.(func() uuid.UUID)
 }
 
 const (

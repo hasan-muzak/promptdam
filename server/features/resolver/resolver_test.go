@@ -15,6 +15,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/rules"
 )
 
 const chat = `{"model":"gpt-5-mini","messages":[{"role":"user","content":"hi"}]}`
@@ -161,5 +162,46 @@ func TestPromptCaching(t *testing.T) {
 	reqs := w.Fake.Requests()
 	if sent := string(reqs[len(reqs)-1].Body); !strings.Contains(sent, `"cache_control":{"type":"ephemeral"}`) {
 		t.Fatalf("the provider got no breakpoint: %.200s", sent)
+	}
+}
+
+// An active rule sends the calls it holds for to its model; drafts don't
+// route, and the model asked for stays the first fallback.
+func TestRoutingRules(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{})
+	w.Provider("small", providers.FormatOpenAI, []string{"gpt-5-nano"})
+	for _, in := range []rules.Input{
+		{Name: "draft", When: `true`, ToModel: "small/gpt-5-nano", Status: rules.Draft},
+		{Name: "short", When: `request.input_tokens < 1500 && !request.has_tools && request.messages == 1`,
+			ToModel: "small/gpt-5-nano", Status: rules.Active},
+	} {
+		if _, err := w.App.Rules.Create(w.Scoped(), w.Org, w.Project, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.Eventually(func() bool {
+		status, h, _ := w.Call("/v1/chat/completions", chat)
+		return status == 200 && h.Get(brand.HeaderProvider) == "small" && h.Get(brand.HeaderServedModel) == "gpt-5-nano"
+	})
+	recs := w.Records()
+	if m := recs[len(recs)-1].Meta.(*resolver.Meta); m.Rule != "short" {
+		t.Fatalf("meta %+v", m)
+	}
+
+	// A call with tools isn't routed.
+	tools := `{"model":"gpt-5-mini","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"f"}}]}`
+	if status, h, _ := w.Call("/v1/chat/completions", tools); status != 200 || h.Get(brand.HeaderServedModel) != "gpt-5-mini" {
+		t.Fatalf("tools: %d %s", status, h.Get(brand.HeaderServedModel))
+	}
+	recs = w.Records()
+	if m := recs[len(recs)-1].Meta.(*resolver.Meta); m.Rule != "" {
+		t.Fatalf("tools meta %+v", m)
+	}
+
+	// The rule's model failing (a try and a retry), the model asked for
+	// answers.
+	w.Fake.Fail(http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+	if status, h, _ := w.Call("/v1/chat/completions", chat); status != 200 || h.Get(brand.HeaderServedModel) != "gpt-5-mini" {
+		t.Fatalf("fallback: %d %s", status, h.Get(brand.HeaderServedModel))
 	}
 }

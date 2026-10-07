@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	muzak "muzak.dev/framework"
@@ -277,6 +278,76 @@ func TestRoutes(t *testing.T) {
 	e.client.Get(path+"/"+r.ID, alice).AssertStatus(http.StatusNotFound)
 }
 
+func TestRules(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	alice := e.as("alice")
+	org, _, base := e.project("alice")
+	orgID := mustID(t, ids.Org, org.ID)
+	path := base + "/rules"
+	short := map[string]any{"name": "short", "when": "request.input_tokens < 1500", "to_model": "gpt-5-nano"}
+
+	// Rules come with Pro; Free is refused.
+	if res := e.client.Post(path, alice, testclient.JSON(short)); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free: %d %s", res.Status, res.String())
+	}
+	e.c.DB.Ent.OrgFlag.Create().SetOrgID(orgID).SetKey("feature." + catalog.RoutingRules).SetValue(json.RawMessage(`true`)).
+		SaveX(entx.SkipTenant(ctx))
+	e.c.Tenancy.ForgetOrg(ctx, orgID)
+	e.c.Billing.BustEntitlements(ctx, orgID)
+
+	// A condition that doesn't compile says where.
+	res := e.client.Post(path, alice, testclient.JSON(map[string]any{
+		"name": "bad", "when": "request.input_tokens <\n  request.nope", "to_model": "gpt-5-nano",
+	}))
+	if er := res.Error().Error; res.Status != http.StatusUnprocessableEntity || er.Code != handlers.CodeInvalidRule ||
+		len(er.Details) == 0 || er.Details[0].Field != "when" || !strings.HasPrefix(er.Details[0].Issue, "line 2,") {
+		t.Fatalf("%d %s", res.Status, res.String())
+	}
+
+	rule := testclient.Decoded[handlers.RuleOut](e.client.Post(path, alice, testclient.JSON(short)).
+		AssertStatus(http.StatusCreated))
+	if rule.Status != "draft" || rule.ActivatedAt != nil || !strings.HasPrefix(rule.ID, handlers.RulePrefix+"_") {
+		t.Fatalf("created %+v", rule)
+	}
+	if res := e.client.Post(path, alice, testclient.JSON(short)); res.Status != http.StatusConflict ||
+		res.Error().Error.Code != handlers.CodeRuleNameTaken {
+		t.Fatalf("same name: %d %s", res.Status, res.String())
+	}
+
+	// Dry-runs, of a rule not saved and of a saved one.
+	dry := testclient.Decoded[handlers.DryRunOut](e.client.Post(path+"/dry-run", alice, testclient.JSON(map[string]any{
+		"when": "request.has_tools", "to_model": "gpt-5-nano",
+	})).AssertStatus(http.StatusOK))
+	if dry.Calls != 0 || dry.Note == "" || dry.To.Sub(dry.From) != 7*24*time.Hour {
+		t.Fatalf("dry-run %+v", dry)
+	}
+	if res := e.client.Post(path+"/dry-run", alice, testclient.JSON(map[string]any{
+		"when": "request.model", "to_model": "gpt-5-nano",
+	})); res.Status != http.StatusUnprocessableEntity || res.Error().Error.Code != handlers.CodeInvalidRule {
+		t.Fatalf("dry-run of a string: %d %s", res.Status, res.String())
+	}
+	if res := e.client.Post(path+"/"+rule.ID+"/dry-run?from=2026-01-01T00:00:00Z&to=2026-03-01T00:00:00Z", alice); res.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("dry-run of two months: %d %s", res.Status, res.String())
+	}
+	e.client.Post(path+"/"+rule.ID+"/dry-run", alice).AssertStatus(http.StatusOK)
+
+	// Active, it gets its activation time.
+	short["status"], short["priority"] = "active", 10
+	got := testclient.Decoded[handlers.RuleOut](e.client.Put(path+"/"+rule.ID, alice, testclient.JSON(short)).
+		AssertStatus(http.StatusOK))
+	if got.Status != "active" || got.ActivatedAt == nil || got.Priority != 10 {
+		t.Fatalf("updated %+v", got)
+	}
+	list := testclient.Decoded[httpx.List[handlers.RuleOut]](e.client.Get(path, alice).AssertStatus(http.StatusOK))
+	if len(list.Data) != 1 || list.Data[0].ID != rule.ID {
+		t.Fatalf("list %+v", list)
+	}
+	e.client.Delete(path+"/"+rule.ID, alice).AssertStatus(http.StatusNoContent)
+	e.client.Get(path+"/"+rule.ID, alice).AssertStatus(http.StatusNotFound)
+	e.client.Get(path+"/rul_nope", alice).AssertStatus(http.StatusNotFound)
+}
+
 func TestBudgets(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
@@ -440,8 +511,10 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 	rte := testclient.Decoded[handlers.RouteOut](e.client.Post(base+"/routes", alice, testclient.JSON(map[string]any{
 		"name": "default", "fallbacks": []string{"gpt-5-mini"},
 	})).AssertStatus(http.StatusCreated))
-	e.c.DB.Ent.OrgFlag.Create().SetOrgID(orgID).SetKey("feature." + catalog.Budgets).SetValue(json.RawMessage(`true`)).
-		SaveX(entx.SkipTenant(ctx))
+	for _, f := range []string{catalog.Budgets, catalog.RoutingRules} {
+		e.c.DB.Ent.OrgFlag.Create().SetOrgID(orgID).SetKey("feature." + f).SetValue(json.RawMessage(`true`)).
+			SaveX(entx.SkipTenant(ctx))
+	}
 	e.c.Billing.BustEntitlements(ctx, orgID)
 	bdg := testclient.Decoded[handlers.BudgetOut](e.client.Post(base+"/budgets", alice, testclient.JSON(map[string]any{
 		"name": "All", "scope": "project", "window": "month", "limit_micros": 1_000_000, "channels": []string{ch.ID},
@@ -451,11 +524,16 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 		"model": "llama-3.3-70b", "input": 1, "output": 1,
 	})).AssertStatus(http.StatusOK))
 
+	rul := testclient.Decoded[handlers.RuleOut](e.client.Post(base+"/rules", alice, testclient.JSON(map[string]any{
+		"name": "short", "when": "request.input_tokens < 1500", "to_model": "gpt-5-mini",
+	})).AssertStatus(http.StatusCreated))
+
 	victim := map[string]string{
 		"org": org.ID, "project": prj.ID, "user": me.User.ID, "invitation": inv.ID, "key": key.ID, "channel": ch.ID,
 		"webhook": ids.Encode(ids.WebhookEndpoint, ep.ID), "delivery": ids.Encode(ids.WebhookDelivery, del.ID),
 		"meter": "requests", "provider": p.ID, "route": rte.ID, "budget": bdg.ID,
 		"request": ids.Encode("req", ids.New()), "price": prc.ID, "family": "0123456789abcdef",
+		"rule": rul.ID,
 	}
 	e.client.Put(base+"/keys/"+key.ID+"/gateway", alice, testclient.JSON(map[string]any{"rpm": 10})).AssertStatus(http.StatusOK)
 	mallory := e.as("mallory")
@@ -463,10 +541,12 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 
 	// Mallory, in her own organization, names Acme's objects.
 	ownOrg, ownPrj, _ := e.project("mallory")
-	// Her plan has budgets too, so the IDs are what is checked.
+	// Her plan has budgets and rules too, so the IDs are what is checked.
 	ownOrgID := mustID(t, ids.Org, ownOrg.ID)
-	e.c.DB.Ent.OrgFlag.Create().SetOrgID(ownOrgID).SetKey("feature." + catalog.Budgets).SetValue(json.RawMessage(`true`)).
-		SaveX(entx.SkipTenant(ctx))
+	for _, f := range []string{catalog.Budgets, catalog.RoutingRules} {
+		e.c.DB.Ent.OrgFlag.Create().SetOrgID(ownOrgID).SetKey("feature." + f).SetValue(json.RawMessage(`true`)).
+			SaveX(entx.SkipTenant(ctx))
+	}
 	e.c.Billing.BustEntitlements(ctx, ownOrgID)
 	// A family's ID is its template's hash, the same in every project that
 	// uses the template: not another tenant's to protect.
@@ -478,5 +558,6 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 			"PUT /v1/orgs/{org}/projects/{project}/keys/{key}/gateway":   `{"rpm":1}`,
 			"PUT /v1/orgs/{org}/projects/{project}/routes/{route}":       `{"name":"x","fallbacks":[]}`,
 			"PUT /v1/orgs/{org}/projects/{project}/budgets/{budget}":     `{"name":"x","scope":"project","window":"day","limit_micros":1,"channels":[]}`,
+			"PUT /v1/orgs/{org}/projects/{project}/rules/{rule}":         `{"name":"x","when":"true","to_model":"m"}`,
 		}, mallory)
 }

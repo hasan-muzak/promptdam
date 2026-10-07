@@ -19,6 +19,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/routingrule"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -86,6 +87,7 @@ func checkColumn(t, c string) error {
 			priceoverride.Table: priceoverride.ValidColumn,
 			provider.Table:      provider.ValidColumn,
 			route.Table:         route.ValidColumn,
+			routingrule.Table:   routingrule.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

@@ -22,6 +22,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/routingrule"
 
 	stdsql "database/sql"
 )
@@ -45,6 +46,8 @@ type Client struct {
 	Provider *ProviderClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
+	// RoutingRule is the client for interacting with the RoutingRule builders.
+	RoutingRule *RoutingRuleClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -63,6 +66,7 @@ func (c *Client) init() {
 	c.PriceOverride = NewPriceOverrideClient(c.config)
 	c.Provider = NewProviderClient(c.config)
 	c.Route = NewRouteClient(c.config)
+	c.RoutingRule = NewRoutingRuleClient(c.config)
 }
 
 type (
@@ -162,6 +166,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PriceOverride: NewPriceOverrideClient(cfg),
 		Provider:      NewProviderClient(cfg),
 		Route:         NewRouteClient(cfg),
+		RoutingRule:   NewRoutingRuleClient(cfg),
 	}, nil
 }
 
@@ -188,6 +193,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PriceOverride: NewPriceOverrideClient(cfg),
 		Provider:      NewProviderClient(cfg),
 		Route:         NewRouteClient(cfg),
+		RoutingRule:   NewRoutingRuleClient(cfg),
 	}, nil
 }
 
@@ -218,7 +224,7 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Budget, c.FamilyLabel, c.KeySetting, c.PriceList, c.PriceOverride, c.Provider,
-		c.Route,
+		c.Route, c.RoutingRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -229,7 +235,7 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Budget, c.FamilyLabel, c.KeySetting, c.PriceList, c.PriceOverride, c.Provider,
-		c.Route,
+		c.Route, c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -252,6 +258,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Provider.mutate(ctx, m)
 	case *RouteMutation:
 		return c.Route.mutate(ctx, m)
+	case *RoutingRuleMutation:
+		return c.RoutingRule.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -1200,15 +1208,150 @@ func (c *RouteClient) mutate(ctx context.Context, m *RouteMutation) (Value, erro
 	}
 }
 
+// RoutingRuleClient is a client for the RoutingRule schema.
+type RoutingRuleClient struct {
+	config
+}
+
+// NewRoutingRuleClient returns a client for the RoutingRule from the given config.
+func NewRoutingRuleClient(c config) *RoutingRuleClient {
+	return &RoutingRuleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `routingrule.Hooks(f(g(h())))`.
+func (c *RoutingRuleClient) Use(hooks ...Hook) {
+	c.hooks.RoutingRule = append(c.hooks.RoutingRule, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `routingrule.Intercept(f(g(h())))`.
+func (c *RoutingRuleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RoutingRule = append(c.inters.RoutingRule, interceptors...)
+}
+
+// Create returns a builder for creating a RoutingRule entity.
+func (c *RoutingRuleClient) Create() *RoutingRuleCreate {
+	mutation := newRoutingRuleMutation(c.config, OpCreate)
+	return &RoutingRuleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RoutingRule entities.
+func (c *RoutingRuleClient) CreateBulk(builders ...*RoutingRuleCreate) *RoutingRuleCreateBulk {
+	return &RoutingRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RoutingRuleClient) MapCreateBulk(slice any, setFunc func(*RoutingRuleCreate, int)) *RoutingRuleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RoutingRuleCreateBulk{err: fmt.Errorf("calling to RoutingRuleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RoutingRuleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RoutingRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RoutingRule.
+func (c *RoutingRuleClient) Update() *RoutingRuleUpdate {
+	mutation := newRoutingRuleMutation(c.config, OpUpdate)
+	return &RoutingRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RoutingRuleClient) UpdateOne(_m *RoutingRule) *RoutingRuleUpdateOne {
+	mutation := newRoutingRuleMutation(c.config, OpUpdateOne, withRoutingRule(_m))
+	return &RoutingRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RoutingRuleClient) UpdateOneID(id uuid.UUID) *RoutingRuleUpdateOne {
+	mutation := newRoutingRuleMutation(c.config, OpUpdateOne, withRoutingRuleID(id))
+	return &RoutingRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RoutingRule.
+func (c *RoutingRuleClient) Delete() *RoutingRuleDelete {
+	mutation := newRoutingRuleMutation(c.config, OpDelete)
+	return &RoutingRuleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RoutingRuleClient) DeleteOne(_m *RoutingRule) *RoutingRuleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RoutingRuleClient) DeleteOneID(id uuid.UUID) *RoutingRuleDeleteOne {
+	builder := c.Delete().Where(routingrule.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RoutingRuleDeleteOne{builder}
+}
+
+// Query returns a query builder for RoutingRule.
+func (c *RoutingRuleClient) Query() *RoutingRuleQuery {
+	return &RoutingRuleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRoutingRule},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RoutingRule entity by its id.
+func (c *RoutingRuleClient) Get(ctx context.Context, id uuid.UUID) (*RoutingRule, error) {
+	return c.Query().Where(routingrule.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RoutingRuleClient) GetX(ctx context.Context, id uuid.UUID) *RoutingRule {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RoutingRuleClient) Hooks() []Hook {
+	hooks := c.hooks.RoutingRule
+	return append(hooks[:len(hooks):len(hooks)], routingrule.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RoutingRuleClient) Interceptors() []Interceptor {
+	inters := c.inters.RoutingRule
+	return append(inters[:len(inters):len(inters)], routingrule.Interceptors[:]...)
+}
+
+func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RoutingRuleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RoutingRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RoutingRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RoutingRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RoutingRule mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Budget, FamilyLabel, KeySetting, PriceList, PriceOverride, Provider,
-		Route []ent.Hook
+		Budget, FamilyLabel, KeySetting, PriceList, PriceOverride, Provider, Route,
+		RoutingRule []ent.Hook
 	}
 	inters struct {
-		Budget, FamilyLabel, KeySetting, PriceList, PriceOverride, Provider,
-		Route []ent.Interceptor
+		Budget, FamilyLabel, KeySetting, PriceList, PriceOverride, Provider, Route,
+		RoutingRule []ent.Interceptor
 	}
 )
 
