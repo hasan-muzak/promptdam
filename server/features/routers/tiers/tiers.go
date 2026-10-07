@@ -179,6 +179,13 @@ type Call struct {
 	// Serves reports whether tier i's model can take the call: its
 	// features and context window against what the call needs.
 	Serves func(i int) bool
+	// Learned is the classifier's placement, when the router has one: a
+	// tier ("" for none) and the probability it is right, and whether the
+	// classifier is unsure (then Decide is asked).
+	Learned func() (tier string, p float64, unsure bool)
+	// Decide asks the decision model for a tier ("" when it didn't
+	// answer in time).
+	Decide func() string
 }
 
 // Choice is the tier the cascade picked and why.
@@ -197,23 +204,39 @@ type Choice struct {
 }
 
 // Choose runs the cascade: the client's tier, else the first rule that
-// holds, else the default tier; then the requirements, which move a call
-// its tier can't serve to the next stronger tier that can (a weaker one
-// only when no stronger can).
+// holds, else the classifier's tier, else (when the classifier is unsure)
+// the decision model's, else the default tier; then the requirements,
+// which move a call its tier can't serve to the next stronger tier that
+// can (a weaker one only when no stronger can).
 func (s *Spec) Choose(c Call) (Choice, error) {
 	ch := Choice{Tier: s.Index(s.Default), Source: SourceDefault, Rule: -1}
+	placed := false
 	if c.Pin != "" {
 		i := s.Index(c.Pin)
 		if i < 0 {
 			return ch, ErrUnknownTier
 		}
-		ch = Choice{Tier: i, Source: SourceExplicit, Rule: -1, Confidence: 1}
-	} else if c.Holds != nil {
+		ch, placed = Choice{Tier: i, Source: SourceExplicit, Rule: -1, Confidence: 1}, true
+	}
+	if !placed && c.Holds != nil {
 		for k, r := range s.Rules {
 			if c.Holds(r.When) {
-				ch = Choice{Tier: s.Index(r.Tier), Source: SourceRule, Rule: k, Confidence: 1}
+				ch, placed = Choice{Tier: s.Index(r.Tier), Source: SourceRule, Rule: k, Confidence: 1}, true
 				break
 			}
+		}
+	}
+	unsure := false
+	if !placed && c.Learned != nil {
+		tier, p, u := c.Learned()
+		if i := s.Index(tier); i >= 0 {
+			ch, placed = Choice{Tier: i, Source: SourceClassifier, Rule: -1, Confidence: p}, true
+		}
+		unsure = u
+	}
+	if !placed && unsure && c.Decide != nil {
+		if i := s.Index(c.Decide()); i >= 0 {
+			ch = Choice{Tier: i, Source: SourceDecision, Rule: -1}
 		}
 	}
 	if c.Serves == nil || c.Serves(ch.Tier) {

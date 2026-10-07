@@ -30,6 +30,8 @@ type Tx struct {
 	Provider *ProviderClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
+	// RouterClassifier is the client for interacting with the RouterClassifier builders.
+	RouterClassifier *RouterClassifierClient
 	// RoutingRule is the client for interacting with the RoutingRule builders.
 	RoutingRule *RoutingRuleClient
 
@@ -171,6 +173,7 @@ func (tx *Tx) init() {
 	tx.PriceOverride = NewPriceOverrideClient(tx.config)
 	tx.Provider = NewProviderClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
+	tx.RouterClassifier = NewRouterClassifierClient(tx.config)
 	tx.RoutingRule = NewRoutingRuleClient(tx.config)
 }
 

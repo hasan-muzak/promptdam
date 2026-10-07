@@ -14,6 +14,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
+	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
 	"github.com/hasan-muzak/promptdam/server/ent/schema"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
@@ -559,6 +560,33 @@ func init() {
 	routeDescID := routeMixinFields0[0].Descriptor()
 	// route.DefaultID holds the default value on creation for the id field.
 	route.DefaultID = routeDescID.Default.(func() uuid.UUID)
+	routerclassifierMixin := schema.RouterClassifier{}.Mixin()
+	routerclassifierMixinHooks1 := routerclassifierMixin[1].Hooks()
+	routerclassifier.Hooks[0] = routerclassifierMixinHooks1[0]
+	routerclassifierMixinInters1 := routerclassifierMixin[1].Interceptors()
+	routerclassifier.Interceptors[0] = routerclassifierMixinInters1[0]
+	routerclassifierMixinFields0 := routerclassifierMixin[0].Fields()
+	_ = routerclassifierMixinFields0
+	routerclassifierFields := schema.RouterClassifier{}.Fields()
+	_ = routerclassifierFields
+	// routerclassifierDescCreatedAt is the schema descriptor for created_at field.
+	routerclassifierDescCreatedAt := routerclassifierMixinFields0[1].Descriptor()
+	// routerclassifier.DefaultCreatedAt holds the default value on creation for the created_at field.
+	routerclassifier.DefaultCreatedAt = routerclassifierDescCreatedAt.Default.(func() time.Time)
+	// routerclassifierDescUpdatedAt is the schema descriptor for updated_at field.
+	routerclassifierDescUpdatedAt := routerclassifierMixinFields0[2].Descriptor()
+	// routerclassifier.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	routerclassifier.DefaultUpdatedAt = routerclassifierDescUpdatedAt.Default.(func() time.Time)
+	// routerclassifier.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	routerclassifier.UpdateDefaultUpdatedAt = routerclassifierDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// routerclassifierDescSamples is the schema descriptor for samples field.
+	routerclassifierDescSamples := routerclassifierFields[2].Descriptor()
+	// routerclassifier.DefaultSamples holds the default value on creation for the samples field.
+	routerclassifier.DefaultSamples = routerclassifierDescSamples.Default.(int)
+	// routerclassifierDescID is the schema descriptor for id field.
+	routerclassifierDescID := routerclassifierMixinFields0[0].Descriptor()
+	// routerclassifier.DefaultID holds the default value on creation for the id field.
+	routerclassifier.DefaultID = routerclassifierDescID.Default.(func() uuid.UUID)
 	routingruleMixin := schema.RoutingRule{}.Mixin()
 	routingruleMixinHooks1 := routingruleMixin[1].Hooks()
 	routingrule.Hooks[0] = routingruleMixinHooks1[0]

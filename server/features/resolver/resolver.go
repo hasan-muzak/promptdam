@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hasan-muzak/keel-core/pkg/apikeys"
+	"github.com/hasan-muzak/keel-core/pkg/billing"
 	"github.com/hasan-muzak/keel-core/pkg/counter"
 	"github.com/hasan-muzak/keel-core/pkg/llm"
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
@@ -103,6 +104,9 @@ type Config struct {
 	// Sample draws a number in [0, 1) for each router call: below the
 	// router's sample rate, the call is evaluated (default rand.Float64).
 	Sample func() float64
+	// Entitlements says what the organization's plan includes
+	// (metering.Service.Entitlements, cached in process); nil allows all.
+	Entitlements func(ctx context.Context, org uuid.UUID) (billing.Entitlements, error)
 }
 
 // Resolver implements gateway.Resolver and gateway.ModelLister.
@@ -261,7 +265,7 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	var header http.Header
 	switch {
 	case rt != nil:
-		if targets, header, err = r.place(snap, rt, pin, named, c, m); err != nil {
+		if targets, header, err = r.place(ctx, snap, rt, pin, named, c, m); err != nil {
 			return nil, err
 		}
 	default:

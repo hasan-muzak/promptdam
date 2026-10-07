@@ -432,6 +432,14 @@ func TestRouters(t *testing.T) {
 		t.Fatalf("explain an unknown tier: %d %s", res.Status, res.String())
 	}
 
+	// Training can be asked for at once; reports need the request log,
+	// which this API runs without.
+	tr := testclient.Decoded[handlers.TrainRouterOut](e.client.Post(path+"/"+rtr.ID+"/train", alice).AssertStatus(http.StatusAccepted))
+	if !tr.Queued {
+		t.Fatalf("train %+v", tr)
+	}
+	e.client.Get(path+"/"+rtr.ID+"/report", alice).AssertStatus(http.StatusServiceUnavailable)
+
 	// Routes send calls through routers the project has; such a router
 	// stays until no route does.
 	if res := e.client.Post(base+"/routes", alice, testclient.JSON(map[string]any{"name": "agents", "router": "nope"})); res.Status != http.StatusUnprocessableEntity {

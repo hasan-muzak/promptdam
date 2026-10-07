@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -8,7 +9,11 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/llm"
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
+	"github.com/google/uuid"
+
 	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/catalog"
+	"github.com/hasan-muzak/promptdam/server/features/classifier"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
@@ -117,13 +122,27 @@ func (p *placer) holds(when string) bool {
 }
 
 // placeCall puts a call in one of the router's tiers (tiers.Spec.Choose).
-// A shadow router decides but serves its default tier, unless the client
-// named one. all checks every tier's fit, for explanations.
-func (r *Resolver) placeCall(snap *snapshot.Snapshot, rt *routers.Router, pin string, c *gateway.Call, m *Meta, all bool) (*Placement, error) {
+// learned lets the classifier place it. A shadow router decides but serves
+// its default tier, unless the client named one. all checks every tier's
+// fit, for explanations.
+func (r *Resolver) placeCall(snap *snapshot.Snapshot, rt *routers.Router, pin string, c *gateway.Call, m *Meta, learned, all bool) (
+	*Placement, error,
+) {
 	spec := &rt.Spec
 	p := &placer{r: r, snap: snap, rt: rt, c: c, m: m, need: needsOf(c), fits: make([]Fit, len(spec.Tiers))}
 	serves := func(i int) bool { return p.fit(i).Lacks == "" }
-	choice, err := spec.Choose(tiers.Call{Pin: pin, Holds: p.holds, Serves: serves})
+	call := tiers.Call{Pin: pin, Holds: p.holds, Serves: serves}
+	if learned {
+		call.Learned = func() (string, float64, bool) {
+			cm := rt.Classifier
+			if cm == nil {
+				return "", 0, true // not trained yet
+			}
+			pl := cm.Place(classifier.Features(classifier.InputOf(c.Format, c.Request, c.Body, c.Shape.Family, m.Tags)))
+			return pl.Tier, pl.P, pl.Unsure
+		}
+	}
+	choice, err := spec.Choose(call)
 	if errors.Is(err, tiers.ErrUnknownTier) {
 		return nil, refuse(http.StatusBadRequest, gateway.TypeInvalidRequest, "unknown_tier",
 			"router "+rt.Name+" has no tier "+strconv.Quote(pin))
@@ -155,10 +174,13 @@ func (r *Resolver) placeCall(snap *snapshot.Snapshot, rt *routers.Router, pin st
 // and the headers that say how. named reports that the call named the
 // router as its model, so savings count against the default tier rather
 // than the model asked for.
-func (r *Resolver) place(snap *snapshot.Snapshot, rt *routers.Router, pin string, named bool, c *gateway.Call, m *Meta) (
-	[]gateway.Target, http.Header, error,
-) {
-	pl, err := r.placeCall(snap, rt, pin, c, m, false)
+func (r *Resolver) place(ctx context.Context, snap *snapshot.Snapshot, rt *routers.Router, pin string, named bool, c *gateway.Call,
+	m *Meta,
+) ([]gateway.Target, http.Header, error) {
+	// The classifier places calls of active routers on plans with learned
+	// routing; a shadow router's only say what it would do.
+	learned := rt.Status == tiers.Shadow || r.learnedAllowed(ctx, m.Org)
+	pl, err := r.placeCall(snap, rt, pin, c, m, learned, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -206,5 +228,15 @@ func (r *Resolver) Targets(snap *snapshot.Snapshot, f wire.Format, model string)
 // Explain places a call as the gateway would, checking every tier, for
 // the routers API. snap may be built without opening providers' keys.
 func (r *Resolver) Explain(snap *snapshot.Snapshot, rt *routers.Router, pin string, c *gateway.Call, m *Meta) (*Placement, error) {
-	return r.placeCall(snap, rt, pin, c, m, true)
+	return r.placeCall(snap, rt, pin, c, m, true, true)
+}
+
+// learnedAllowed reports whether the organization's plan has learned
+// routing; when it can't be read, the router keeps to its rules.
+func (r *Resolver) learnedAllowed(ctx context.Context, org uuid.UUID) bool {
+	if r.cfg.Entitlements == nil {
+		return true
+	}
+	e, err := r.cfg.Entitlements(ctx, org)
+	return err == nil && e.Has(catalog.RoutingLearned)
 }

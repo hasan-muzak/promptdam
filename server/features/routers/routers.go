@@ -19,6 +19,8 @@ import (
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
+	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
+	"github.com/hasan-muzak/promptdam/server/features/classifier"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 )
@@ -90,6 +92,9 @@ type Router struct {
 	Judge             string     `json:"judge,omitempty"`
 	DecisionModel     string     `json:"decision_model,omitempty"`
 	DecisionTimeoutMS int        `json:"decision_timeout_ms"`
+	// Classifier is the router's trained classifier, nil before the first
+	// training or when it was trained against another default tier.
+	Classifier *classifier.Model `json:"classifier,omitempty"`
 }
 
 // Rate is the share of calls the router evaluates.
@@ -196,6 +201,16 @@ func (s *Service) Get(ctx context.Context, project, id uuid.UUID) (*pdent.ModelR
 	return r, err
 }
 
+// Classifier returns a router's trained classifier (nil before the first
+// training).
+func (s *Service) Classifier(ctx context.Context, router uuid.UUID) (*pdent.RouterClassifier, error) {
+	c, err := s.ent.RouterClassifier.Query().Where(routerclassifier.RouterID(router)).Only(ctx)
+	if pdent.IsNotFound(err) {
+		return nil, nil
+	}
+	return c, err
+}
+
 // Exists reports whether the project has a router by that name.
 func (s *Service) Exists(ctx context.Context, project uuid.UUID, name string) (bool, error) {
 	return s.ent.ModelRouter.Query().Where(modelrouter.ProjectID(project), modelrouter.Name(name)).Exist(ctx)
@@ -300,9 +315,24 @@ func (s *Service) Serving(ctx context.Context, project uuid.UUID) ([]Router, err
 	if err != nil {
 		return nil, fmt.Errorf("routers: %w", err)
 	}
+	ids := make([]uuid.UUID, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	trained, err := s.ent.RouterClassifier.Query().Where(routerclassifier.RouterIDIn(ids...)).All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("routers: classifiers: %w", err)
+	}
+	models := make(map[uuid.UUID]*classifier.Model, len(trained))
+	for _, c := range trained {
+		models[c.RouterID] = &c.Model
+	}
 	out := make([]Router, len(rows))
 	for i, r := range rows {
 		out[i] = Of(r)
+		if m := models[r.ID]; m != nil && m.Default == r.DefaultTier {
+			out[i].Classifier = m
+		}
 	}
 	return out, nil
 }

@@ -251,6 +251,9 @@ func assemble(project uuid.UUID, d Data, header func(Provider) (http.Header, err
 		Rules: d.Rules, Routers: make(map[string]*routers.Router, len(d.Routers)),
 	}
 	for i := range d.Routers {
+		if m := d.Routers[i].Classifier; m != nil {
+			m.Prepare() // before any call reads it
+		}
 		snap.Routers[d.Routers[i].Name] = &d.Routers[i]
 	}
 	for _, p := range d.Providers {

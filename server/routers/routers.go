@@ -30,7 +30,7 @@ func Mount(a *muzak.App, app *core.App) {
 		RuleDeps: handlers.RuleDeps{Env: app.RuleEnv, Events: c.Events, Prices: app.Prices},
 		Routers:  app.Routers,
 		RouterDeps: handlers.RouterDeps{Explainer: resolver.New(resolver.Config{Prices: app.Prices, Rules: app.RuleEnv}),
-			Sources: app.Sources(), Billing: c.Billing, AppURL: c.Config.AppURL},
+			Sources: app.Sources(), Billing: c.Billing, AppURL: c.Config.AppURL, Events: c.Events, Prices: app.Prices, Jobs: c.Jobs},
 	}
 	r := muzak.NewRouter(
 		muzak.WithTags(brand.Key),
@@ -165,6 +165,17 @@ func Mount(a *muzak.App, app *core.App) {
 	r.Delete(mr+"/{router}", h.DeleteRouter, mrcat, muzak.Title("Delete Router"), project(tenancy.PermProjectsManage),
 		muzak.Status(http.StatusNoContent), muzak.Summary("Remove a model router"),
 		muzak.Description("Refused (409 router_in_use) while a route sends its calls through it."))
+	r.Get(mr+"/{router}/report", h.GetRouterReport, mrcat, muzak.Title("Get Router Report"), project(tenancy.PermProjectsRead),
+		muzak.Summary("How a model router did: where its calls went, what its choices are worth, each tier's measured quality"),
+		muzak.Description("Calls per tier served and chosen, and by the step that chose them; their cost, what they would "+
+			"have cost on the chosen tiers (in shadow mode, what following the router would save, also over 30 days); "+
+			"each tier's judged calls against the default tier with a 95% interval and whether it meets the quality "+
+			"floor; the classifier's held-out precision and coverage per tier; the families judged most. Default the "+
+			"last 7 days; at most 90."))
+	r.Post(mr+"/{router}/train", h.TrainRouter, mrcat, muzak.Title("Train Router"), project(tenancy.PermProjectsManage),
+		muzak.Status(http.StatusAccepted), muzak.Summary("Train the router's classifier now"),
+		muzak.Description("Routers with new judged calls are trained hourly; this queues a training at once. Gateways use "+
+			"the new classifier within seconds of it."))
 	r.Post(mr+"/{router}/explain", h.ExplainRouter, mrcat, muzak.Title("Explain Router"), project(tenancy.PermProjectsRead),
 		muzak.Summary("How the router would place a request, without calling any provider"),
 		muzak.Description("The tier it would serve and why (the step that chose it, the rule that held), what the request "+

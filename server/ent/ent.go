@@ -20,6 +20,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
+	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
 )
 
@@ -81,15 +82,16 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			budget.Table:        budget.ValidColumn,
-			familylabel.Table:   familylabel.ValidColumn,
-			keysetting.Table:    keysetting.ValidColumn,
-			modelrouter.Table:   modelrouter.ValidColumn,
-			pricelist.Table:     pricelist.ValidColumn,
-			priceoverride.Table: priceoverride.ValidColumn,
-			provider.Table:      provider.ValidColumn,
-			route.Table:         route.ValidColumn,
-			routingrule.Table:   routingrule.ValidColumn,
+			budget.Table:           budget.ValidColumn,
+			familylabel.Table:      familylabel.ValidColumn,
+			keysetting.Table:       keysetting.ValidColumn,
+			modelrouter.Table:      modelrouter.ValidColumn,
+			pricelist.Table:        pricelist.ValidColumn,
+			priceoverride.Table:    priceoverride.ValidColumn,
+			provider.Table:         provider.ValidColumn,
+			route.Table:            route.ValidColumn,
+			routerclassifier.Table: routerclassifier.ValidColumn,
+			routingrule.Table:      routingrule.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

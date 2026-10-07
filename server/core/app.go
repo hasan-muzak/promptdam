@@ -24,6 +24,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 	"github.com/hasan-muzak/promptdam/server/features/rules"
 	"github.com/hasan-muzak/promptdam/server/features/snapshot"
+	"github.com/hasan-muzak/promptdam/server/features/training"
 )
 
 // App is Promptdam on top of keel: the shared services plus Promptdam's own
@@ -41,8 +42,10 @@ type App struct {
 	// rules too.
 	Rules   *rules.Service
 	RuleEnv *policy.Env
-	// Routers keeps model routers: tiers of models a call is placed in.
-	Routers *routers.Service
+	// Routers keeps model routers: tiers of models a call is placed in;
+	// Training trains their classifiers on their judged calls.
+	Routers  *routers.Service
+	Training *training.Service
 	// GatewayURL is where clients reach the gateway, for setup instructions.
 	GatewayURL string
 	// Providers keeps projects' LLM providers and their keys.
@@ -105,6 +108,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.RuleEnv = env
 	a.Rules = rules.New(a.Ent, env, a.configChanged)
 	a.Routers = routers.New(a.Ent, env, a.Prices, a.configChanged)
+	a.Training = training.New(training.Config{Ent: a.Ent, Events: c.Events, Changed: a.configChanged})
 	if a.GatewayURL == "" {
 		a.GatewayURL = "http://localhost:8282"
 	}

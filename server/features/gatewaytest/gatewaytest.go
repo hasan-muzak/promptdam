@@ -120,7 +120,7 @@ func New(t *testing.T, opts Options) *World {
 	})
 	res := resolver.New(resolver.Config{
 		Keys: c.APIKeys, Snapshots: snaps, Quota: c.Metering, Spend: w.App.Spend, Rates: rates, Prices: w.App.Prices,
-		Scope: core.ScopeGateway, Rules: w.App.RuleEnv, Sample: opts.Sample,
+		Scope: core.ScopeGateway, Rules: w.App.RuleEnv, Sample: opts.Sample, Entitlements: c.Metering.Entitlements,
 	})
 	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true})
 	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})

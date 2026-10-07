@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -99,7 +100,7 @@ func TestPlaceInShadowMode(t *testing.T) {
 	r, snap, rt := placing(t, tiers.Shadow)
 	one := `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`
 	m := &Meta{}
-	targets, h, err := r.place(snap, rt, "", true, call(t, one), m)
+	targets, h, err := r.place(context.Background(), snap, rt, "", true, call(t, one), m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,10 +111,10 @@ func TestPlaceInShadowMode(t *testing.T) {
 	}
 	// A tier the client names is served all the same.
 	m = &Meta{}
-	if _, _, err := r.place(snap, rt, "fast", true, call(t, one), m); err != nil || m.Shadow || m.Tier != "fast" {
+	if _, _, err := r.place(context.Background(), snap, rt, "fast", true, call(t, one), m); err != nil || m.Shadow || m.Tier != "fast" {
 		t.Fatalf("explicit: %+v, %v", m, err)
 	}
-	if _, _, err := r.place(snap, rt, "huge", true, call(t, one), &Meta{}); err == nil || !strings.Contains(err.Error(), "unknown_tier") {
+	if _, _, err := r.place(context.Background(), snap, rt, "huge", true, call(t, one), &Meta{}); err == nil || !strings.Contains(err.Error(), "unknown_tier") {
 		t.Fatalf("an unknown tier: %v", err)
 	}
 }
@@ -128,7 +129,7 @@ func BenchmarkPlace(b *testing.B) {
 	c := &gateway.Call{Format: wire.OpenAIChat, Request: req, Body: []byte(body), BodyBytes: len(body)}
 	b.ReportAllocs()
 	for b.Loop() {
-		if _, _, err := r.place(snap, rt, "", true, c, &Meta{}); err != nil {
+		if _, _, err := r.place(context.Background(), snap, rt, "", true, c, &Meta{}); err != nil {
 			b.Fatal(err)
 		}
 	}

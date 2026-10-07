@@ -23,6 +23,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
+	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
 
 	stdsql "database/sql"
@@ -49,6 +50,8 @@ type Client struct {
 	Provider *ProviderClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
+	// RouterClassifier is the client for interacting with the RouterClassifier builders.
+	RouterClassifier *RouterClassifierClient
 	// RoutingRule is the client for interacting with the RoutingRule builders.
 	RoutingRule *RoutingRuleClient
 }
@@ -70,6 +73,7 @@ func (c *Client) init() {
 	c.PriceOverride = NewPriceOverrideClient(c.config)
 	c.Provider = NewProviderClient(c.config)
 	c.Route = NewRouteClient(c.config)
+	c.RouterClassifier = NewRouterClassifierClient(c.config)
 	c.RoutingRule = NewRoutingRuleClient(c.config)
 }
 
@@ -161,17 +165,18 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:           ctx,
-		config:        cfg,
-		Budget:        NewBudgetClient(cfg),
-		FamilyLabel:   NewFamilyLabelClient(cfg),
-		KeySetting:    NewKeySettingClient(cfg),
-		ModelRouter:   NewModelRouterClient(cfg),
-		PriceList:     NewPriceListClient(cfg),
-		PriceOverride: NewPriceOverrideClient(cfg),
-		Provider:      NewProviderClient(cfg),
-		Route:         NewRouteClient(cfg),
-		RoutingRule:   NewRoutingRuleClient(cfg),
+		ctx:              ctx,
+		config:           cfg,
+		Budget:           NewBudgetClient(cfg),
+		FamilyLabel:      NewFamilyLabelClient(cfg),
+		KeySetting:       NewKeySettingClient(cfg),
+		ModelRouter:      NewModelRouterClient(cfg),
+		PriceList:        NewPriceListClient(cfg),
+		PriceOverride:    NewPriceOverrideClient(cfg),
+		Provider:         NewProviderClient(cfg),
+		Route:            NewRouteClient(cfg),
+		RouterClassifier: NewRouterClassifierClient(cfg),
+		RoutingRule:      NewRoutingRuleClient(cfg),
 	}, nil
 }
 
@@ -189,17 +194,18 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:           ctx,
-		config:        cfg,
-		Budget:        NewBudgetClient(cfg),
-		FamilyLabel:   NewFamilyLabelClient(cfg),
-		KeySetting:    NewKeySettingClient(cfg),
-		ModelRouter:   NewModelRouterClient(cfg),
-		PriceList:     NewPriceListClient(cfg),
-		PriceOverride: NewPriceOverrideClient(cfg),
-		Provider:      NewProviderClient(cfg),
-		Route:         NewRouteClient(cfg),
-		RoutingRule:   NewRoutingRuleClient(cfg),
+		ctx:              ctx,
+		config:           cfg,
+		Budget:           NewBudgetClient(cfg),
+		FamilyLabel:      NewFamilyLabelClient(cfg),
+		KeySetting:       NewKeySettingClient(cfg),
+		ModelRouter:      NewModelRouterClient(cfg),
+		PriceList:        NewPriceListClient(cfg),
+		PriceOverride:    NewPriceOverrideClient(cfg),
+		Provider:         NewProviderClient(cfg),
+		Route:            NewRouteClient(cfg),
+		RouterClassifier: NewRouterClassifierClient(cfg),
+		RoutingRule:      NewRoutingRuleClient(cfg),
 	}, nil
 }
 
@@ -230,7 +236,7 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Budget, c.FamilyLabel, c.KeySetting, c.ModelRouter, c.PriceList,
-		c.PriceOverride, c.Provider, c.Route, c.RoutingRule,
+		c.PriceOverride, c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -241,7 +247,7 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Budget, c.FamilyLabel, c.KeySetting, c.ModelRouter, c.PriceList,
-		c.PriceOverride, c.Provider, c.Route, c.RoutingRule,
+		c.PriceOverride, c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -266,6 +272,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Provider.mutate(ctx, m)
 	case *RouteMutation:
 		return c.Route.mutate(ctx, m)
+	case *RouterClassifierMutation:
+		return c.RouterClassifier.mutate(ctx, m)
 	case *RoutingRuleMutation:
 		return c.RoutingRule.mutate(ctx, m)
 	default:
@@ -1351,6 +1359,141 @@ func (c *RouteClient) mutate(ctx context.Context, m *RouteMutation) (Value, erro
 	}
 }
 
+// RouterClassifierClient is a client for the RouterClassifier schema.
+type RouterClassifierClient struct {
+	config
+}
+
+// NewRouterClassifierClient returns a client for the RouterClassifier from the given config.
+func NewRouterClassifierClient(c config) *RouterClassifierClient {
+	return &RouterClassifierClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `routerclassifier.Hooks(f(g(h())))`.
+func (c *RouterClassifierClient) Use(hooks ...Hook) {
+	c.hooks.RouterClassifier = append(c.hooks.RouterClassifier, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `routerclassifier.Intercept(f(g(h())))`.
+func (c *RouterClassifierClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RouterClassifier = append(c.inters.RouterClassifier, interceptors...)
+}
+
+// Create returns a builder for creating a RouterClassifier entity.
+func (c *RouterClassifierClient) Create() *RouterClassifierCreate {
+	mutation := newRouterClassifierMutation(c.config, OpCreate)
+	return &RouterClassifierCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RouterClassifier entities.
+func (c *RouterClassifierClient) CreateBulk(builders ...*RouterClassifierCreate) *RouterClassifierCreateBulk {
+	return &RouterClassifierCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RouterClassifierClient) MapCreateBulk(slice any, setFunc func(*RouterClassifierCreate, int)) *RouterClassifierCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RouterClassifierCreateBulk{err: fmt.Errorf("calling to RouterClassifierClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RouterClassifierCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RouterClassifierCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RouterClassifier.
+func (c *RouterClassifierClient) Update() *RouterClassifierUpdate {
+	mutation := newRouterClassifierMutation(c.config, OpUpdate)
+	return &RouterClassifierUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RouterClassifierClient) UpdateOne(_m *RouterClassifier) *RouterClassifierUpdateOne {
+	mutation := newRouterClassifierMutation(c.config, OpUpdateOne, withRouterClassifier(_m))
+	return &RouterClassifierUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RouterClassifierClient) UpdateOneID(id uuid.UUID) *RouterClassifierUpdateOne {
+	mutation := newRouterClassifierMutation(c.config, OpUpdateOne, withRouterClassifierID(id))
+	return &RouterClassifierUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RouterClassifier.
+func (c *RouterClassifierClient) Delete() *RouterClassifierDelete {
+	mutation := newRouterClassifierMutation(c.config, OpDelete)
+	return &RouterClassifierDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RouterClassifierClient) DeleteOne(_m *RouterClassifier) *RouterClassifierDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RouterClassifierClient) DeleteOneID(id uuid.UUID) *RouterClassifierDeleteOne {
+	builder := c.Delete().Where(routerclassifier.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RouterClassifierDeleteOne{builder}
+}
+
+// Query returns a query builder for RouterClassifier.
+func (c *RouterClassifierClient) Query() *RouterClassifierQuery {
+	return &RouterClassifierQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRouterClassifier},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RouterClassifier entity by its id.
+func (c *RouterClassifierClient) Get(ctx context.Context, id uuid.UUID) (*RouterClassifier, error) {
+	return c.Query().Where(routerclassifier.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RouterClassifierClient) GetX(ctx context.Context, id uuid.UUID) *RouterClassifier {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RouterClassifierClient) Hooks() []Hook {
+	hooks := c.hooks.RouterClassifier
+	return append(hooks[:len(hooks):len(hooks)], routerclassifier.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RouterClassifierClient) Interceptors() []Interceptor {
+	inters := c.inters.RouterClassifier
+	return append(inters[:len(inters):len(inters)], routerclassifier.Interceptors[:]...)
+}
+
+func (c *RouterClassifierClient) mutate(ctx context.Context, m *RouterClassifierMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RouterClassifierCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RouterClassifierUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RouterClassifierUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RouterClassifierDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RouterClassifier mutation op: %q", m.Op())
+	}
+}
+
 // RoutingRuleClient is a client for the RoutingRule schema.
 type RoutingRuleClient struct {
 	config
@@ -1490,11 +1633,11 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 type (
 	hooks struct {
 		Budget, FamilyLabel, KeySetting, ModelRouter, PriceList, PriceOverride,
-		Provider, Route, RoutingRule []ent.Hook
+		Provider, Route, RouterClassifier, RoutingRule []ent.Hook
 	}
 	inters struct {
 		Budget, FamilyLabel, KeySetting, ModelRouter, PriceList, PriceOverride,
-		Provider, Route, RoutingRule []ent.Interceptor
+		Provider, Route, RouterClassifier, RoutingRule []ent.Interceptor
 	}
 )
 

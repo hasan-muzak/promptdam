@@ -17,6 +17,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
+	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
 )
 
@@ -292,6 +293,33 @@ func (f TraverseRoute) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.RouteQuery", q)
 }
 
+// The RouterClassifierFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RouterClassifierFunc func(context.Context, *ent.RouterClassifierQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RouterClassifierFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RouterClassifierQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RouterClassifierQuery", q)
+}
+
+// The TraverseRouterClassifier type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRouterClassifier func(context.Context, *ent.RouterClassifierQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRouterClassifier) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRouterClassifier) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouterClassifierQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RouterClassifierQuery", q)
+}
+
 // The RoutingRuleFunc type is an adapter to allow the use of ordinary function as a Querier.
 type RoutingRuleFunc func(context.Context, *ent.RoutingRuleQuery) (ent.Value, error)
 
@@ -338,6 +366,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ProviderQuery, predicate.Provider, provider.OrderOption]{typ: ent.TypeProvider, tq: q}, nil
 	case *ent.RouteQuery:
 		return &query[*ent.RouteQuery, predicate.Route, route.OrderOption]{typ: ent.TypeRoute, tq: q}, nil
+	case *ent.RouterClassifierQuery:
+		return &query[*ent.RouterClassifierQuery, predicate.RouterClassifier, routerclassifier.OrderOption]{typ: ent.TypeRouterClassifier, tq: q}, nil
 	case *ent.RoutingRuleQuery:
 		return &query[*ent.RoutingRuleQuery, predicate.RoutingRule, routingrule.OrderOption]{typ: ent.TypeRoutingRule, tq: q}, nil
 	default:

@@ -9,8 +9,10 @@ import (
 	muzak "muzak.dev/framework"
 
 	"github.com/hasan-muzak/keel-core/pkg/billing"
+	"github.com/hasan-muzak/keel-core/pkg/events"
 	"github.com/hasan-muzak/keel-core/pkg/httpx"
 	"github.com/hasan-muzak/keel-core/pkg/ids"
+	"github.com/hasan-muzak/keel-core/pkg/jobs"
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 	"github.com/hasan-muzak/keel-core/pkg/platform"
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
@@ -19,6 +21,7 @@ import (
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/features/families"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/resolver"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
@@ -44,6 +47,10 @@ type RouterDeps struct {
 	Sources snapshot.Sources
 	Billing *billing.Service
 	AppURL  string
+	// Events, Prices and Jobs serve reports and training requests.
+	Events *events.DB
+	Prices prices.Prices
+	Jobs   *jobs.Jobs
 }
 
 // TierOut is a router's tier.

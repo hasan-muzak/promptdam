@@ -1,4 +1,4 @@
-h1:/hWb8WNPMLwXLhhAJAp3z6mOFL1d0qP/iIdn01eVw5M=
+h1:+Qxi6byc3IrtHgJJXrJZ0qeRcVBzDb8S2WdnsWiRfZQ=
 20261007103513_init.sql h1:bVyQ6g9OmnroRSresfeNjfapdzWItSeWtS+hU8gXKag=
 20261007110117_key_settings.sql h1:0IhbZBSVxQ8bGE34nOm201ldybxwuXeg6GBHg1dLZD4=
 20261007110559_routes.sql h1:qT7mskL0wkHMlY7VDpj+jQQBgVQO98wZ1DfkOybjk/o=
@@ -10,3 +10,4 @@ h1:/hWb8WNPMLwXLhhAJAp3z6mOFL1d0qP/iIdn01eVw5M=
 20261007144635_route_prompt_cache.sql h1:aZ5qcffClpZV52V6DhdEeFDTOYOS7Gf8vJCIUjd4ZGM=
 20261007145544_routing_rules.sql h1:g+Bj8/DR8nwSOZWTeyjW6qF7HUxcRkkte1eJRFYqwWY=
 20261007222426_model_routers.sql h1:bH0J55MaJXF6k1RUakubuJDjxnerMZY3CVRRHJUVmro=
+20261007230447_router_classifiers.sql h1:xwiVSF0Rg2WDW/3ZephRPzGab6koIg3/Q12EPDiYXoE=

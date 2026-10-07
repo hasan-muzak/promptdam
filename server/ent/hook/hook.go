@@ -105,6 +105,18 @@ func (f RouteFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteMutation", m)
 }
 
+// The RouterClassifierFunc type is an adapter to allow the use of ordinary
+// function as RouterClassifier mutator.
+type RouterClassifierFunc func(context.Context, *ent.RouterClassifierMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RouterClassifierFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RouterClassifierMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouterClassifierMutation", m)
+}
+
 // The RoutingRuleFunc type is an adapter to allow the use of ordinary
 // function as RoutingRule mutator.
 type RoutingRuleFunc func(context.Context, *ent.RoutingRuleMutation) (ent.Value, error)

@@ -21,7 +21,9 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
+	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
+	"github.com/hasan-muzak/promptdam/server/features/classifier"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 )
 
@@ -34,15 +36,16 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeBudget        = "Budget"
-	TypeFamilyLabel   = "FamilyLabel"
-	TypeKeySetting    = "KeySetting"
-	TypeModelRouter   = "ModelRouter"
-	TypePriceList     = "PriceList"
-	TypePriceOverride = "PriceOverride"
-	TypeProvider      = "Provider"
-	TypeRoute         = "Route"
-	TypeRoutingRule   = "RoutingRule"
+	TypeBudget           = "Budget"
+	TypeFamilyLabel      = "FamilyLabel"
+	TypeKeySetting       = "KeySetting"
+	TypeModelRouter      = "ModelRouter"
+	TypePriceList        = "PriceList"
+	TypePriceOverride    = "PriceOverride"
+	TypeProvider         = "Provider"
+	TypeRoute            = "Route"
+	TypeRouterClassifier = "RouterClassifier"
+	TypeRoutingRule      = "RoutingRule"
 )
 
 // BudgetMutation represents an operation that mutates the Budget nodes in the graph.
@@ -7762,6 +7765,752 @@ func (m *RouteMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *RouteMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Route edge %s", name)
+}
+
+// RouterClassifierMutation represents an operation that mutates the RouterClassifier nodes in the graph.
+type RouterClassifierMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	created_at    *time.Time
+	updated_at    *time.Time
+	org_id        *uuid.UUID
+	project_id    *uuid.UUID
+	router_id     *uuid.UUID
+	model         *classifier.Model
+	samples       *int
+	addsamples    *int
+	trained_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*RouterClassifier, error)
+	predicates    []predicate.RouterClassifier
+}
+
+var _ ent.Mutation = (*RouterClassifierMutation)(nil)
+
+// routerclassifierOption allows management of the mutation configuration using functional options.
+type routerclassifierOption func(*RouterClassifierMutation)
+
+// newRouterClassifierMutation creates new mutation for the RouterClassifier entity.
+func newRouterClassifierMutation(c config, op Op, opts ...routerclassifierOption) *RouterClassifierMutation {
+	m := &RouterClassifierMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeRouterClassifier,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withRouterClassifierID sets the ID field of the mutation.
+func withRouterClassifierID(id uuid.UUID) routerclassifierOption {
+	return func(m *RouterClassifierMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *RouterClassifier
+		)
+		m.oldValue = func(ctx context.Context) (*RouterClassifier, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().RouterClassifier.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withRouterClassifier sets the old RouterClassifier of the mutation.
+func withRouterClassifier(node *RouterClassifier) routerclassifierOption {
+	return func(m *RouterClassifierMutation) {
+		m.oldValue = func(context.Context) (*RouterClassifier, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m RouterClassifierMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m RouterClassifierMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of RouterClassifier entities.
+func (m *RouterClassifierMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *RouterClassifierMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *RouterClassifierMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().RouterClassifier.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *RouterClassifierMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *RouterClassifierMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the RouterClassifier entity.
+// If the RouterClassifier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouterClassifierMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *RouterClassifierMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *RouterClassifierMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *RouterClassifierMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the RouterClassifier entity.
+// If the RouterClassifier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouterClassifierMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *RouterClassifierMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *RouterClassifierMutation) SetOrgID(u uuid.UUID) {
+	m.org_id = &u
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *RouterClassifierMutation) OrgID() (r uuid.UUID, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the RouterClassifier entity.
+// If the RouterClassifier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouterClassifierMutation) OldOrgID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *RouterClassifierMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetProjectID sets the "project_id" field.
+func (m *RouterClassifierMutation) SetProjectID(u uuid.UUID) {
+	m.project_id = &u
+}
+
+// ProjectID returns the value of the "project_id" field in the mutation.
+func (m *RouterClassifierMutation) ProjectID() (r uuid.UUID, exists bool) {
+	v := m.project_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProjectID returns the old "project_id" field's value of the RouterClassifier entity.
+// If the RouterClassifier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouterClassifierMutation) OldProjectID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProjectID: %w", err)
+	}
+	return oldValue.ProjectID, nil
+}
+
+// ResetProjectID resets all changes to the "project_id" field.
+func (m *RouterClassifierMutation) ResetProjectID() {
+	m.project_id = nil
+}
+
+// SetRouterID sets the "router_id" field.
+func (m *RouterClassifierMutation) SetRouterID(u uuid.UUID) {
+	m.router_id = &u
+}
+
+// RouterID returns the value of the "router_id" field in the mutation.
+func (m *RouterClassifierMutation) RouterID() (r uuid.UUID, exists bool) {
+	v := m.router_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouterID returns the old "router_id" field's value of the RouterClassifier entity.
+// If the RouterClassifier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouterClassifierMutation) OldRouterID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouterID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouterID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouterID: %w", err)
+	}
+	return oldValue.RouterID, nil
+}
+
+// ResetRouterID resets all changes to the "router_id" field.
+func (m *RouterClassifierMutation) ResetRouterID() {
+	m.router_id = nil
+}
+
+// SetModel sets the "model" field.
+func (m *RouterClassifierMutation) SetModel(c classifier.Model) {
+	m.model = &c
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *RouterClassifierMutation) Model() (r classifier.Model, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the RouterClassifier entity.
+// If the RouterClassifier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouterClassifierMutation) OldModel(ctx context.Context) (v classifier.Model, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *RouterClassifierMutation) ResetModel() {
+	m.model = nil
+}
+
+// SetSamples sets the "samples" field.
+func (m *RouterClassifierMutation) SetSamples(i int) {
+	m.samples = &i
+	m.addsamples = nil
+}
+
+// Samples returns the value of the "samples" field in the mutation.
+func (m *RouterClassifierMutation) Samples() (r int, exists bool) {
+	v := m.samples
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSamples returns the old "samples" field's value of the RouterClassifier entity.
+// If the RouterClassifier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouterClassifierMutation) OldSamples(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSamples is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSamples requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSamples: %w", err)
+	}
+	return oldValue.Samples, nil
+}
+
+// AddSamples adds i to the "samples" field.
+func (m *RouterClassifierMutation) AddSamples(i int) {
+	if m.addsamples != nil {
+		*m.addsamples += i
+	} else {
+		m.addsamples = &i
+	}
+}
+
+// AddedSamples returns the value that was added to the "samples" field in this mutation.
+func (m *RouterClassifierMutation) AddedSamples() (r int, exists bool) {
+	v := m.addsamples
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSamples resets all changes to the "samples" field.
+func (m *RouterClassifierMutation) ResetSamples() {
+	m.samples = nil
+	m.addsamples = nil
+}
+
+// SetTrainedAt sets the "trained_at" field.
+func (m *RouterClassifierMutation) SetTrainedAt(t time.Time) {
+	m.trained_at = &t
+}
+
+// TrainedAt returns the value of the "trained_at" field in the mutation.
+func (m *RouterClassifierMutation) TrainedAt() (r time.Time, exists bool) {
+	v := m.trained_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTrainedAt returns the old "trained_at" field's value of the RouterClassifier entity.
+// If the RouterClassifier object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouterClassifierMutation) OldTrainedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTrainedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTrainedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTrainedAt: %w", err)
+	}
+	return oldValue.TrainedAt, nil
+}
+
+// ResetTrainedAt resets all changes to the "trained_at" field.
+func (m *RouterClassifierMutation) ResetTrainedAt() {
+	m.trained_at = nil
+}
+
+// Where appends a list predicates to the RouterClassifierMutation builder.
+func (m *RouterClassifierMutation) Where(ps ...predicate.RouterClassifier) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the RouterClassifierMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *RouterClassifierMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.RouterClassifier, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *RouterClassifierMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *RouterClassifierMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (RouterClassifier).
+func (m *RouterClassifierMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *RouterClassifierMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.created_at != nil {
+		fields = append(fields, routerclassifier.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, routerclassifier.FieldUpdatedAt)
+	}
+	if m.org_id != nil {
+		fields = append(fields, routerclassifier.FieldOrgID)
+	}
+	if m.project_id != nil {
+		fields = append(fields, routerclassifier.FieldProjectID)
+	}
+	if m.router_id != nil {
+		fields = append(fields, routerclassifier.FieldRouterID)
+	}
+	if m.model != nil {
+		fields = append(fields, routerclassifier.FieldModel)
+	}
+	if m.samples != nil {
+		fields = append(fields, routerclassifier.FieldSamples)
+	}
+	if m.trained_at != nil {
+		fields = append(fields, routerclassifier.FieldTrainedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *RouterClassifierMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case routerclassifier.FieldCreatedAt:
+		return m.CreatedAt()
+	case routerclassifier.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case routerclassifier.FieldOrgID:
+		return m.OrgID()
+	case routerclassifier.FieldProjectID:
+		return m.ProjectID()
+	case routerclassifier.FieldRouterID:
+		return m.RouterID()
+	case routerclassifier.FieldModel:
+		return m.Model()
+	case routerclassifier.FieldSamples:
+		return m.Samples()
+	case routerclassifier.FieldTrainedAt:
+		return m.TrainedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *RouterClassifierMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case routerclassifier.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case routerclassifier.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case routerclassifier.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case routerclassifier.FieldProjectID:
+		return m.OldProjectID(ctx)
+	case routerclassifier.FieldRouterID:
+		return m.OldRouterID(ctx)
+	case routerclassifier.FieldModel:
+		return m.OldModel(ctx)
+	case routerclassifier.FieldSamples:
+		return m.OldSamples(ctx)
+	case routerclassifier.FieldTrainedAt:
+		return m.OldTrainedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown RouterClassifier field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouterClassifierMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case routerclassifier.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case routerclassifier.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case routerclassifier.FieldOrgID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case routerclassifier.FieldProjectID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProjectID(v)
+		return nil
+	case routerclassifier.FieldRouterID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouterID(v)
+		return nil
+	case routerclassifier.FieldModel:
+		v, ok := value.(classifier.Model)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case routerclassifier.FieldSamples:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSamples(v)
+		return nil
+	case routerclassifier.FieldTrainedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTrainedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouterClassifier field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *RouterClassifierMutation) AddedFields() []string {
+	var fields []string
+	if m.addsamples != nil {
+		fields = append(fields, routerclassifier.FieldSamples)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *RouterClassifierMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case routerclassifier.FieldSamples:
+		return m.AddedSamples()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *RouterClassifierMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case routerclassifier.FieldSamples:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSamples(v)
+		return nil
+	}
+	return fmt.Errorf("unknown RouterClassifier numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *RouterClassifierMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *RouterClassifierMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *RouterClassifierMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown RouterClassifier nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *RouterClassifierMutation) ResetField(name string) error {
+	switch name {
+	case routerclassifier.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case routerclassifier.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case routerclassifier.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case routerclassifier.FieldProjectID:
+		m.ResetProjectID()
+		return nil
+	case routerclassifier.FieldRouterID:
+		m.ResetRouterID()
+		return nil
+	case routerclassifier.FieldModel:
+		m.ResetModel()
+		return nil
+	case routerclassifier.FieldSamples:
+		m.ResetSamples()
+		return nil
+	case routerclassifier.FieldTrainedAt:
+		m.ResetTrainedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown RouterClassifier field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *RouterClassifierMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *RouterClassifierMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *RouterClassifierMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *RouterClassifierMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *RouterClassifierMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *RouterClassifierMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *RouterClassifierMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown RouterClassifier unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *RouterClassifierMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown RouterClassifier edge %s", name)
 }
 
 // RoutingRuleMutation represents an operation that mutates the RoutingRule nodes in the graph.

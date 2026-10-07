@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -24,7 +25,9 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
+	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
+	"github.com/hasan-muzak/promptdam/server/features/classifier"
 	"github.com/hasan-muzak/promptdam/server/features/purge"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 	"github.com/hasan-muzak/promptdam/server/migrations"
@@ -111,6 +114,10 @@ func seeds(c *pdent.Client) []seed {
 		{"ModelRouter", modelrouter.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.ModelRouter.Create().SetOrgID(org).SetProjectID(p).SetName("auto").
 				SetTiers([]tiers.Tier{{Name: "fast", Model: "gpt-5-nano"}}).SetDefaultTier("fast").Exec(ctx)
+		}},
+		{"RouterClassifier", routerclassifier.Table, func(ctx context.Context, org, p uuid.UUID) error {
+			return c.RouterClassifier.Create().SetOrgID(org).SetProjectID(p).SetRouterID(uuid.New()).
+				SetModel(classifier.Model{Default: "fast"}).SetTrainedAt(time.Now()).Exec(ctx)
 		}},
 		{"Provider", provider.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.Provider.Create().SetOrgID(org).SetProjectID(p).SetName("openai").SetKind("openai").

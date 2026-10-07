@@ -267,6 +267,36 @@ var (
 			},
 		},
 	}
+	// RouterClassifiersColumns holds the columns for the "router_classifiers" table.
+	RouterClassifiersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "router_id", Type: field.TypeUUID},
+		{Name: "model", Type: field.TypeJSON},
+		{Name: "samples", Type: field.TypeInt, Default: 0},
+		{Name: "trained_at", Type: field.TypeTime},
+	}
+	// RouterClassifiersTable holds the schema information for the "router_classifiers" table.
+	RouterClassifiersTable = &schema.Table{
+		Name:       "router_classifiers",
+		Columns:    RouterClassifiersColumns,
+		PrimaryKey: []*schema.Column{RouterClassifiersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "routerclassifier_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{RouterClassifiersColumns[3], RouterClassifiersColumns[4]},
+			},
+			{
+				Name:    "routerclassifier_router_id",
+				Unique:  true,
+				Columns: []*schema.Column{RouterClassifiersColumns[5]},
+			},
+		},
+	}
 	// RoutingRulesColumns holds the columns for the "routing_rules" table.
 	RoutingRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -315,6 +345,7 @@ var (
 		PriceOverridesTable,
 		ProvidersTable,
 		RoutesTable,
+		RouterClassifiersTable,
 		RoutingRulesTable,
 	}
 )
