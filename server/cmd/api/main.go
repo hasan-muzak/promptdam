@@ -38,14 +38,15 @@ func run() error {
 	}
 	defer c.Close()
 
-	if handled, err := cli.Run(ctx, os.Args[1:], os.Stdout, c.Commands()...); handled {
-		return err
-	}
 	prices, err := cfg.Prices()
 	if err != nil {
 		return err
 	}
+	app := core.NewApp(c, core.WithPrices(prices), core.WithGatewayURL(cfg.GatewayURL))
+	if handled, err := cli.Run(ctx, os.Args[1:], os.Stdout, append(c.Commands(), devCommands(c, app)...)...); handled {
+		return err
+	}
 	a := c.API(core.Version)
-	routers.Mount(a, core.NewApp(c, core.WithPrices(prices), core.WithGatewayURL(cfg.GatewayURL)))
+	routers.Mount(a, app)
 	return a.RunSignals()
 }

@@ -59,6 +59,17 @@ tasks:
     cmds:
       - KEEL_ADDR=:8291 go run ./server/cmd/worker
 
+  dev:fake:
+    desc: Run a fake LLM provider on :8299 (OpenAI and Anthropic APIs) for local calls and load tests
+    cmds:
+      - go run ./bench/cmd/fake-upstream {{.CLI_ARGS}}
+
+  dev:seed:
+    desc: Create an organization, a project, a gateway key and providers at the fake provider, and print how to call them
+    dotenv: [".env"]
+    cmds:
+      - go run ./server/cmd/api dev seed {{.CLI_ARGS}}
+
   stripe:sync:
     desc: Create Promptdam's Stripe products, prices and meters (test keys in .env)
     dotenv: [".env"]
