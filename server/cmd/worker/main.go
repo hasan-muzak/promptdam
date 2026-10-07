@@ -11,6 +11,7 @@ import (
 	"github.com/hasan-muzak/keel/pkg/keel"
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/core"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/purge"
 )
 
@@ -34,5 +35,6 @@ func run() error {
 	defer c.Close()
 	app := core.NewApp(c)
 	purge.RegisterWorkers(c.Jobs, app.Purge)
+	budgets.RegisterWorkers(c.Jobs, app.Budgets)
 	return c.Worker(core.Version).RunSignals()
 }

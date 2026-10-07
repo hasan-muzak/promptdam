@@ -8,6 +8,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
@@ -68,6 +69,33 @@ func (f TraverseFunc) Traverse(ctx context.Context, q ent.Query) error {
 		return err
 	}
 	return f(ctx, query)
+}
+
+// The BudgetFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BudgetFunc func(context.Context, *ent.BudgetQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BudgetFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BudgetQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BudgetQuery", q)
+}
+
+// The TraverseBudget type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBudget func(context.Context, *ent.BudgetQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBudget) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBudget) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BudgetQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BudgetQuery", q)
 }
 
 // The KeySettingFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -154,6 +182,8 @@ func (f TraverseRoute) Traverse(ctx context.Context, q ent.Query) error {
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
+	case *ent.BudgetQuery:
+		return &query[*ent.BudgetQuery, predicate.Budget, budget.OrderOption]{typ: ent.TypeBudget, tq: q}, nil
 	case *ent.KeySettingQuery:
 		return &query[*ent.KeySettingQuery, predicate.KeySetting, keysetting.OrderOption]{typ: ent.TypeKeySetting, tq: q}, nil
 	case *ent.ProviderQuery:

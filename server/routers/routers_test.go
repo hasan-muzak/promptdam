@@ -2,6 +2,7 @@ package routers_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,13 +14,17 @@ import (
 
 	"github.com/hasan-muzak/keel/pkg/apikeys"
 	"github.com/hasan-muzak/keel/pkg/config"
+	"github.com/hasan-muzak/keel/pkg/entx"
+	"github.com/hasan-muzak/keel/pkg/httpx"
 	"github.com/hasan-muzak/keel/pkg/ids"
 	"github.com/hasan-muzak/keel/pkg/jobs"
 	"github.com/hasan-muzak/keel/pkg/keel"
 	"github.com/hasan-muzak/keel/pkg/platform"
 	"github.com/hasan-muzak/keel/pkg/testkit"
 
+	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/core"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/keel/products/promptdam/server/handlers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/migrations"
 	"github.com/hasan-muzak/keel/products/promptdam/server/routers"
@@ -272,6 +277,84 @@ func TestRoutes(t *testing.T) {
 	e.client.Get(path+"/"+r.ID, alice).AssertStatus(http.StatusNotFound)
 }
 
+func TestBudgets(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	alice := e.as("alice")
+	org, prj, base := e.project("alice")
+	orgID, prjID := mustID(t, ids.Org, org.ID), mustID(t, ids.Project, prj.ID)
+	path := base + "/budgets"
+
+	// Budgets come with Pro; Free is refused.
+	res := e.client.Post(path, alice, testclient.JSON(map[string]any{
+		"name": "All", "scope": "project", "window": "day", "limit_micros": 1_000_000, "channels": []string{},
+	}))
+	if res.Status != http.StatusPaymentRequired || res.Error().Error.Code != httpx.CodePlanRequired {
+		t.Fatalf("Free: %d %s", res.Status, res.String())
+	}
+	e.c.DB.Ent.OrgFlag.Create().SetOrgID(orgID).SetKey("feature." + catalog.Budgets).SetValue(json.RawMessage(`true`)).
+		SaveX(entx.SkipTenant(ctx))
+	e.c.Tenancy.ForgetOrg(ctx, orgID)
+	e.c.Billing.BustEntitlements(ctx, orgID)
+
+	key := testclient.Decoded[platform.CreatedKeyOut](e.client.Post(base+"/keys", alice,
+		testclient.JSON(map[string]any{"name": "app", "kind": "secret", "scopes": []string{core.ScopeGateway}})).
+		AssertStatus(http.StatusCreated))
+	block := testclient.Decoded[handlers.BudgetOut](e.client.Post(path, alice, testclient.JSON(map[string]any{
+		"name": "Daily cap", "scope": "project", "window": "day", "limit_micros": 1_000_000, "action": "block",
+		"thresholds": []int{100, 50, 50}, "channels": []string{},
+	})).AssertStatus(http.StatusCreated))
+	if block.Action != "block" || len(block.Thresholds) != 2 || block.Thresholds[0] != 50 || block.SpentMicros != 0 {
+		t.Fatalf("created %+v", block)
+	}
+	perKey := testclient.Decoded[handlers.BudgetOut](e.client.Post(path, alice, testclient.JSON(map[string]any{
+		"name": "App key", "scope": "key", "target": key.ID, "window": "month", "limit_micros": 50_000_000, "channels": []string{},
+	})).AssertStatus(http.StatusCreated))
+	if perKey.Target != key.ID || perKey.Action != "alert" {
+		t.Fatalf("created %+v", perKey)
+	}
+	for _, body := range []map[string]any{
+		{"name": "x", "scope": "key", "target": "nope", "window": "day", "limit_micros": 1, "channels": []string{}},
+		{"name": "x", "scope": "project", "target": "x", "window": "day", "limit_micros": 1, "channels": []string{}},
+		{"name": "x", "scope": "developer", "window": "day", "limit_micros": 1, "channels": []string{}},
+	} {
+		if res := e.client.Post(path, alice, testclient.JSON(body)); res.Status != http.StatusUnprocessableEntity {
+			t.Errorf("%v: %d %s", body, res.Status, res.String())
+		}
+	}
+
+	// Spend counted by the gateway shows in the budgets and alerts once.
+	keyID := mustID(t, ids.APIKey, key.ID)
+	e.app.Spend.Add(budgets.Who{Project: prjID, Key: keyID}, 1_500_000)
+	if err := e.app.SpendCounters.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := testclient.Decoded[handlers.BudgetOut](e.client.Get(path+"/"+block.ID, alice).AssertStatus(http.StatusOK))
+	if got.SpentMicros != 1_500_000 || got.Percent != 150 {
+		t.Fatalf("status %+v", got)
+	}
+	if err := e.app.Budgets.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.app.Budgets.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var alerted int
+	if err := e.c.DB.SQL.QueryRow(`SELECT alerted_percent FROM budgets WHERE name = 'Daily cap'`).Scan(&alerted); err != nil || alerted != 100 {
+		t.Fatalf("alerted %d, %v", alerted, err)
+	}
+	blocking, err := e.app.Budgets.Blockings(entx.WithOrg(ctx, orgID), prjID)
+	if err != nil || len(blocking) != 1 {
+		t.Fatalf("blocking %v, %v", blocking, err)
+	}
+	if b, _, err := e.app.Spend.Exceeded(ctx, budgets.Who{Project: prjID, Key: keyID}, blocking); err != nil || b == nil {
+		t.Fatalf("the spent budget doesn't block: %v, %v", b, err)
+	}
+
+	e.client.Delete(path+"/"+block.ID, alice).AssertStatus(http.StatusNoContent)
+	e.client.Get(path+"/"+block.ID, alice).AssertStatus(http.StatusNotFound)
+}
+
 // TestEveryRouteIsDocumented holds every route to a category and a title
 // in the API reference.
 func TestEveryRouteIsDocumented(t *testing.T) {
@@ -328,11 +411,17 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 	rte := testclient.Decoded[handlers.RouteOut](e.client.Post(base+"/routes", alice, testclient.JSON(map[string]any{
 		"name": "default", "fallbacks": []string{"gpt-5-mini"},
 	})).AssertStatus(http.StatusCreated))
+	e.c.DB.Ent.OrgFlag.Create().SetOrgID(orgID).SetKey("feature." + catalog.Budgets).SetValue(json.RawMessage(`true`)).
+		SaveX(entx.SkipTenant(ctx))
+	e.c.Billing.BustEntitlements(ctx, orgID)
+	bdg := testclient.Decoded[handlers.BudgetOut](e.client.Post(base+"/budgets", alice, testclient.JSON(map[string]any{
+		"name": "All", "scope": "project", "window": "month", "limit_micros": 1_000_000, "channels": []string{ch.ID},
+	})).AssertStatus(http.StatusCreated))
 
 	victim := map[string]string{
 		"org": org.ID, "project": prj.ID, "user": me.User.ID, "invitation": inv.ID, "key": key.ID, "channel": ch.ID,
 		"webhook": ids.Encode(ids.WebhookEndpoint, ep.ID), "delivery": ids.Encode(ids.WebhookDelivery, del.ID),
-		"meter": "requests", "provider": p.ID, "route": rte.ID,
+		"meter": "requests", "provider": p.ID, "route": rte.ID, "budget": bdg.ID,
 	}
 	e.client.Put(base+"/keys/"+key.ID+"/gateway", alice, testclient.JSON(map[string]any{"rpm": 10})).AssertStatus(http.StatusOK)
 	mallory := e.as("mallory")
@@ -340,11 +429,17 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 
 	// Mallory, in her own organization, names Acme's objects.
 	ownOrg, ownPrj, _ := e.project("mallory")
+	// Her plan has budgets too, so the IDs are what is checked.
+	ownOrgID := mustID(t, ids.Org, ownOrg.ID)
+	e.c.DB.Ent.OrgFlag.Create().SetOrgID(ownOrgID).SetKey("feature." + catalog.Budgets).SetValue(json.RawMessage(`true`)).
+		SaveX(entx.SkipTenant(ctx))
+	e.c.Billing.BustEntitlements(ctx, ownOrgID)
 	testkit.AssertNoForeignIDs(t, e.client, map[string]string{"org": ownOrg.ID, "project": ownPrj.ID, "meter": "requests"},
 		victim, []string{"meter"}, map[string]string{
 			"PATCH /v1/orgs/{org}/members/{user}":                        `{"role":"viewer"}`,
 			"PUT /v1/orgs/{org}/projects/{project}/providers/{provider}": `{"name":"x","kind":"openai","api_key":"sk-x-0000000000"}`,
 			"PUT /v1/orgs/{org}/projects/{project}/keys/{key}/gateway":   `{"rpm":1}`,
 			"PUT /v1/orgs/{org}/projects/{project}/routes/{route}":       `{"name":"x","fallbacks":[]}`,
+			"PUT /v1/orgs/{org}/projects/{project}/budgets/{budget}":     `{"name":"x","scope":"project","window":"day","limit_micros":1,"channels":[]}`,
 		}, mallory)
 }

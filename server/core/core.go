@@ -7,9 +7,11 @@ import (
 	"github.com/hasan-muzak/keel/pkg/db"
 	"github.com/hasan-muzak/keel/pkg/keel"
 	"github.com/hasan-muzak/keel/pkg/llm"
+	"github.com/hasan-muzak/keel/pkg/webhooks"
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
 	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/keel/products/promptdam/server/migrations"
 )
 
@@ -57,6 +59,7 @@ var Product = keel.Product{
 	Scopes: []apikeys.Scope{
 		{Name: ScopeGateway, Description: "Call LLM providers through the gateway."},
 	},
+	Events:       []webhooks.EventType{budgets.EventThreshold, budgets.EventExceeded},
 	Migrations:   []db.MigrationSet{migrations.Postgres()},
 	Color:        "#0b7285",
 	SupportEmail: brand.SupportEmail,

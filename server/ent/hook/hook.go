@@ -9,6 +9,18 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent"
 )
 
+// The BudgetFunc type is an adapter to allow the use of ordinary
+// function as Budget mutator.
+type BudgetFunc func(context.Context, *ent.BudgetMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BudgetFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BudgetMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BudgetMutation", m)
+}
+
 // The KeySettingFunc type is an adapter to allow the use of ordinary
 // function as KeySetting mutator.
 type KeySettingFunc func(context.Context, *ent.KeySettingMutation) (ent.Value, error)

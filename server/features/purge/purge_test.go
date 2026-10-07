@@ -17,6 +17,7 @@ import (
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/core"
 	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
@@ -80,6 +81,10 @@ type seed struct {
 
 func seeds(c *pdent.Client) []seed {
 	return []seed{
+		{"Budget", budget.Table, func(ctx context.Context, org, p uuid.UUID) error {
+			return c.Budget.Create().SetOrgID(org).SetProjectID(p).SetName("month").SetScope(budget.ScopeProject).
+				SetWindow(budget.WindowMonth).SetLimitMicros(1_000_000).Exec(ctx)
+		}},
 		{"KeySetting", keysetting.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.KeySetting.Create().SetOrgID(org).SetProjectID(p).SetAPIKeyID(uuid.New()).Exec(ctx)
 		}},

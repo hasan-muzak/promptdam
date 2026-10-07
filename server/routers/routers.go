@@ -7,9 +7,11 @@ import (
 	muzak "muzak.dev/framework"
 
 	"github.com/hasan-muzak/keel/pkg/identity"
+	"github.com/hasan-muzak/keel/pkg/platform"
 	"github.com/hasan-muzak/keel/pkg/tenancy"
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
+	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/core"
 	"github.com/hasan-muzak/keel/products/promptdam/server/handlers"
 )
@@ -17,7 +19,9 @@ import (
 // Mount registers Promptdam's routes on the API application.
 func Mount(a *muzak.App, app *core.App) {
 	c := app.Core
-	h := &handlers.Handlers{Tenancy: c.Tenancy, Providers: app.Providers, Keys: app.Keys, Routes: app.Routes}
+	h := &handlers.Handlers{
+		Tenancy: c.Tenancy, Providers: app.Providers, Keys: app.Keys, Routes: app.Routes, Budgets: app.Budgets, Notifier: c.Notifier,
+	}
 	r := muzak.NewRouter(
 		muzak.WithTags(brand.Key),
 		muzak.Needs(identity.Authenticate(c.Verifier)),
@@ -81,5 +85,22 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Summary("Replace a route"))
 	r.Delete(rb+"/{route}", h.DeleteRoute, rcat, muzak.Title("Delete Route"), project(tenancy.PermProjectsManage),
 		muzak.Status(http.StatusNoContent), muzak.Summary("Remove a route"))
+
+	bcat := muzak.WithCategory("Budgets")
+	feature := muzak.Needs(platform.RequireFeature(c.Billing, c.Config.AppURL, catalog.Budgets))
+	bb := "/v1/orgs/{org}/projects/{project}/budgets"
+	r.Get(bb, h.ListBudgets, bcat, muzak.Title("List Budgets"), project(tenancy.PermProjectsRead),
+		muzak.Summary("List a project's LLM budgets with their current window"))
+	r.Post(bb, h.CreateBudget, bcat, muzak.Title("Create Budget"), project(tenancy.PermProjectsManage), feature,
+		muzak.Status(http.StatusCreated), muzak.Summary("Cap what a scope spends per day or month"),
+		muzak.Description("A budget caps the project, one API key, one developer or one route. Thresholds alert the "+
+			"channels and send budget.threshold_reached (budget.exceeded at 100%) once per window; a blocking budget "+
+			"also makes the gateway refuse the scope's calls (429 budget_exceeded) until the window ends."))
+	r.Get(bb+"/{budget}", h.GetBudget, bcat, muzak.Title("Get Budget"), project(tenancy.PermProjectsRead),
+		muzak.Summary("Get a budget with its current window"))
+	r.Put(bb+"/{budget}", h.UpdateBudget, bcat, muzak.Title("Update Budget"), project(tenancy.PermProjectsManage), feature,
+		muzak.Summary("Replace a budget"), muzak.Description("A new scope, window or limit starts its alerts again."))
+	r.Delete(bb+"/{budget}", h.DeleteBudget, bcat, muzak.Title("Delete Budget"), project(tenancy.PermProjectsManage),
+		muzak.Status(http.StatusNoContent), muzak.Summary("Remove a budget"))
 	a.Include(r)
 }

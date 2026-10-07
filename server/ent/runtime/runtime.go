@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
@@ -16,6 +17,73 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	budgetMixin := schema.Budget{}.Mixin()
+	budgetMixinHooks1 := budgetMixin[1].Hooks()
+	budget.Hooks[0] = budgetMixinHooks1[0]
+	budgetMixinInters1 := budgetMixin[1].Interceptors()
+	budget.Interceptors[0] = budgetMixinInters1[0]
+	budgetMixinFields0 := budgetMixin[0].Fields()
+	_ = budgetMixinFields0
+	budgetFields := schema.Budget{}.Fields()
+	_ = budgetFields
+	// budgetDescCreatedAt is the schema descriptor for created_at field.
+	budgetDescCreatedAt := budgetMixinFields0[1].Descriptor()
+	// budget.DefaultCreatedAt holds the default value on creation for the created_at field.
+	budget.DefaultCreatedAt = budgetDescCreatedAt.Default.(func() time.Time)
+	// budgetDescUpdatedAt is the schema descriptor for updated_at field.
+	budgetDescUpdatedAt := budgetMixinFields0[2].Descriptor()
+	// budget.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	budget.DefaultUpdatedAt = budgetDescUpdatedAt.Default.(func() time.Time)
+	// budget.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	budget.UpdateDefaultUpdatedAt = budgetDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// budgetDescName is the schema descriptor for name field.
+	budgetDescName := budgetFields[0].Descriptor()
+	// budget.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	budget.NameValidator = func() func(string) error {
+		validators := budgetDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// budgetDescTarget is the schema descriptor for target field.
+	budgetDescTarget := budgetFields[2].Descriptor()
+	// budget.DefaultTarget holds the default value on creation for the target field.
+	budget.DefaultTarget = budgetDescTarget.Default.(string)
+	// budget.TargetValidator is a validator for the "target" field. It is called by the builders before save.
+	budget.TargetValidator = budgetDescTarget.Validators[0].(func(string) error)
+	// budgetDescLimitMicros is the schema descriptor for limit_micros field.
+	budgetDescLimitMicros := budgetFields[4].Descriptor()
+	// budget.LimitMicrosValidator is a validator for the "limit_micros" field. It is called by the builders before save.
+	budget.LimitMicrosValidator = budgetDescLimitMicros.Validators[0].(func(int64) error)
+	// budgetDescThresholds is the schema descriptor for thresholds field.
+	budgetDescThresholds := budgetFields[6].Descriptor()
+	// budget.DefaultThresholds holds the default value on creation for the thresholds field.
+	budget.DefaultThresholds = budgetDescThresholds.Default.([]int)
+	// budgetDescChannelIds is the schema descriptor for channel_ids field.
+	budgetDescChannelIds := budgetFields[7].Descriptor()
+	// budget.DefaultChannelIds holds the default value on creation for the channel_ids field.
+	budget.DefaultChannelIds = budgetDescChannelIds.Default.([]string)
+	// budgetDescEnabled is the schema descriptor for enabled field.
+	budgetDescEnabled := budgetFields[8].Descriptor()
+	// budget.DefaultEnabled holds the default value on creation for the enabled field.
+	budget.DefaultEnabled = budgetDescEnabled.Default.(bool)
+	// budgetDescAlertedPercent is the schema descriptor for alerted_percent field.
+	budgetDescAlertedPercent := budgetFields[10].Descriptor()
+	// budget.DefaultAlertedPercent holds the default value on creation for the alerted_percent field.
+	budget.DefaultAlertedPercent = budgetDescAlertedPercent.Default.(int)
+	// budgetDescID is the schema descriptor for id field.
+	budgetDescID := budgetMixinFields0[0].Descriptor()
+	// budget.DefaultID holds the default value on creation for the id field.
+	budget.DefaultID = budgetDescID.Default.(func() uuid.UUID)
 	keysettingMixin := schema.KeySetting{}.Mixin()
 	keysettingMixinHooks1 := keysettingMixin[1].Hooks()
 	keysetting.Hooks[0] = keysettingMixinHooks1[0]

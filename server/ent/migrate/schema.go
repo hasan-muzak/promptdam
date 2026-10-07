@@ -8,6 +8,43 @@ import (
 )
 
 var (
+	// BudgetsColumns holds the columns for the "budgets" table.
+	BudgetsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "scope", Type: field.TypeEnum, Enums: []string{"project", "key", "developer", "route"}},
+		{Name: "target", Type: field.TypeString, Size: 200, Default: ""},
+		{Name: "window", Type: field.TypeEnum, Enums: []string{"day", "month"}},
+		{Name: "limit_micros", Type: field.TypeInt64},
+		{Name: "action", Type: field.TypeEnum, Enums: []string{"alert", "block"}, Default: "alert"},
+		{Name: "thresholds", Type: field.TypeJSON},
+		{Name: "channel_ids", Type: field.TypeJSON},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "alerted_period", Type: field.TypeTime, Nullable: true},
+		{Name: "alerted_percent", Type: field.TypeInt, Default: 0},
+	}
+	// BudgetsTable holds the schema information for the "budgets" table.
+	BudgetsTable = &schema.Table{
+		Name:       "budgets",
+		Columns:    BudgetsColumns,
+		PrimaryKey: []*schema.Column{BudgetsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "budget_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{BudgetsColumns[3], BudgetsColumns[4]},
+			},
+			{
+				Name:    "budget_enabled_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{BudgetsColumns[13], BudgetsColumns[4]},
+			},
+		},
+	}
 	// KeySettingsColumns holds the columns for the "key_settings" table.
 	KeySettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -108,6 +145,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		BudgetsTable,
 		KeySettingsTable,
 		ProvidersTable,
 		RoutesTable,

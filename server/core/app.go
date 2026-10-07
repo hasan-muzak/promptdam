@@ -9,10 +9,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hasan-muzak/keel/pkg/config"
+	"github.com/hasan-muzak/keel/pkg/counter"
 	"github.com/hasan-muzak/keel/pkg/keel"
 	"github.com/hasan-muzak/keel/pkg/llm"
 
 	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/purge"
@@ -35,6 +37,11 @@ type App struct {
 	Keys *keysettings.Service
 	// Routes keeps the paths requests take: fallbacks and retries.
 	Routes *routes.Service
+	// Spend counts what each scope spends (the gateway adds to it, starting
+	// its lifecycle); Budgets cap it.
+	Spend         *budgets.Spend
+	SpendCounters *counter.Counters
+	Budgets       *budgets.Service
 	// Purge deletes what Promptdam keeps of deleted organizations and
 	// projects.
 	Purge *purge.Service
@@ -90,6 +97,11 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 		}
 	})
 	a.Routes = routes.New(a.Ent, a.configChanged)
+	a.SpendCounters = counter.New(c.KV, "spend", counter.Options{})
+	a.Spend = budgets.NewSpend(a.SpendCounters)
+	a.Budgets = budgets.New(budgets.Config{
+		Ent: a.Ent, Spend: a.Spend, Notifier: c.Notifier, Webhooks: c.Webhooks, AppURL: c.Config.AppURL, Changed: a.configChanged,
+	})
 	// No foreign keys cross the graphs (ADR 0004): deleting an organization
 	// or a project deletes Promptdam's rows in the deletion's transaction,
 	// and enqueues the purge of its ClickHouse rows and Valkey keys with it.

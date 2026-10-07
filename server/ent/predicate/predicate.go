@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// Budget is the predicate function for budget builders.
+type Budget func(*sql.Selector)
+
 // KeySetting is the predicate function for keysetting builders.
 type KeySetting func(*sql.Selector)
 

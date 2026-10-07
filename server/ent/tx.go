@@ -14,6 +14,8 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// Budget is the client for interacting with the Budget builders.
+	Budget *BudgetClient
 	// KeySetting is the client for interacting with the KeySetting builders.
 	KeySetting *KeySettingClient
 	// Provider is the client for interacting with the Provider builders.
@@ -151,6 +153,7 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.Budget = NewBudgetClient(tx.config)
 	tx.KeySetting = NewKeySettingClient(tx.config)
 	tx.Provider = NewProviderClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
@@ -163,7 +166,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: KeySetting.QueryXXX(), the query will be executed
+// applies a query, for example: Budget.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.
