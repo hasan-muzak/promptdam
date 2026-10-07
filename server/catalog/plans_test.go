@@ -13,14 +13,14 @@ func TestCatalogMatchesThePricingTable(t *testing.T) {
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]int64{"free": 0, "pro": 4900, "team": 19900, "business": 49900, "savings": 50000}
-	requests := map[string]int64{"free": 50_000, "pro": 500_000, "team": 3_000_000, "business": 10_000_000, "savings": 10_000_000}
-	retention := map[string]int64{"free": 7, "pro": 30, "team": 90, "business": 365, "savings": 365}
+	want := map[string]int64{"free": 0, "pro": 4900, "team": 19900, "business": 49900}
+	requests := map[string]int64{"free": 50_000, "pro": 500_000, "team": 3_000_000, "business": 10_000_000}
+	retention := map[string]int64{"free": 7, "pro": 30, "team": 90, "business": 365}
 	for _, p := range c.Plans {
 		if p.Monthly != want[p.Key] {
 			t.Errorf("%s costs %d cents, want %d", p.Key, p.Monthly, want[p.Key])
 		}
-		if p.Key != "savings" && p.Yearly != p.Monthly*10 {
+		if p.Yearly != p.Monthly*10 {
 			t.Errorf("%s yearly = %d: annual billing gets two months free", p.Key, p.Yearly)
 		}
 		if p.Limits[catalog.Requests] != requests[p.Key] || p.Limits[catalog.RetentionDays] != retention[p.Key] {
@@ -53,16 +53,9 @@ func TestCatalogMatchesThePricingTable(t *testing.T) {
 	if got := billing.OverageCents(pro, catalog.Requests, 100_000); got != 500 {
 		t.Fatalf("100k overage requests on Pro cost %d cents, want 500", got)
 	}
-	// The savings plan bills 15% of savings beyond what its $500 base covers.
-	savings, _ := c.Plan("savings")
-	if savings.Public {
-		t.Fatal("the savings plan is sold after a call, not checked out")
-	}
-	if got := billing.OverageCents(savings, catalog.SavingsShare, 12_345); got != 12_345 {
-		t.Fatalf("a share of 12,345 cents beyond the base costs %d cents", got)
-	}
-	if savings.Limits[catalog.SavingsShare] != savings.Monthly {
-		t.Fatal("the base price covers exactly its own amount of share")
+	// Tokens are never billed: customers pay their providers.
+	if len(c.Meters) != 1 || c.Meters[0].Key != catalog.Requests {
+		t.Fatalf("meters %+v", c.Meters)
 	}
 	if pub := c.Public(); len(pub.Plans) != 4 || pub.Plans[0].Key != "free" || pub.Plans[3].Key != "business" {
 		t.Fatalf("public plans = %+v", pub.Plans)

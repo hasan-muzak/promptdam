@@ -10,14 +10,11 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
 )
 
-// Meter keys.
+// Meter keys. Promptdam never bills tokens: customers pay their providers
+// directly (BYOK). Plans are a subscription plus gateway requests.
 const (
 	// Requests counts gateway requests: hard on Free, overage on paid plans.
 	Requests = "requests"
-	// SavingsShare is the savings plan's share of verified savings, in
-	// cents: 15% of what the monthly savings report verifies. The plan's
-	// $500 base covers the first 50,000 cents (15% of $3,333 saved).
-	SavingsShare = "savings_share"
 )
 
 // Limit keys that are not metered.
@@ -61,8 +58,6 @@ const (
 	SLA            = "sla"
 	SSOSAML        = "sso.saml"
 	SupportFast    = "support.priority"
-	// Savings plan: billed as a share of verified savings.
-	SavingsSharing = "savings.share"
 )
 
 var (
@@ -70,7 +65,6 @@ var (
 	pro      = append(append([]string{}, free...), PromptCaching, RoutingRules, Budgets, PIIRedaction, LedgerExport)
 	team     = append(append([]string{}, pro...), Experiments, FirewallPolicies, DeveloperKeys, AuditLog)
 	business = append(append([]string{}, team...), CustomPolicies, PayloadFree, DPA, SLA, SSOSAML, SupportFast)
-	savings  = append(append([]string{}, business...), SavingsSharing)
 )
 
 // Catalog is Promptdam's price list.
@@ -80,14 +74,13 @@ var Catalog = billing.Catalog{
 	DefaultPlan: "free",
 	Meters: []billing.Meter{
 		{Key: Requests, Name: "Gateway requests", Unit: "requests", EventName: brand.Key + "_requests"},
-		{Key: SavingsShare, Name: "Share of verified savings", Unit: "cents", EventName: brand.Key + "_savings_share"},
 	},
 	Plans: []billing.Plan{
 		{
 			Key: "free", Name: "Free", Rank: 0, Public: true,
 			Description: "The gateway with fallbacks, caching and secrets blocking.",
 			Limits: map[string]int64{
-				Requests: 50_000, SavingsShare: 0, Seats: 3, RetentionDays: 7, APIRequestsPerMinute: 600,
+				Requests: 50_000, Seats: 3, RetentionDays: 7, APIRequestsPerMinute: 600,
 			},
 			Features: free,
 		},
@@ -95,7 +88,7 @@ var Catalog = billing.Catalog{
 			Key: "pro", Name: "Pro", Rank: 1, Public: true, Monthly: 4900, Yearly: 49000,
 			Description: "Prompt caching, routing rules, budgets and PII redaction.",
 			Limits: map[string]int64{
-				Requests: 500_000, SavingsShare: 0, Seats: 10, RetentionDays: 30, APIRequestsPerMinute: 2400,
+				Requests: 500_000, Seats: 10, RetentionDays: 30, APIRequestsPerMinute: 2400,
 			},
 			Features: pro,
 			Overage:  map[string]string{Requests: "0.005"}, // $5 per 100k requests
@@ -104,7 +97,7 @@ var Catalog = billing.Catalog{
 			Key: "team", Name: "Team", Rank: 2, Public: true, Monthly: 19900, Yearly: 199000,
 			Description: "Savings experiments, firewall policies and per-developer keys.",
 			Limits: map[string]int64{
-				Requests: 3_000_000, SavingsShare: 0, Seats: billing.Unlimited, RetentionDays: 90, APIRequestsPerMinute: 6000,
+				Requests: 3_000_000, Seats: billing.Unlimited, RetentionDays: 90, APIRequestsPerMinute: 6000,
 			},
 			Features: team,
 			Overage:  map[string]string{Requests: "0.003"}, // $3 per 100k requests
@@ -113,24 +106,10 @@ var Catalog = billing.Catalog{
 			Key: "business", Name: "Business", Rank: 3, Public: true, Monthly: 49900, Yearly: 499000,
 			Description: "Custom policies, payload-free mode, DPA, SLA and SSO.",
 			Limits: map[string]int64{
-				Requests: 10_000_000, SavingsShare: 0, Seats: billing.Unlimited, RetentionDays: 365, APIRequestsPerMinute: 12000,
+				Requests: 10_000_000, Seats: billing.Unlimited, RetentionDays: 365, APIRequestsPerMinute: 12000,
 			},
 			Features: business,
 			Overage:  map[string]string{Requests: "0.002"}, // $2 per 100k requests
-		},
-		{
-			// Offered to teams spending more than $5k a month on LLMs, after
-			// a call; not checked out from the pricing page.
-			Key: "savings", Name: "Savings", Rank: 4, Monthly: 50000,
-			Description: "Everything in Business; you pay 15% of what Promptdam verifiably saves, $500 a month minimum.",
-			Limits: map[string]int64{
-				Requests: 10_000_000, SavingsShare: 50_000, Seats: billing.Unlimited, RetentionDays: 365, APIRequestsPerMinute: 12000,
-			},
-			Features: savings,
-			Overage: map[string]string{
-				Requests:     "0.002",
-				SavingsShare: "1", // each cent of share beyond the base's 50,000
-			},
 		},
 	},
 }

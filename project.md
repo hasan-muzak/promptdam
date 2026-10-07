@@ -13,7 +13,7 @@
 
 ## 1. One-liner and pitch
 
-**Change one line (`base_url`) and Promptdam cuts your LLM bill 30–60% with proven, quality-guarded routing and caching, while blocking secrets and PII before they leave your company. Pay a share of what you save.**
+**Change one line (`base_url`) and Promptdam cuts your LLM bill 30–60% with proven, quality-guarded routing and caching, while blocking secrets and PII before they leave your company. Your provider bills you as before; Promptdam is a flat subscription.**
 
 LLM spend is now a top-3 cost line for many software companies. Most of it is waste:
 - the most expensive model is used for every request, including trivial ones
@@ -31,7 +31,7 @@ At the same time, apps and coding agents send `.env` files, customer emails and 
 2. Proves every saved dollar in a per-request ledger.
 3. Enforces a firewall: secrets and PII detection, redaction and blocking, CEL policies, budgets.
 
-Basic routing and logging are free elsewhere, so Promptdam charges for **outcomes** (savings, protection), not for passing traffic through.
+Basic routing and logging are free elsewhere, so Promptdam's plans are priced on what they add (budgets and attribution, the firewall, fallbacks, proven savings), not on passing traffic through. It never resells tokens: customers keep their own provider keys and bills.
 
 ---
 
@@ -162,16 +162,15 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 | Pro | $49 | 500k | 30 days | Auto prompt caching + cache doctor, routing rules, budgets and alerts, PII redaction, ledger export |
 | Team | $199 | 3M | 90 days | Savings experiments (shadow eval) + auto-revert, CEL firewall policies, per-developer keys, audit log |
 | Business | $499+ | 10M | 1 year | Custom policies, payload-free mode guarantees, DPA, SLA, SSO, priority support |
-| **Savings plan** | **15% of verified savings** (min $500/mo) | custom | 1 year | Everything in Business; for teams spending above $5k/mo on LLMs |
 
 - **Overage** (soft on paid plans): $5 per extra 100k requests on Pro, $3 on Team, $2 on Business.
-- **Savings plan billing:**
+- **Savings plan: deferred (decided 2026-10-07).** Promptdam bills a subscription plus gateway requests only, never tokens and never a share of spend or savings. The savings ledger stays as proof of value ("Promptdam saved you $X this month"), not as a basis for invoices. The design below is kept for a later decision, if large customers ask:
   - a $500/mo base price that covers 15% of the first $3,333 saved
   - a metered `savings_share` (USD cents) Stripe meter, reported monthly from the verified ledger as `max(0, 0.15 × savings − 500)`
   - the customer approves the monthly savings report before invoicing, with a dispute window of 7 days.
 - **Shadow evaluation cost:** experiments call models with the **customer's own provider keys**. Every experiment has a visible budget cap (default $25/experiment, $100/mo), and its cost is subtracted in the savings ledger.
-- **Path to $10–15k MRR:** for example, 50 Pro ($2.45k) + 25 Team ($5k) + 5 Business ($2.5k) + 3 savings plans (~$1.3k each, $3.9k) ≈ $13.8k. The catalog benchmark is about 12 × $1.3k at 15% of savings.
-- **Meters:** `requests` (soft on paid, hard on Free), `savings_share` (savings plan), `ai_credits` (judge calls when the customer opts for Promptdam-paid judging, e.g. no Anthropic key), `seats`.
+- **Path to $10–15k MRR:** for example, 60 Pro ($2.9k) + 30 Team ($6k) + 8 Business ($4k) ≈ $12.9k, before request overage.
+- **Meters:** `requests` (soft on paid, hard on Free). `ai_credits` (judge calls when the customer opts for Promptdam-paid judging) waits for the judge decision (S3); seats are a plan limit, not a meter.
 
 ---
 
@@ -356,7 +355,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - [x] S0.3 `bench/` harness with a fake upstream (configurable latency and streaming) for repeatable overhead measurement in CI.
   - **Done 2026-10-07:** `bench/fakeupstream` (all four formats) and `task promptdam:bench`. The timing gate runs on demand (`PROMPTDAM_BENCH=1`), not in CI: shared CI runners are too noisy for p99s. The functional tests run in CI.
 - [ ] S0.4 Catalog (`plans.go`), Stripe sync (test), real landing page; recruit 10 design partners with ≥ $2k/mo LLM spend (waitlist, interviews, Fixwire customers with high cost-per-run).
-  - **Done 2026-10-07, catalog:** `server/catalog/plans.go` per §5; the savings plan's $500 base covers the first 50,000 cents of the `savings_share` meter, and it isn't publicly checked out. `ai_credits` waits for the judge decision (S3); seats are 3 on Free and 10 on Pro (my numbers, change freely).
+  - **Done 2026-10-07, catalog:** `server/catalog/plans.go` per §5: Free, Pro, Team and Business with request overage. The savings plan is deferred (decided 2026-10-07). `ai_credits` waits for the judge decision (S3). Seats are 3 on Free and 10 on Pro (my numbers, change freely).
   - **Needs you:** a Promptdam Stripe sub-account's test keys for `task promptdam:stripe:sync`; the landing page and design partners.
 - **Exit (met 2026-10-07):** proxy overhead p99 < 40 ms on the bench with streaming; OpenAI and Anthropic SDKs work unmodified with only `base_url` changed.
   - Bench on a laptop running client, fake provider and gateway at once: p99 overhead +2.4 ms (chat), +13.7 ms (chat stream), +19.1 ms (Anthropic stream). To re-measure on the VPS in S4.4.
@@ -441,7 +440,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - **Exit:** an end-to-end experiment on a design partner's family reaches a recommendation; a forced quality drop triggers auto-revert within one window; secrets in a test prompt are blocked before leaving.
 
 ### S4: Billing, launch readiness and lead magnet (Tue Apr 13 – Fri Apr 23)
-- [ ] S4.1 Billing: plans, `requests` overage meter, savings-plan base + `savings_share` meter, the monthly savings report approval flow.
+- [ ] S4.1 Billing: plans and the `requests` overage meter. The savings-plan base, `savings_share` meter and monthly report approval are deferred (2026-10-07).
 - [ ] S4.2 "LLM Bill Audit" free tool on the site. The user uploads OpenAI/Anthropic usage exports (CSV), or a 7-day sample through Promptdam's free plan. Output:
   - an estimated savings breakdown (model downgrade potential by family size, caching potential, batch potential)
   - a PDF/email report and a CTA.
@@ -449,7 +448,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - [ ] S4.4 Load test at 1k req/s with streaming on the Promptdam VPS (2 gateway replicas behind Caddy); uptime checks; status page; documented client-side fallback to the provider for when the gateway is unreachable.
 - [ ] S4.5 Security pass: vault for provider keys, payload-free default, tenant isolation, SSRF guard on custom provider URLs, dependency audit, signed container images.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
-- **Exit:** ≥ 5 design partners in production, ≥ 2 willing to sign the savings plan. → **Beta Mon Apr 26**.
+- **Exit:** ≥ 5 design partners in production, ≥ 2 willing to pay for Team or Business. → **Beta Mon Apr 26**.
 
 ### S5: Beta → launch (Mon Apr 26 – Fri May 14)
 - [ ] S5.1 Weekly partner calls; fix the top issues; tune detector precision and judge thresholds.
@@ -484,7 +483,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
   4. A content series: "where your LLM money goes" and caching deep dives.
   5. HN/PH launch.
   6. A coding-agent security angle aimed at platform/security leads.
-- **Sales motion:** self-serve to Team. The savings plan is the only plan with a call (optional 20-minute review of the savings report). Still no custom contracts below $2k/mo.
+- **Sales motion:** self-serve on every plan; Business may come with a call. No custom contracts below $2k/mo.
 - **Activation:** ≥ 1,000 requests through Promptdam within 7 days **and** the savings or firewall dashboard viewed.
 - **Expansion:** request volume, developers (keys), savings share growing with the customer's spend.
 
@@ -514,7 +513,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 
 ## 11. Decisions needed
 - [x] Name and domain: **Promptdam**, promptdam.dev + promptdam.com (decided 2026-10-03; register the domains).
-- [ ] `DECISION NEEDED:` savings-share percentage and minimum (recommendation: 15%, $500/mo minimum, offered only above $5k/mo LLM spend).
+- [x] Savings-share pricing: **deferred** (decided 2026-10-07). Bill a subscription plus requests only. The savings ledger proves value but doesn't set invoices. Revisit if large customers ask.
 - [ ] `DECISION NEEDED:` default judge model for experiments (recommendation: `claude-sonnet-5-5` pairwise judge, run on the customer's Anthropic key when present; otherwise billed as AI credits).
 - [ ] `DECISION NEEDED:` firewall fail-closed default for `block` policies (recommendation: fail closed for secrets, fail open for everything else).
 - [x] Include OpenAI Responses API routing at MVP: **passthrough only** (auth, budgets, usage, cost, log; no model routing or caching), routing later (decided 2026-10-07).
