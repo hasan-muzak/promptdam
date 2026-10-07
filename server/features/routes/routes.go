@@ -43,6 +43,8 @@ type Input struct {
 	// CacheTTL answers identical non-streamed requests from the response
 	// cache for this many seconds (0: off; at most a week).
 	CacheTTL int
+	// PromptCache adds Anthropic cache breakpoints to requests without any.
+	PromptCache bool
 }
 
 var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,99}$`)
@@ -115,7 +117,8 @@ func (s *Service) Create(ctx context.Context, org, project uuid.UUID, in Input) 
 		return nil, ErrLimit
 	}
 	r, err := s.ent.Route.Create().SetOrgID(org).SetProjectID(project).
-		SetName(in.Name).SetFallbacks(in.Fallbacks).SetRetries(in.Retries).SetCacheTTLSeconds(in.CacheTTL).Save(ctx)
+		SetName(in.Name).SetFallbacks(in.Fallbacks).SetRetries(in.Retries).SetCacheTTLSeconds(in.CacheTTL).
+		SetPromptCache(in.PromptCache).Save(ctx)
 	if pdent.IsConstraintError(err) {
 		return nil, ErrNameTaken
 	}
@@ -136,7 +139,7 @@ func (s *Service) Update(ctx context.Context, project, id uuid.UUID, in Input) (
 		return nil, err
 	}
 	r, err := s.ent.Route.UpdateOne(cur).SetName(in.Name).SetFallbacks(in.Fallbacks).SetRetries(in.Retries).
-		SetCacheTTLSeconds(in.CacheTTL).Save(ctx)
+		SetCacheTTLSeconds(in.CacheTTL).SetPromptCache(in.PromptCache).Save(ctx)
 	if pdent.IsConstraintError(err) {
 		return nil, ErrNameTaken
 	}

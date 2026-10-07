@@ -55,10 +55,11 @@ type Provider struct {
 
 // Route is a route as the gateway holds it.
 type Route struct {
-	Name      string   `json:"name"`
-	Fallbacks []string `json:"fallbacks"`
-	Retries   int      `json:"retries"`
-	CacheTTL  int      `json:"cache_ttl"`
+	Name        string   `json:"name"`
+	Fallbacks   []string `json:"fallbacks"`
+	Retries     int      `json:"retries"`
+	CacheTTL    int      `json:"cache_ttl"`
+	PromptCache bool     `json:"prompt_cache"`
 }
 
 // Data is a project's configuration as cached in Valkey.
@@ -126,7 +127,8 @@ func (s Sources) Build(ctx context.Context, org, project uuid.UUID) (Data, error
 		return Data{}, fmt.Errorf("snapshot: routes: %w", err)
 	}
 	for _, r := range rs {
-		d.Routes = append(d.Routes, Route{Name: r.Name, Fallbacks: r.Fallbacks, Retries: r.Retries, CacheTTL: r.CacheTTLSeconds})
+		d.Routes = append(d.Routes, Route{Name: r.Name, Fallbacks: r.Fallbacks, Retries: r.Retries, CacheTTL: r.CacheTTLSeconds,
+			PromptCache: r.PromptCache})
 	}
 	if d.Budgets, err = s.Budgets.Blockings(ctx, project); err != nil {
 		return Data{}, fmt.Errorf("snapshot: budgets: %w", err)

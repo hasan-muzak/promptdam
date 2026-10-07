@@ -31,6 +31,8 @@ const (
 	FieldRetries = "retries"
 	// FieldCacheTTLSeconds holds the string denoting the cache_ttl_seconds field in the database.
 	FieldCacheTTLSeconds = "cache_ttl_seconds"
+	// FieldPromptCache holds the string denoting the prompt_cache field in the database.
+	FieldPromptCache = "prompt_cache"
 	// Table holds the table name of the route in the database.
 	Table = "routes"
 )
@@ -46,6 +48,7 @@ var Columns = []string{
 	FieldFallbacks,
 	FieldRetries,
 	FieldCacheTTLSeconds,
+	FieldPromptCache,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -80,6 +83,8 @@ var (
 	DefaultRetries int
 	// DefaultCacheTTLSeconds holds the default value on creation for the "cache_ttl_seconds" field.
 	DefaultCacheTTLSeconds int
+	// DefaultPromptCache holds the default value on creation for the "prompt_cache" field.
+	DefaultPromptCache bool
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() uuid.UUID
 )
@@ -125,4 +130,9 @@ func ByRetries(opts ...sql.OrderTermOption) OrderOption {
 // ByCacheTTLSeconds orders the results by the cache_ttl_seconds field.
 func ByCacheTTLSeconds(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCacheTTLSeconds, opts...).ToFunc()
+}
+
+// ByPromptCache orders the results by the prompt_cache field.
+func ByPromptCache(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPromptCache, opts...).ToFunc()
 }

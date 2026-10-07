@@ -451,6 +451,10 @@ func init() {
 	routeDescCacheTTLSeconds := routeFields[3].Descriptor()
 	// route.DefaultCacheTTLSeconds holds the default value on creation for the cache_ttl_seconds field.
 	route.DefaultCacheTTLSeconds = routeDescCacheTTLSeconds.Default.(int)
+	// routeDescPromptCache is the schema descriptor for prompt_cache field.
+	routeDescPromptCache := routeFields[4].Descriptor()
+	// route.DefaultPromptCache holds the default value on creation for the prompt_cache field.
+	route.DefaultPromptCache = routeDescPromptCache.Default.(bool)
 	// routeDescID is the schema descriptor for id field.
 	routeDescID := routeMixinFields0[0].Descriptor()
 	// route.DefaultID holds the default value on creation for the id field.

@@ -5542,6 +5542,7 @@ type RouteMutation struct {
 	addretries           *int
 	cache_ttl_seconds    *int
 	addcache_ttl_seconds *int
+	prompt_cache         *bool
 	clearedFields        map[string]struct{}
 	done                 bool
 	oldValue             func(context.Context) (*Route, error)
@@ -5995,6 +5996,42 @@ func (m *RouteMutation) ResetCacheTTLSeconds() {
 	m.addcache_ttl_seconds = nil
 }
 
+// SetPromptCache sets the "prompt_cache" field.
+func (m *RouteMutation) SetPromptCache(b bool) {
+	m.prompt_cache = &b
+}
+
+// PromptCache returns the value of the "prompt_cache" field in the mutation.
+func (m *RouteMutation) PromptCache() (r bool, exists bool) {
+	v := m.prompt_cache
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPromptCache returns the old "prompt_cache" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldPromptCache(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPromptCache is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPromptCache requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPromptCache: %w", err)
+	}
+	return oldValue.PromptCache, nil
+}
+
+// ResetPromptCache resets all changes to the "prompt_cache" field.
+func (m *RouteMutation) ResetPromptCache() {
+	m.prompt_cache = nil
+}
+
 // Where appends a list predicates to the RouteMutation builder.
 func (m *RouteMutation) Where(ps ...predicate.Route) {
 	m.predicates = append(m.predicates, ps...)
@@ -6029,7 +6066,7 @@ func (m *RouteMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.created_at != nil {
 		fields = append(fields, route.FieldCreatedAt)
 	}
@@ -6053,6 +6090,9 @@ func (m *RouteMutation) Fields() []string {
 	}
 	if m.cache_ttl_seconds != nil {
 		fields = append(fields, route.FieldCacheTTLSeconds)
+	}
+	if m.prompt_cache != nil {
+		fields = append(fields, route.FieldPromptCache)
 	}
 	return fields
 }
@@ -6078,6 +6118,8 @@ func (m *RouteMutation) Field(name string) (ent.Value, bool) {
 		return m.Retries()
 	case route.FieldCacheTTLSeconds:
 		return m.CacheTTLSeconds()
+	case route.FieldPromptCache:
+		return m.PromptCache()
 	}
 	return nil, false
 }
@@ -6103,6 +6145,8 @@ func (m *RouteMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldRetries(ctx)
 	case route.FieldCacheTTLSeconds:
 		return m.OldCacheTTLSeconds(ctx)
+	case route.FieldPromptCache:
+		return m.OldPromptCache(ctx)
 	}
 	return nil, fmt.Errorf("unknown Route field %s", name)
 }
@@ -6167,6 +6211,13 @@ func (m *RouteMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCacheTTLSeconds(v)
+		return nil
+	case route.FieldPromptCache:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPromptCache(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Route field %s", name)
@@ -6267,6 +6318,9 @@ func (m *RouteMutation) ResetField(name string) error {
 		return nil
 	case route.FieldCacheTTLSeconds:
 		m.ResetCacheTTLSeconds()
+		return nil
+	case route.FieldPromptCache:
+		m.ResetPromptCache()
 		return nil
 	}
 	return fmt.Errorf("unknown Route field %s", name)

@@ -28,6 +28,8 @@ func (Route) Fields() []ent.Field {
 		field.Int("retries").Default(1).Comment("Retries of a target, with jitter, before the next one"),
 		field.Int("cache_ttl_seconds").Default(0).
 			Comment("Answer identical non-streamed requests from the response cache for this long; 0: off"),
+		field.Bool("prompt_cache").Default(false).
+			Comment("Add Anthropic cache breakpoints to requests without any, at the end of their stable prefix"),
 	}
 }
 

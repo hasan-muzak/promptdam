@@ -19,6 +19,7 @@ import (
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/promptcache"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/responsecache"
 )
 
@@ -101,6 +102,10 @@ func (c *call) serve() {
 			}
 			c.cacheKey, c.cacheTTL, c.rec.Cache = key, route.CacheTTL, "miss"
 		}
+	}
+
+	if route.PromptCache && c.ep.format == wire.AnthropicMessages {
+		body, c.rec.PromptCached = promptcache.Mark(body, req)
 	}
 
 	// Token counts come in streams only when asked for: ask on the
@@ -214,8 +219,11 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	h.Set(brand.HeaderTrace, c.rec.Trace)
 	h.Set(brand.HeaderProvider, t.Provider)
 	h.Set(brand.HeaderServedModel, t.Model)
-	if c.rec.Cache != "" {
+	switch {
+	case c.rec.Cache != "":
 		h.Set(brand.HeaderCache, c.rec.Cache)
+	case c.rec.PromptCached:
+		h.Set(brand.HeaderCache, "prompt")
 	}
 
 	// An upstream that goes quiet for longer than the idle timeout is cut.

@@ -35,7 +35,9 @@ type Route struct {
 	Retries int `json:"retries,omitempty"`
 	// Answer identical non-streamed requests from the response cache for this long; 0: off
 	CacheTTLSeconds int `json:"cache_ttl_seconds,omitempty"`
-	selectValues    sql.SelectValues
+	// Add Anthropic cache breakpoints to requests without any, at the end of their stable prefix
+	PromptCache  bool `json:"prompt_cache,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -45,6 +47,8 @@ func (*Route) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case route.FieldFallbacks:
 			values[i] = new([]byte)
+		case route.FieldPromptCache:
+			values[i] = new(sql.NullBool)
 		case route.FieldRetries, route.FieldCacheTTLSeconds:
 			values[i] = new(sql.NullInt64)
 		case route.FieldName:
@@ -124,6 +128,12 @@ func (_m *Route) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CacheTTLSeconds = int(value.Int64)
 			}
+		case route.FieldPromptCache:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field prompt_cache", values[i])
+			} else if value.Valid {
+				_m.PromptCache = value.Bool
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -183,6 +193,9 @@ func (_m *Route) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("cache_ttl_seconds=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CacheTTLSeconds))
+	builder.WriteString(", ")
+	builder.WriteString("prompt_cache=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PromptCache))
 	builder.WriteByte(')')
 	return builder.String()
 }

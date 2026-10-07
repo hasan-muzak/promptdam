@@ -90,6 +90,11 @@ func CacheTTLSeconds(v int) predicate.Route {
 	return predicate.Route(sql.FieldEQ(FieldCacheTTLSeconds, v))
 }
 
+// PromptCache applies equality check predicate on the "prompt_cache" field. It's identical to PromptCacheEQ.
+func PromptCache(v bool) predicate.Route {
+	return predicate.Route(sql.FieldEQ(FieldPromptCache, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Route {
 	return predicate.Route(sql.FieldEQ(FieldCreatedAt, v))
@@ -393,6 +398,16 @@ func CacheTTLSecondsLT(v int) predicate.Route {
 // CacheTTLSecondsLTE applies the LTE predicate on the "cache_ttl_seconds" field.
 func CacheTTLSecondsLTE(v int) predicate.Route {
 	return predicate.Route(sql.FieldLTE(FieldCacheTTLSeconds, v))
+}
+
+// PromptCacheEQ applies the EQ predicate on the "prompt_cache" field.
+func PromptCacheEQ(v bool) predicate.Route {
+	return predicate.Route(sql.FieldEQ(FieldPromptCache, v))
+}
+
+// PromptCacheNEQ applies the NEQ predicate on the "prompt_cache" field.
+func PromptCacheNEQ(v bool) predicate.Route {
+	return predicate.Route(sql.FieldNEQ(FieldPromptCache, v))
 }
 
 // And groups predicates with the AND operator between them.

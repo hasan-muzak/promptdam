@@ -52,6 +52,8 @@ type Route struct {
 	// response cache, in CacheScope (the project and route).
 	CacheTTL   time.Duration
 	CacheScope string
+	// PromptCache adds Anthropic cache breakpoints to calls without any.
+	PromptCache bool
 	// Meta is the resolver's own data about the call (the caller, its
 	// project…), handed back in the Record.
 	Meta any
@@ -114,6 +116,8 @@ type Record struct {
 	// Cache is how the response cache answered: hit, miss, or "" when the
 	// call's route doesn't cache.
 	Cache string
+	// PromptCached reports that the gateway added prompt cache breakpoints.
+	PromptCached bool
 	// Status is the HTTP status the client got; ErrorCode says why a call
 	// failed ("" when it didn't).
 	Status    int

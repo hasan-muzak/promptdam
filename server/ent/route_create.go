@@ -104,6 +104,20 @@ func (_c *RouteCreate) SetNillableCacheTTLSeconds(v *int) *RouteCreate {
 	return _c
 }
 
+// SetPromptCache sets the "prompt_cache" field.
+func (_c *RouteCreate) SetPromptCache(v bool) *RouteCreate {
+	_c.mutation.SetPromptCache(v)
+	return _c
+}
+
+// SetNillablePromptCache sets the "prompt_cache" field if the given value is not nil.
+func (_c *RouteCreate) SetNillablePromptCache(v *bool) *RouteCreate {
+	if v != nil {
+		_c.SetPromptCache(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *RouteCreate) SetID(v uuid.UUID) *RouteCreate {
 	_c.mutation.SetID(v)
@@ -181,6 +195,10 @@ func (_c *RouteCreate) defaults() error {
 		v := route.DefaultCacheTTLSeconds
 		_c.mutation.SetCacheTTLSeconds(v)
 	}
+	if _, ok := _c.mutation.PromptCache(); !ok {
+		v := route.DefaultPromptCache
+		_c.mutation.SetPromptCache(v)
+	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if route.DefaultID == nil {
 			return fmt.Errorf("ent: uninitialized route.DefaultID (forgotten import ent/runtime?)")
@@ -221,6 +239,9 @@ func (_c *RouteCreate) check() error {
 	}
 	if _, ok := _c.mutation.CacheTTLSeconds(); !ok {
 		return &ValidationError{Name: "cache_ttl_seconds", err: errors.New(`ent: missing required field "Route.cache_ttl_seconds"`)}
+	}
+	if _, ok := _c.mutation.PromptCache(); !ok {
+		return &ValidationError{Name: "prompt_cache", err: errors.New(`ent: missing required field "Route.prompt_cache"`)}
 	}
 	return nil
 }
@@ -289,6 +310,10 @@ func (_c *RouteCreate) createSpec() (*Route, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheTTLSeconds(); ok {
 		_spec.SetField(route.FieldCacheTTLSeconds, field.TypeInt, value)
 		_node.CacheTTLSeconds = value
+	}
+	if value, ok := _c.mutation.PromptCache(); ok {
+		_spec.SetField(route.FieldPromptCache, field.TypeBool, value)
+		_node.PromptCache = value
 	}
 	return _node, _spec
 }
@@ -411,6 +436,18 @@ func (u *RouteUpsert) UpdateCacheTTLSeconds() *RouteUpsert {
 // AddCacheTTLSeconds adds v to the "cache_ttl_seconds" field.
 func (u *RouteUpsert) AddCacheTTLSeconds(v int) *RouteUpsert {
 	u.Add(route.FieldCacheTTLSeconds, v)
+	return u
+}
+
+// SetPromptCache sets the "prompt_cache" field.
+func (u *RouteUpsert) SetPromptCache(v bool) *RouteUpsert {
+	u.Set(route.FieldPromptCache, v)
+	return u
+}
+
+// UpdatePromptCache sets the "prompt_cache" field to the value that was provided on create.
+func (u *RouteUpsert) UpdatePromptCache() *RouteUpsert {
+	u.SetExcluded(route.FieldPromptCache)
 	return u
 }
 
@@ -552,6 +589,20 @@ func (u *RouteUpsertOne) AddCacheTTLSeconds(v int) *RouteUpsertOne {
 func (u *RouteUpsertOne) UpdateCacheTTLSeconds() *RouteUpsertOne {
 	return u.Update(func(s *RouteUpsert) {
 		s.UpdateCacheTTLSeconds()
+	})
+}
+
+// SetPromptCache sets the "prompt_cache" field.
+func (u *RouteUpsertOne) SetPromptCache(v bool) *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetPromptCache(v)
+	})
+}
+
+// UpdatePromptCache sets the "prompt_cache" field to the value that was provided on create.
+func (u *RouteUpsertOne) UpdatePromptCache() *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdatePromptCache()
 	})
 }
 
@@ -860,6 +911,20 @@ func (u *RouteUpsertBulk) AddCacheTTLSeconds(v int) *RouteUpsertBulk {
 func (u *RouteUpsertBulk) UpdateCacheTTLSeconds() *RouteUpsertBulk {
 	return u.Update(func(s *RouteUpsert) {
 		s.UpdateCacheTTLSeconds()
+	})
+}
+
+// SetPromptCache sets the "prompt_cache" field.
+func (u *RouteUpsertBulk) SetPromptCache(v bool) *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetPromptCache(v)
+	})
+}
+
+// UpdatePromptCache sets the "prompt_cache" field to the value that was provided on create.
+func (u *RouteUpsertBulk) UpdatePromptCache() *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdatePromptCache()
 	})
 }
 

@@ -103,6 +103,20 @@ func (_u *RouteUpdate) AddCacheTTLSeconds(v int) *RouteUpdate {
 	return _u
 }
 
+// SetPromptCache sets the "prompt_cache" field.
+func (_u *RouteUpdate) SetPromptCache(v bool) *RouteUpdate {
+	_u.mutation.SetPromptCache(v)
+	return _u
+}
+
+// SetNillablePromptCache sets the "prompt_cache" field if the given value is not nil.
+func (_u *RouteUpdate) SetNillablePromptCache(v *bool) *RouteUpdate {
+	if v != nil {
+		_u.SetPromptCache(*v)
+	}
+	return _u
+}
+
 // Mutation returns the RouteMutation object of the builder.
 func (_u *RouteUpdate) Mutation() *RouteMutation {
 	return _u.mutation
@@ -198,6 +212,9 @@ func (_u *RouteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedCacheTTLSeconds(); ok {
 		_spec.AddField(route.FieldCacheTTLSeconds, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.PromptCache(); ok {
+		_spec.SetField(route.FieldPromptCache, field.TypeBool, value)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{route.Label}
@@ -289,6 +306,20 @@ func (_u *RouteUpdateOne) SetNillableCacheTTLSeconds(v *int) *RouteUpdateOne {
 // AddCacheTTLSeconds adds value to the "cache_ttl_seconds" field.
 func (_u *RouteUpdateOne) AddCacheTTLSeconds(v int) *RouteUpdateOne {
 	_u.mutation.AddCacheTTLSeconds(v)
+	return _u
+}
+
+// SetPromptCache sets the "prompt_cache" field.
+func (_u *RouteUpdateOne) SetPromptCache(v bool) *RouteUpdateOne {
+	_u.mutation.SetPromptCache(v)
+	return _u
+}
+
+// SetNillablePromptCache sets the "prompt_cache" field if the given value is not nil.
+func (_u *RouteUpdateOne) SetNillablePromptCache(v *bool) *RouteUpdateOne {
+	if v != nil {
+		_u.SetPromptCache(*v)
+	}
 	return _u
 }
 
@@ -416,6 +447,9 @@ func (_u *RouteUpdateOne) sqlSave(ctx context.Context) (_node *Route, err error)
 	}
 	if value, ok := _u.mutation.AddedCacheTTLSeconds(); ok {
 		_spec.AddField(route.FieldCacheTTLSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.PromptCache(); ok {
+		_spec.SetField(route.FieldPromptCache, field.TypeBool, value)
 	}
 	_node = &Route{config: _u.config}
 	_spec.Assign = _node.assignValues

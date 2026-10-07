@@ -1,4 +1,4 @@
-h1:91MnMYSDs2XMX1HYG6Jss44Jb5iYyCmLvX6C2yocado=
+h1:WSbEQbGn5JA2vi4Da9aNtHSlgsRlaZV1rKyu7I2Dir4=
 20261007103513_init.sql h1:bVyQ6g9OmnroRSresfeNjfapdzWItSeWtS+hU8gXKag=
 20261007110117_key_settings.sql h1:0IhbZBSVxQ8bGE34nOm201ldybxwuXeg6GBHg1dLZD4=
 20261007110559_routes.sql h1:qT7mskL0wkHMlY7VDpj+jQQBgVQO98wZ1DfkOybjk/o=
@@ -7,3 +7,4 @@ h1:91MnMYSDs2XMX1HYG6Jss44Jb5iYyCmLvX6C2yocado=
 20261007130330_price_overrides.sql h1:w6Y1xWOaHfnZGN7OtXOp/phhlcxshdCHuoXFKe6tVqA=
 20261007143430_family_labels.sql h1:U7sGGMJ+5YljXV/KHfx6L+PEIB4vqY0D9Zm6MWUVVrg=
 20261007144112_route_cache.sql h1:5PrmEGtHeXLMLRCuxHIT7jXansMIHRSawb/+y2Qe3cg=
+20261007144635_route_prompt_cache.sql h1:aZ5qcffClpZV52V6DhdEeFDTOYOS7Gf8vJCIUjd4ZGM=

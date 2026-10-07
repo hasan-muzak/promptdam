@@ -28,26 +28,28 @@ const (
 
 // RouteOut is a route.
 type RouteOut struct {
-	ID        string    `json:"id" doc:"Route ID (rte_…)"`
-	Name      string    `json:"name" doc:"Requests name it in X-Promptdam-Route; \"default\" applies when they name none"`
-	Fallbacks []string  `json:"fallbacks" doc:"Tried in order when the model asked for fails: model, or provider/model"`
-	Retries   int       `json:"retries" doc:"Retries of a target, with jitter, before the next one"`
-	CacheTTL  int       `json:"cache_ttl_seconds" doc:"Identical non-streamed requests are answered from the response cache for this long; 0: off"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          string    `json:"id" doc:"Route ID (rte_…)"`
+	Name        string    `json:"name" doc:"Requests name it in X-Promptdam-Route; \"default\" applies when they name none"`
+	Fallbacks   []string  `json:"fallbacks" doc:"Tried in order when the model asked for fails: model, or provider/model"`
+	Retries     int       `json:"retries" doc:"Retries of a target, with jitter, before the next one"`
+	CacheTTL    int       `json:"cache_ttl_seconds" doc:"Identical non-streamed requests are answered from the response cache for this long; 0: off"`
+	PromptCache bool      `json:"prompt_cache" doc:"Anthropic requests without cache breakpoints get them at the end of their stable prefix (tools, system prompt)"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 func routeOut(r *pdent.Route) RouteOut {
 	return RouteOut{ID: ids.Encode(RoutePrefix, r.ID), Name: r.Name, Fallbacks: r.Fallbacks, Retries: r.Retries,
-		CacheTTL: r.CacheTTLSeconds, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		CacheTTL: r.CacheTTLSeconds, PromptCache: r.PromptCache, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 }
 
 // RouteIn is a route's fields.
 type RouteIn struct {
-	Name      string   `json:"name"`
-	Fallbacks []string `json:"fallbacks"`
-	Retries   *int     `json:"retries,omitempty" doc:"0 to 3 (default 1)"`
-	CacheTTL  int      `json:"cache_ttl_seconds,omitempty" doc:"0 (off, default) to 604800"`
+	Name        string   `json:"name"`
+	Fallbacks   []string `json:"fallbacks"`
+	Retries     *int     `json:"retries,omitempty" doc:"0 to 3 (default 1)"`
+	CacheTTL    int      `json:"cache_ttl_seconds,omitempty" doc:"0 (off, default) to 604800"`
+	PromptCache bool     `json:"prompt_cache,omitempty" doc:"Default false"`
 }
 
 func (in *RouteIn) validate(v *muzak.Validation) {
@@ -60,7 +62,7 @@ func (in RouteIn) input() routes.Input {
 	if in.Retries != nil {
 		retries = *in.Retries
 	}
-	return routes.Input{Name: in.Name, Fallbacks: in.Fallbacks, Retries: retries, CacheTTL: in.CacheTTL}
+	return routes.Input{Name: in.Name, Fallbacks: in.Fallbacks, Retries: retries, CacheTTL: in.CacheTTL, PromptCache: in.PromptCache}
 }
 
 // CreateRouteIn adds a route.

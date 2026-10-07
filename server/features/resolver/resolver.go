@@ -224,7 +224,7 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		e.RetryAfter = time.Hour
 		return nil, e
 	}
-	out := &gateway.Route{Targets: targets, Retries: route.Retries, Meta: m}
+	out := &gateway.Route{Targets: targets, Retries: route.Retries, PromptCache: route.PromptCache, Meta: m}
 	if route.CacheTTL > 0 {
 		out.CacheTTL = time.Duration(route.CacheTTL) * time.Second
 		out.CacheScope = m.Project.String() + ":" + route.Name

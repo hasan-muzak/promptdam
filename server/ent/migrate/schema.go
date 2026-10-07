@@ -208,6 +208,7 @@ var (
 		{Name: "fallbacks", Type: field.TypeJSON},
 		{Name: "retries", Type: field.TypeInt, Default: 1},
 		{Name: "cache_ttl_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "prompt_cache", Type: field.TypeBool, Default: false},
 	}
 	// RoutesTable holds the schema information for the "routes" table.
 	RoutesTable = &schema.Table{
