@@ -28,6 +28,7 @@ import (
 
 	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
 	"github.com/hasan-muzak/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/features/decide"
 	"github.com/hasan-muzak/promptdam/server/features/evaluate"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
@@ -118,11 +119,12 @@ func New(t *testing.T, opts Options) *World {
 	w.Log = requestlog.New(requestlog.Config{
 		Events: c.Events, Prices: w.App.Prices, Spend: w.App.Spend, Entitlements: c.Metering.Entitlements,
 	})
+	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true})
 	res := resolver.New(resolver.Config{
 		Keys: c.APIKeys, Snapshots: snaps, Quota: c.Metering, Spend: w.App.Spend, Rates: rates, Prices: w.App.Prices,
 		Scope: core.ScopeGateway, Rules: w.App.RuleEnv, Sample: opts.Sample, Entitlements: c.Metering.Entitlements,
+		Decider: decide.New(transport),
 	})
-	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true})
 	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})
 	w.Eval = evaluate.New(evaluate.Config{Resolver: res, Transport: transport, Events: c.Events, Prices: w.App.Prices,
 		Spend: w.App.Spend, Counters: evalSpend, Entitlements: c.Metering.Entitlements})

@@ -44,6 +44,7 @@ type Row struct {
 	Router, Tier, DecidedTier, TierSource                   string
 	TierConfidence                                          float32
 	Shadow                                                  bool
+	RouterMicros                                            int64
 	Tags                                                    []string
 	APIFormat, Provider, Kind, RequestedModel, ServedModel  string
 	Stream, Translated                                      bool
@@ -63,7 +64,7 @@ type Row struct {
 var columns = []string{
 	"project_id", "ts", "trace", "org_id", "key_id", "developer", "end_user", "tags", "route", "family_id", "prefix_hash",
 	"prefix_flags", "prefix_tokens", "est_input_tokens", "messages", "max_tokens", "has_tools", "json_output", "rule",
-	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "api_format", "provider",
+	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "router_micros", "api_format", "provider",
 	"kind", "requested_model", "served_model", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
 	"upstream_ms", "usage_known", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
 	"reasoning_tokens", "cost_micros", "counterfactual_micros", "savings_micros", "savings_reason", "cache",
@@ -74,7 +75,7 @@ func values(r Row) []any {
 	return []any{
 		r.ProjectID, r.TS, r.Trace, r.OrgID, r.KeyID, r.Developer, r.User, r.Tags, r.Route, r.FamilyID, r.PrefixHash,
 		r.PrefixFlags, r.PrefixTokens, r.EstInput, r.Messages, r.MaxTokens, r.HasTools, r.JSONOutput, r.Rule,
-		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.APIFormat, r.Provider,
+		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.RouterMicros, r.APIFormat, r.Provider,
 		r.Kind, r.RequestedModel, r.ServedModel, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
 		r.UpstreamMs, r.UsageKnown, r.InputTokens, r.OutputTokens, r.CacheRead, r.CacheWrite, r.Think, r.CostMicros,
 		r.Counterfactual, r.Savings, r.SavingsReason, r.Cache, r.RequestBytes, r.ResponseBytes, r.RetentionDays,
@@ -153,6 +154,15 @@ func (l *Log) Record(r *gateway.Record) {
 		}
 		led = l.ledger(r, m, cost)
 	}
+	// A router's decision model spent on the call, whatever became of it.
+	var routerMicros int64
+	if d := m.Decision; d.Target.Model != "" {
+		if price, ok := l.price(m, d.Target.Provider, d.Target.Kind, d.Target.Model); ok {
+			routerMicros = CostAt(price, d.Usage)
+		}
+		l.cfg.Spend.Add(m.Who(), routerMicros)
+		led.Savings -= routerMicros
+	}
 	if l.w == nil {
 		return
 	}
@@ -163,7 +173,7 @@ func (l *Log) Record(r *gateway.Record) {
 		EstInput: uint32(min(r.RequestBytes/4, 1<<31)), Messages: uint32(min(r.Request.Messages, 1<<31)),
 		MaxTokens: uint32(min(r.Request.MaxTokens, 1<<31)), HasTools: r.Request.Tools, JSONOutput: r.Request.Prefix.Format != "",
 		Rule: m.Rule, Router: m.Router, Tier: m.Tier, DecidedTier: m.Decided, TierSource: m.TierSource,
-		TierConfidence: float32(m.TierConfidence), Shadow: m.Shadow, APIFormat: r.Format.String(),
+		TierConfidence: float32(m.TierConfidence), Shadow: m.Shadow, RouterMicros: routerMicros, APIFormat: r.Format.String(),
 		Provider: r.Provider, Kind: r.Kind,
 		RequestedModel: r.RequestedModel, ServedModel: r.ServedModel, Stream: r.Stream, Translated: r.Translated, Status: uint16(min(r.Status, 65535)),
 		ErrorCode: r.ErrorCode, Attempts: uint8(min(r.Attempts, 255)), TTFBms: ms(r.TTFB), LatencyMs: ms(r.Latency),

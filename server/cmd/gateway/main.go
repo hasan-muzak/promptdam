@@ -20,6 +20,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/safehttp"
 
 	"github.com/hasan-muzak/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/features/decide"
 	"github.com/hasan-muzak/promptdam/server/features/evaluate"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/requestlog"
@@ -64,16 +65,16 @@ func run() error {
 
 	snapshots := snapshot.NewStore(c.KV, app.Sources())
 	rates := counter.New(c.KV, "rpm", counter.Options{})
+	// Providers' base URLs are public addresses; a local stack's fake
+	// provider runs on this machine.
+	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: cfg.Env == config.Development})
 	res := resolver.New(resolver.Config{
 		Keys: c.APIKeys, Snapshots: snapshots, Quota: c.Metering, Spend: app.Spend, Rates: rates, Prices: app.Prices,
-		Scope: core.ScopeGateway, Rules: app.RuleEnv, Entitlements: c.Metering.Entitlements,
+		Scope: core.ScopeGateway, Rules: app.RuleEnv, Entitlements: c.Metering.Entitlements, Decider: decide.New(transport),
 	})
 	log := requestlog.New(requestlog.Config{
 		Events: c.Events, Prices: app.Prices, Spend: app.Spend, Entitlements: c.Metering.Entitlements,
 	})
-	// Providers' base URLs are public addresses; a local stack's fake
-	// provider runs on this machine.
-	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: cfg.Env == config.Development})
 	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})
 	eval := evaluate.New(evaluate.Config{
 		Resolver: res, Transport: transport, Events: c.Events, Prices: app.Prices, Spend: app.Spend, Counters: evalSpend,

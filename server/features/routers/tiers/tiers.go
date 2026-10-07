@@ -201,6 +201,9 @@ type Choice struct {
 	// Moved reports that the tier first chosen couldn't take the call, and
 	// the nearest one that can (stronger first) got it.
 	Moved bool
+	// Unsure reports a call the classifier was unsure of and no decision
+	// model placed: it got the default tier.
+	Unsure bool
 }
 
 // Choose runs the cascade: the client's tier, else the first rule that
@@ -236,9 +239,10 @@ func (s *Spec) Choose(c Call) (Choice, error) {
 	}
 	if !placed && unsure && c.Decide != nil {
 		if i := s.Index(c.Decide()); i >= 0 {
-			ch = Choice{Tier: i, Source: SourceDecision, Rule: -1}
+			ch, placed = Choice{Tier: i, Source: SourceDecision, Rule: -1}, true
 		}
 	}
+	ch.Unsure = !placed && unsure
 	if c.Serves == nil || c.Serves(ch.Tier) {
 		return ch, nil
 	}

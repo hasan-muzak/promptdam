@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/hasan-muzak/keel-core/pkg/llm"
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
@@ -125,9 +126,9 @@ func (p *placer) holds(when string) bool {
 // learned lets the classifier place it. A shadow router decides but serves
 // its default tier, unless the client named one. all checks every tier's
 // fit, for explanations.
-func (r *Resolver) placeCall(snap *snapshot.Snapshot, rt *routers.Router, pin string, c *gateway.Call, m *Meta, learned, all bool) (
-	*Placement, error,
-) {
+func (r *Resolver) placeCall(ctx context.Context, snap *snapshot.Snapshot, rt *routers.Router, pin string, c *gateway.Call, m *Meta,
+	learned, all bool,
+) (*Placement, error) {
 	spec := &rt.Spec
 	p := &placer{r: r, snap: snap, rt: rt, c: c, m: m, need: needsOf(c), fits: make([]Fit, len(spec.Tiers))}
 	serves := func(i int) bool { return p.fit(i).Lacks == "" }
@@ -140,6 +141,11 @@ func (r *Resolver) placeCall(snap *snapshot.Snapshot, rt *routers.Router, pin st
 			}
 			pl := cm.Place(classifier.Features(classifier.InputOf(c.Format, c.Request, c.Body, c.Shape.Family, m.Tags)))
 			return pl.Tier, pl.P, pl.Unsure
+		}
+		// The decision model answers for active routers only, never when
+		// explaining: a call it would wait on must change what serves it.
+		if rt.DecisionModel != "" && rt.Status == tiers.Active && !all && r.cfg.Decider != nil {
+			call.Decide = func() string { return r.decide(ctx, snap, rt, c, m) }
 		}
 	}
 	choice, err := spec.Choose(call)
@@ -180,7 +186,7 @@ func (r *Resolver) place(ctx context.Context, snap *snapshot.Snapshot, rt *route
 	// The classifier places calls of active routers on plans with learned
 	// routing; a shadow router's only say what it would do.
 	learned := rt.Status == tiers.Shadow || r.learnedAllowed(ctx, m.Org)
-	pl, err := r.placeCall(snap, rt, pin, c, m, learned, false)
+	pl, err := r.placeCall(ctx, snap, rt, pin, c, m, learned, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -228,7 +234,27 @@ func (r *Resolver) Targets(snap *snapshot.Snapshot, f wire.Format, model string)
 // Explain places a call as the gateway would, checking every tier, for
 // the routers API. snap may be built without opening providers' keys.
 func (r *Resolver) Explain(snap *snapshot.Snapshot, rt *routers.Router, pin string, c *gateway.Call, m *Meta) (*Placement, error) {
-	return r.placeCall(snap, rt, pin, c, m, true, true)
+	return r.placeCall(context.Background(), snap, rt, pin, c, m, true, true)
+}
+
+// decide asks the router's decision model, on the project's own key, which
+// tier the call needs ("" when it can't say in time).
+func (r *Resolver) decide(ctx context.Context, snap *snapshot.Snapshot, rt *routers.Router, c *gateway.Call, m *Meta) string {
+	ts := r.fallback(snap, wire.OpenAIChat, rt.DecisionModel, nil)
+	if len(ts) == 0 {
+		return ""
+	}
+	md, known := r.model(ts[0].Kind, ts[0].Model)
+	schema, _ := md.Has(llm.FeatureJSONSchema)
+	q := Question{Router: rt.Name, Family: c.Shape.Family, Target: ts[0], Schema: schema || !known || md.Features == nil,
+		Tiers: rt.Spec.Tiers, Instructions: c.Request.Prefix.System, Request: classifier.LastUser(c.Format, c.Body),
+		Timeout: time.Duration(rt.DecisionTimeoutMS) * time.Millisecond}
+	tier, usage, err := r.cfg.Decider.Decide(ctx, q)
+	m.Decision.Target, m.Decision.Usage = ts[0], usage
+	if err != nil {
+		return ""
+	}
+	return tier
 }
 
 // learnedAllowed reports whether the organization's plan has learned

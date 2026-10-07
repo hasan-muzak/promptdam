@@ -66,6 +66,12 @@ type Meta struct {
 	// named a router: its default tier's model ("" for the model asked
 	// for).
 	Baseline gateway.Target
+	// Decision is the decision model's call when one was asked: its
+	// target and usage, which the call's cost includes.
+	Decision struct {
+		Target gateway.Target
+		Usage  wire.Usage
+	}
 	// Sampled marks a call its router evaluates: the router and the
 	// project's configuration the call was placed with go with it.
 	Sampled bool
@@ -107,6 +113,29 @@ type Config struct {
 	// Entitlements says what the organization's plan includes
 	// (metering.Service.Entitlements, cached in process); nil allows all.
 	Entitlements func(ctx context.Context, org uuid.UUID) (billing.Entitlements, error)
+	// Decider asks routers' decision models (features/decide); nil never
+	// does.
+	Decider Decider
+}
+
+// Decider asks a decision model which tier a call needs.
+type Decider interface {
+	Decide(ctx context.Context, q Question) (tier string, usage wire.Usage, err error)
+}
+
+// Question is what a decision model is asked.
+type Question struct {
+	// Router and Family key cached answers.
+	Router, Family string
+	// Target is the decision model at one of the project's providers;
+	// Schema reports that it takes a JSON schema for its answer.
+	Target gateway.Target
+	Schema bool
+	Tiers  []tiers.Tier
+	// Instructions and Request are the call's instructions and its last
+	// user message.
+	Instructions, Request string
+	Timeout               time.Duration
 }
 
 // Resolver implements gateway.Resolver and gateway.ModelLister.

@@ -111,3 +111,38 @@ func TestParseModel(t *testing.T) {
 		}
 	}
 }
+
+func TestChooseLearned(t *testing.T) {
+	s := spec()
+	if err := s.Check(); err != nil {
+		t.Fatal(err)
+	}
+	learned := func(tier string, p float64, unsure bool) func() (string, float64, bool) {
+		return func() (string, float64, bool) { return tier, p, unsure }
+	}
+	asked := 0
+	decide := func(tier string) func() string { return func() string { asked++; return tier } }
+	for _, tt := range []struct {
+		name   string
+		call   Call
+		tier   int
+		source string
+		unsure bool
+	}{
+		{"a rule comes first", Call{Holds: func(w string) bool { return w == "legal" }, Learned: learned("fast", 0.99, false)}, 3, SourceRule, false},
+		{"the classifier places", Call{Learned: learned("standard", 0.97, false), Decide: decide("fast")}, 1, SourceClassifier, false},
+		{"sure of nothing cheaper: the default", Call{Learned: learned("", 0, false), Decide: decide("fast")}, 3, SourceDefault, false},
+		{"unsure: the decision model", Call{Learned: learned("", 0, true), Decide: decide("fast")}, 0, SourceDecision, false},
+		{"unsure, no answer: the default", Call{Learned: learned("", 0, true), Decide: decide("")}, 3, SourceDefault, true},
+		{"unsure, no decision model", Call{Learned: learned("", 0, true)}, 3, SourceDefault, true},
+	} {
+		asked = 0
+		ch, err := s.Choose(tt.call)
+		if err != nil || ch.Tier != tt.tier || ch.Source != tt.source || ch.Unsure != tt.unsure {
+			t.Errorf("%s: %+v, %v", tt.name, ch, err)
+		}
+		if tt.source == SourceClassifier && asked != 0 {
+			t.Errorf("%s: the decision model was asked", tt.name)
+		}
+	}
+}

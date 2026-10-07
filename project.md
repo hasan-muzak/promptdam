@@ -537,7 +537,14 @@ Model routers replace per-family savings experiments, and cross-format translati
     - The worker retrains hourly every router with calls judged since its last training, on the newest 20,000 per tier of the last 30 days judged against its current default tier; `POST …/routers/{router}/train` queues one at once. Classifiers (`router_classifiers`, purged with the project) reach gateways with the project's configuration.
     - Active routers use the classifier on plans with `routing.learned` (Team); shadow routers on every plan, since there it only says what it would do.
     - `GET …/routers/{router}/report`: calls per tier served and chosen and by step (from the new `routers_hourly` rollup), their cost and what they'd cost on the chosen tiers (what following the router saves, also per 30 days), evaluation spend, each tier's verdicts and quality with its 95% interval and whether it meets the floor, the classifier's held-out precision, coverage and AUC per tier, the most judged families, and `ready`.
-- [ ] S3.6 The decision model for unsure calls (opt-in): structured answer, hard timeout, cache, cost on the call.
+- [x] S3.6 The decision model for unsure calls (opt-in): structured answer, hard timeout, cache, cost on the call.
+  - **Done 2026-10-08 (`features/decide`):**
+    - An active router with a decision model asks it about the calls its classifier is unsure of (a cheaper tier may hold up but isn't clear of its threshold, or nothing is trained yet), on plans with learned routing. Shadow routers and explanations never ask: a call would wait on an answer that changes nothing.
+    - The model reads the tiers, cheapest first, with their descriptions and up to 3 examples each, the call's instructions (1,000 characters) and last user message (4,000), and answers `{"tier": …}`, held to a schema with the tiers' names where the model takes one. Any chat model of either API format on the project's own providers.
+    - The router's timeout (default 150 ms) bounds the wait; no answer in time, or one naming no tier, leaves the default tier. Answers are cached per router, family and message for 10 minutes in each gateway.
+    - What it cost counts as the call's spend (and against its budgets), is logged as `router_micros` and comes off the call's savings.
+    - Explain says `unsure` when a decision model would be asked.
+    - Not yet: OpenRouter's typed decision models (`output_modalities=decisions`), whose request shape differs; any chat model works meanwhile.
 - [ ] S3.7 Activation gate, `router.ready`, the canary and auto-demotion (`router.tier_demoted`, alerts).
 - [ ] S3.8 Keel K7.1: streaming-safe redact scanner with chunk overlap; reversible tokenisation restored in streamed responses.
 - [ ] S3.9 Firewall presets (source code, customer data), CEL policy sets, actions (block/redact/tokenize/alert/route_to), fail-closed for secrets and open for the rest by default (decided 2026-10-08).

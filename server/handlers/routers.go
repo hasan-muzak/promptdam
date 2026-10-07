@@ -303,6 +303,7 @@ type ExplainRouterOut struct {
 	Rule        *int    `json:"rule" doc:"The rule that held, counted from 1"`
 	Confidence  float64 `json:"confidence"`
 	Moved       bool    `json:"moved" doc:"The tier first chosen couldn't take the call; the nearest that can did"`
+	Unsure      bool    `json:"unsure" doc:"The classifier was unsure (or isn't trained yet): an active router's decision model would be asked"`
 	Shadow      bool    `json:"shadow"`
 	Needs       struct {
 		Tools      bool `json:"tools"`
@@ -354,7 +355,7 @@ func (h *Handlers) ExplainRouter(ctx *muzak.Context, in ExplainRouterIn) (Explai
 	}
 	spec := &rt.Spec
 	out := ExplainRouterOut{Tier: spec.Tiers[pl.Served].Name, DecidedTier: spec.Tiers[pl.Choice.Tier].Name, Source: pl.Choice.Source,
-		Confidence: pl.Choice.Confidence, Moved: pl.Choice.Moved, Shadow: pl.Shadow, Tiers: make([]ExplainTierOut, len(spec.Tiers)),
+		Confidence: pl.Choice.Confidence, Moved: pl.Choice.Moved, Unsure: pl.Choice.Unsure, Shadow: pl.Shadow, Tiers: make([]ExplainTierOut, len(spec.Tiers)),
 		Targets: make([]ExplainTargetOut, len(pl.Targets))}
 	if pl.Choice.Rule >= 0 {
 		n := pl.Choice.Rule + 1
