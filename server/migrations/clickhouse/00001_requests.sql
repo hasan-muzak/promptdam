@@ -2,9 +2,10 @@
 --
 --   requests                 one row per gateway call (metadata only, never
 --                            payloads), kept per the plan's retention; read
---                            by time range and by trace (whose TypeID holds
---                            the call's start, so a lookup reads a few ms of
---                            one project's rows)
+--                            newest first in key order (the trace breaks
+--                            ties, so pages are stable and stop early) and
+--                            by trace (whose TypeID holds the call's start,
+--                            so a lookup reads a moment of one project's rows)
 --   requests_hourly          calls, errors, tokens, cost and latency
 --                            percentiles per provider, model, key and route
 --   requests_hourly_developer, requests_hourly_tag
@@ -49,7 +50,7 @@ CREATE TABLE requests (
   retention_days      UInt16
 ) ENGINE = MergeTree
 PARTITION BY (retention_days, toMonday(ts))
-ORDER BY (project_id, ts)
+ORDER BY (project_id, ts, trace)
 TTL toDateTime(ts) + INTERVAL 1 DAY TO VOLUME 'r2',
     toDateTime(ts) + toIntervalDay(retention_days)
 SETTINGS storage_policy = 'tiered', ttl_only_drop_parts = 1;

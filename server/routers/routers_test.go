@@ -422,6 +422,7 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 		"org": org.ID, "project": prj.ID, "user": me.User.ID, "invitation": inv.ID, "key": key.ID, "channel": ch.ID,
 		"webhook": ids.Encode(ids.WebhookEndpoint, ep.ID), "delivery": ids.Encode(ids.WebhookDelivery, del.ID),
 		"meter": "requests", "provider": p.ID, "route": rte.ID, "budget": bdg.ID,
+		"request": ids.Encode("req", ids.New()),
 	}
 	e.client.Put(base+"/keys/"+key.ID+"/gateway", alice, testclient.JSON(map[string]any{"rpm": 10})).AssertStatus(http.StatusOK)
 	mallory := e.as("mallory")

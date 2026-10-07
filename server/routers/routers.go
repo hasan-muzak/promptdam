@@ -13,6 +13,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
 	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/core"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/analytics"
 	"github.com/hasan-muzak/keel/products/promptdam/server/handlers"
 )
 
@@ -21,6 +22,7 @@ func Mount(a *muzak.App, app *core.App) {
 	c := app.Core
 	h := &handlers.Handlers{
 		Tenancy: c.Tenancy, Providers: app.Providers, Keys: app.Keys, Routes: app.Routes, Budgets: app.Budgets, Notifier: c.Notifier,
+		Analytics: analytics.New(c.Events),
 	}
 	r := muzak.NewRouter(
 		muzak.WithTags(brand.Key),
@@ -102,5 +104,22 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Summary("Replace a budget"), muzak.Description("A new scope, window or limit starts its alerts again."))
 	r.Delete(bb+"/{budget}", h.DeleteBudget, bcat, muzak.Title("Delete Budget"), project(tenancy.PermProjectsManage),
 		muzak.Status(http.StatusNoContent), muzak.Summary("Remove a budget"))
+
+	log := muzak.WithCategory("Request Log")
+	lb := "/v1/orgs/{org}/projects/{project}/requests"
+	r.Get(lb, h.ListRequests, log, muzak.Title("List Requests"), project(tenancy.PermProjectsRead),
+		muzak.Summary("List a project's gateway calls, newest first"),
+		muzak.Description("Metadata only, never prompts or answers: models, provider, status, tokens, cost, timings. "+
+			"Covers at most 31 days per query (default the last 24 hours) and what the plan keeps."))
+	r.Get(lb+"/{request}", h.GetRequest, log, muzak.Title("Get Request"), project(tenancy.PermProjectsRead),
+		muzak.Summary("Get one gateway call by its trace (X-Promptdam-Trace)"))
+
+	ana := muzak.WithCategory("Analytics")
+	r.Get("/v1/orgs/{org}/projects/{project}/analytics/spend", h.GetSpend, ana, muzak.Title("Get Spend"),
+		project(tenancy.PermProjectsRead), muzak.Summary("Calls, errors, tokens and spend over a range"),
+		muzak.Description("Totals, a series per hour or day, and groups by model, provider, key, route, developer or "+
+			"tag (at most 100, by spend). Default the last 7 days; at most 400 days."))
+	r.Get("/v1/orgs/{org}/projects/{project}/analytics/latency", h.GetLatency, ana, muzak.Title("Get Latency"),
+		project(tenancy.PermProjectsRead), muzak.Summary("Latency and time-to-first-byte percentiles per model or provider"))
 	a.Include(r)
 }
