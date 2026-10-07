@@ -2,18 +2,18 @@
 package core
 
 import (
-	"github.com/hasan-muzak/keel/pkg/apikeys"
-	"github.com/hasan-muzak/keel/pkg/config"
-	"github.com/hasan-muzak/keel/pkg/db"
-	"github.com/hasan-muzak/keel/pkg/events"
-	"github.com/hasan-muzak/keel/pkg/keel"
-	"github.com/hasan-muzak/keel/pkg/llm"
-	"github.com/hasan-muzak/keel/pkg/webhooks"
+	"github.com/hasan-muzak/keel-core/pkg/apikeys"
+	"github.com/hasan-muzak/keel-core/pkg/config"
+	"github.com/hasan-muzak/keel-core/pkg/db"
+	"github.com/hasan-muzak/keel-core/pkg/events"
+	"github.com/hasan-muzak/keel-core/pkg/keel"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/webhooks"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
-	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
-	"github.com/hasan-muzak/keel/products/promptdam/server/migrations"
+	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/catalog"
+	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/migrations"
 )
 
 // Version is set at build time (-ldflags "-X …/core.Version=v1.2.3").

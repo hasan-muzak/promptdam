@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hasan-muzak/keel/pkg/llm"
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
-	"github.com/hasan-muzak/keel/pkg/safehttp"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/safehttp"
 
-	"github.com/hasan-muzak/keel/products/promptdam/bench/fakeupstream"
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
+	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/features/gateway"
 )
 
 // env is a gateway in front of a fake provider.

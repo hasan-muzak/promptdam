@@ -14,11 +14,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/hasan-muzak/keel/pkg/safehttp"
-	"github.com/hasan-muzak/keel/pkg/vault"
+	"github.com/hasan-muzak/keel-core/pkg/safehttp"
+	"github.com/hasan-muzak/keel-core/pkg/vault"
 
-	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
+	pdent "github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/ent/provider"
 )
 
 // MaxPerProject bounds a project's providers: the gateway holds them all

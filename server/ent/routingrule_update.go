@@ -11,8 +11,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/routingrule"
+	"github.com/hasan-muzak/promptdam/server/ent/predicate"
+	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
 )
 
 // RoutingRuleUpdate is the builder for updating RoutingRule entities.

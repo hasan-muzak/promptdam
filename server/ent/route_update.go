@@ -12,8 +12,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
+	"github.com/hasan-muzak/promptdam/server/ent/predicate"
+	"github.com/hasan-muzak/promptdam/server/ent/route"
 )
 
 // RouteUpdate is the builder for updating Route entities.

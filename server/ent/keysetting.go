@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 )
 
 // KeySetting is the model entity for the KeySetting schema.

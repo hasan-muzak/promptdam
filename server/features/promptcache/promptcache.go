@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 )
 
 // ephemeral is the breakpoint marker (the five-minute cache).

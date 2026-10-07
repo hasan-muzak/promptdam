@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/uuid"
 
-	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
+	pdent "github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/ent/route"
 )
 
 // Default is the route requests take when none is named.

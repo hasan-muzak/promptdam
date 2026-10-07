@@ -5,7 +5,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 
-	"github.com/hasan-muzak/keel/pkg/entx"
+	"github.com/hasan-muzak/keel-core/pkg/entx"
 )
 
 // Route is a named path requests take through the gateway: what to try when

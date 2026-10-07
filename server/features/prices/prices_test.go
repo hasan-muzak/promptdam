@@ -14,13 +14,13 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 
-	"github.com/hasan-muzak/keel/pkg/llm"
-	"github.com/hasan-muzak/keel/pkg/safehttp"
-	"github.com/hasan-muzak/keel/pkg/testkit"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/safehttp"
+	"github.com/hasan-muzak/keel-core/pkg/testkit"
 
-	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
-	"github.com/hasan-muzak/keel/products/promptdam/server/migrations"
+	pdent "github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/migrations"
 )
 
 // list is an OpenRouter models list of n OpenAI models at $1/$2 per 1M,

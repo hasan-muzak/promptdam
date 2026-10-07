@@ -15,12 +15,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/promptcache"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/responsecache"
+	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/promptcache"
+	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 )
 
 // statusClientClosed is logged for calls the client gave up on (nginx's

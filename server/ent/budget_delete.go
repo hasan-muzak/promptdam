@@ -8,8 +8,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
+	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/predicate"
 )
 
 // BudgetDelete is the builder for deleting a Budget entity.

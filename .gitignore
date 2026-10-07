@@ -1,0 +1,26 @@
+.DS_Store
+
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Go (the workspace's go.work lives in keel)
+go.work
+go.work.sum
+coverage.out
+/bin/
+
+# Web
+node_modules/
+.nuxt/
+.output/
+.data/
+.turbo/
+dist/
+*.tsbuildinfo
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/

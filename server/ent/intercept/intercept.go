@@ -7,16 +7,16 @@ import (
 	"fmt"
 
 	"entgo.io/ent/dialect/sql"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/familylabel"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/pricelist"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/routingrule"
+	"github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
+	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/promptdam/server/ent/predicate"
+	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
+	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
+	"github.com/hasan-muzak/promptdam/server/ent/provider"
+	"github.com/hasan-muzak/promptdam/server/ent/route"
+	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
 )
 
 // The Query interface represents an operation that queries a graph.

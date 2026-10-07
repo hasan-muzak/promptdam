@@ -9,10 +9,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/hasan-muzak/keel/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
 
-	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
+	pdent "github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 )
 
 // MaxOverrides bounds a project's own prices: the gateway holds them all.

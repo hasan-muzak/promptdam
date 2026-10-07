@@ -2,4 +2,4 @@
 
 package ent
 
-// The schema-stitching logic is generated in github.com/hasan-muzak/keel/products/promptdam/server/ent/runtime/runtime.go
+// The schema-stitching logic is generated in github.com/hasan-muzak/promptdam/server/ent/runtime/runtime.go

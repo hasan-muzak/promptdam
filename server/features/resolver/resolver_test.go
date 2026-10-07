@@ -6,16 +6,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hasan-muzak/keel/pkg/apikeys"
+	"github.com/hasan-muzak/keel-core/pkg/apikeys"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/gatewaytest"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/rules"
+	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
+	"github.com/hasan-muzak/promptdam/server/features/keysettings"
+	"github.com/hasan-muzak/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/resolver"
+	"github.com/hasan-muzak/promptdam/server/features/routes"
+	"github.com/hasan-muzak/promptdam/server/features/rules"
 )
 
 const chat = `{"model":"gpt-5-mini","messages":[{"role":"user","content":"hi"}]}`

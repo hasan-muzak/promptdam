@@ -3,9 +3,9 @@ package catalog_test
 import (
 	"testing"
 
-	"github.com/hasan-muzak/keel/pkg/billing"
+	"github.com/hasan-muzak/keel-core/pkg/billing"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
+	"github.com/hasan-muzak/promptdam/server/catalog"
 )
 
 func TestCatalogMatchesThePricingTable(t *testing.T) {

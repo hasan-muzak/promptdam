@@ -12,17 +12,17 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/hasan-muzak/keel/pkg/billing"
-	"github.com/hasan-muzak/keel/pkg/events"
-	"github.com/hasan-muzak/keel/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/billing"
+	"github.com/hasan-muzak/keel-core/pkg/events"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
+	"github.com/hasan-muzak/promptdam/server/catalog"
+	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/resolver"
 )
 
 // Table is the request log.

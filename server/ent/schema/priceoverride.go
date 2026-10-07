@@ -5,7 +5,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 
-	"github.com/hasan-muzak/keel/pkg/entx"
+	"github.com/hasan-muzak/keel-core/pkg/entx"
 )
 
 // PriceOverride is a project's own price for a model, over the synced price

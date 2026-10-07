@@ -22,17 +22,17 @@ import (
 	"golang.org/x/sync/singleflight"
 	muzak "muzak.dev/framework"
 
-	"github.com/hasan-muzak/keel/pkg/entx"
-	"github.com/hasan-muzak/keel/pkg/kv"
-	"github.com/hasan-muzak/keel/pkg/kvcache"
-	"github.com/hasan-muzak/keel/pkg/memcache"
+	"github.com/hasan-muzak/keel-core/pkg/entx"
+	"github.com/hasan-muzak/keel-core/pkg/kv"
+	"github.com/hasan-muzak/keel-core/pkg/kvcache"
+	"github.com/hasan-muzak/keel-core/pkg/memcache"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/rules"
+	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/keysettings"
+	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/routes"
+	"github.com/hasan-muzak/promptdam/server/features/rules"
 )
 
 // MaxAge is how long a gateway keeps a snapshot without hearing of a

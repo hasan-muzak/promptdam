@@ -6,12 +6,12 @@ import (
 
 	muzak "muzak.dev/framework"
 
-	"github.com/hasan-muzak/keel/pkg/httpx"
-	"github.com/hasan-muzak/keel/pkg/platform"
-	"github.com/hasan-muzak/keel/pkg/tenancy"
+	"github.com/hasan-muzak/keel-core/pkg/httpx"
+	"github.com/hasan-muzak/keel-core/pkg/platform"
+	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/cachedoctor"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/cachedoctor"
+	"github.com/hasan-muzak/promptdam/server/features/families"
 )
 
 // FindingOut is one reason a family misses the cache.

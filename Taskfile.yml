@@ -1,12 +1,12 @@
-# Promptdam tasks. From the repo root: `task promptdam:<name>`. Tasks read
-# Promptdam's .env one by one: an included Taskfile can't declare a
-# Taskfile-wide dotenv.
+# Promptdam tasks: `task <name>` here, or `task promptdam:<name>` from the keel
+# workspace root. Tasks read Promptdam's .env one by one: an included Taskfile
+# can't declare a Taskfile-wide dotenv.
 version: "3"
 
 vars:
   # Promptdam's own local stack (infra/compose/product.yaml), never shared
   # with another product.
-  STACK: docker compose -f ../../infra/compose/product.yaml -p promptdam --env-file stack.env
+  STACK: docker compose -f ../../../infra/compose/product.yaml -p promptdam --env-file stack.env
 
 tasks:
   setup:

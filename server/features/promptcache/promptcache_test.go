@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/promptcache"
+	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 )
 
 func parse(t *testing.T, body string) wire.Request {

@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/hasan-muzak/keel/pkg/ids"
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/ids"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/brand"
 )
 
 // Error types, as both OpenAI and Anthropic name them, so SDKs map the

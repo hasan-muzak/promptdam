@@ -6,15 +6,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/familylabel"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/pricelist"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/routingrule"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/schema"
+	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
+	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
+	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
+	"github.com/hasan-muzak/promptdam/server/ent/provider"
+	"github.com/hasan-muzak/promptdam/server/ent/route"
+	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
+	"github.com/hasan-muzak/promptdam/server/ent/schema"
 )
 
 // The init function reads all schema descriptors with runtime code

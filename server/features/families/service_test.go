@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hasan-muzak/keel/pkg/events"
+	"github.com/hasan-muzak/keel-core/pkg/events"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/gatewaytest"
+	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
 )
 
 func TestFamiliesFromCalls(t *testing.T) {

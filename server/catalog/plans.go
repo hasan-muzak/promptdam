@@ -5,9 +5,9 @@
 package catalog
 
 import (
-	"github.com/hasan-muzak/keel/pkg/billing"
+	"github.com/hasan-muzak/keel-core/pkg/billing"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/brand"
 )
 
 // Meter keys. Promptdam never bills tokens: customers pay their providers

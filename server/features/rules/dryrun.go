@@ -9,11 +9,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/hasan-muzak/keel/pkg/events"
-	"github.com/hasan-muzak/keel/pkg/llm"
-	"github.com/hasan-muzak/keel/pkg/policy"
+	"github.com/hasan-muzak/keel-core/pkg/events"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/policy"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/features/prices"
 )
 
 // DryRunLimit bounds the calls a dry-run reads: the most recent of its

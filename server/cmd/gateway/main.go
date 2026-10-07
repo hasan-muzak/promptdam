@@ -14,17 +14,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hasan-muzak/keel/pkg/config"
-	"github.com/hasan-muzak/keel/pkg/counter"
-	"github.com/hasan-muzak/keel/pkg/keel"
-	"github.com/hasan-muzak/keel/pkg/safehttp"
+	"github.com/hasan-muzak/keel-core/pkg/config"
+	"github.com/hasan-muzak/keel-core/pkg/counter"
+	"github.com/hasan-muzak/keel-core/pkg/keel"
+	"github.com/hasan-muzak/keel-core/pkg/safehttp"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/core"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/requestlog"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/responsecache"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/snapshot"
+	"github.com/hasan-muzak/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/promptdam/server/features/requestlog"
+	"github.com/hasan-muzak/promptdam/server/features/resolver"
+	"github.com/hasan-muzak/promptdam/server/features/responsecache"
+	"github.com/hasan-muzak/promptdam/server/features/snapshot"
 )
 
 func main() {

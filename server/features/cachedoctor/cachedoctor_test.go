@@ -7,13 +7,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/hasan-muzak/keel/pkg/llm"
-	"github.com/hasan-muzak/keel/pkg/testkit"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/testkit"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/cachedoctor"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
-	"github.com/hasan-muzak/keel/products/promptdam/server/migrations"
+	"github.com/hasan-muzak/promptdam/server/features/cachedoctor"
+	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/migrations"
 )
 
 // Four families of 100 calls each, written to the request log:

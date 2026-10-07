@@ -6,7 +6,7 @@ import (
 	"entgo.io/ent/schema/index"
 	"github.com/google/uuid"
 
-	"github.com/hasan-muzak/keel/pkg/entx"
+	"github.com/hasan-muzak/keel-core/pkg/entx"
 )
 
 // KeySetting is what the gateway applies to one API key (a core api_keys

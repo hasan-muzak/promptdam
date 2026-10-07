@@ -5,7 +5,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 
-	"github.com/hasan-muzak/keel/pkg/entx"
+	"github.com/hasan-muzak/keel-core/pkg/entx"
 )
 
 // RoutingRule sends the calls matching a condition (CEL, over the request

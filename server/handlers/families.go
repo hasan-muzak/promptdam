@@ -6,11 +6,11 @@ import (
 
 	muzak "muzak.dev/framework"
 
-	"github.com/hasan-muzak/keel/pkg/httpx"
-	"github.com/hasan-muzak/keel/pkg/platform"
-	"github.com/hasan-muzak/keel/pkg/tenancy"
+	"github.com/hasan-muzak/keel-core/pkg/httpx"
+	"github.com/hasan-muzak/keel-core/pkg/platform"
+	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/families"
 )
 
 // CodeInvalidFamily reports a family request that can't be answered.

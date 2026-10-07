@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/hasan-muzak/keel/pkg/keel"
+	"github.com/hasan-muzak/keel-core/pkg/keel"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/core"
 )
 
 func main() {

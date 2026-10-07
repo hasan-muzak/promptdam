@@ -14,8 +14,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/hasan-muzak/keel/pkg/kv"
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/kv"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 )
 
 // MaxEntry bounds a cached answer: bigger ones aren't cached.

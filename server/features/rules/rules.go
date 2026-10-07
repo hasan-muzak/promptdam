@@ -32,10 +32,10 @@ import (
 	"cel.dev/cel-go/ext"
 	"github.com/google/uuid"
 
-	"github.com/hasan-muzak/keel/pkg/policy"
+	"github.com/hasan-muzak/keel-core/pkg/policy"
 
-	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/routingrule"
+	pdent "github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
 )
 
 // MaxPerProject bounds a project's rules: the gateway evaluates the

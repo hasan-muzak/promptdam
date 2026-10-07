@@ -10,7 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
+	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 )
 
 // PriceOverride is the model entity for the PriceOverride schema.

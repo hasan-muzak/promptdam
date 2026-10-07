@@ -3,10 +3,10 @@ package requestlog
 import (
 	"math"
 
-	"github.com/hasan-muzak/keel/pkg/llm"
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/providers"
 )
 
 // Cost is what a call cost at list prices, in micro-USD: the provider's

@@ -25,13 +25,13 @@ import (
 	"github.com/valkey-io/valkey-go"
 	muzak "muzak.dev/framework"
 
-	"github.com/hasan-muzak/keel/pkg/jobs"
-	"github.com/hasan-muzak/keel/pkg/kv"
-	"github.com/hasan-muzak/keel/pkg/llm"
-	"github.com/hasan-muzak/keel/pkg/safehttp"
+	"github.com/hasan-muzak/keel-core/pkg/jobs"
+	"github.com/hasan-muzak/keel-core/pkg/kv"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/safehttp"
 
-	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/pricelist"
+	pdent "github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 )
 
 // Guards against a bad list.

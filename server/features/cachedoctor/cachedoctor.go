@@ -16,13 +16,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/hasan-muzak/keel/pkg/events"
-	"github.com/hasan-muzak/keel/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/events"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/promptcache"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/features/promptcache"
+	"github.com/hasan-muzak/promptdam/server/features/providers"
 )
 
 // MaxRange bounds a diagnosis's time range.

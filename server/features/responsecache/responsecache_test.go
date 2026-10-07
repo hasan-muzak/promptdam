@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hasan-muzak/keel/pkg/llm"
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
-	"github.com/hasan-muzak/keel/pkg/testkit"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/testkit"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/responsecache"
+	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 )
 
 func TestKey(t *testing.T) {

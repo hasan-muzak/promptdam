@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/brand"
 )
 
 func (h *Handler) clientKey(r *http.Request) string {

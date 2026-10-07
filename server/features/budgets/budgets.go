@@ -17,15 +17,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
 
-	"github.com/hasan-muzak/keel/pkg/entx"
-	"github.com/hasan-muzak/keel/pkg/ids"
-	"github.com/hasan-muzak/keel/pkg/jobs"
-	"github.com/hasan-muzak/keel/pkg/money"
-	"github.com/hasan-muzak/keel/pkg/notify"
-	"github.com/hasan-muzak/keel/pkg/webhooks"
+	"github.com/hasan-muzak/keel-core/pkg/entx"
+	"github.com/hasan-muzak/keel-core/pkg/ids"
+	"github.com/hasan-muzak/keel-core/pkg/jobs"
+	"github.com/hasan-muzak/keel-core/pkg/money"
+	"github.com/hasan-muzak/keel-core/pkg/notify"
+	"github.com/hasan-muzak/keel-core/pkg/webhooks"
 
-	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
+	pdent "github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/ent/budget"
 )
 
 // IDPrefix starts budget IDs: bdg_….

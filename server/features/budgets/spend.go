@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/hasan-muzak/keel/pkg/counter"
+	"github.com/hasan-muzak/keel-core/pkg/counter"
 )
 
 // Scopes a budget can cap.

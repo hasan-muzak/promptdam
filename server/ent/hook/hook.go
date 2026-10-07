@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/ent"
 )
 
 // The BudgetFunc type is an adapter to allow the use of ordinary

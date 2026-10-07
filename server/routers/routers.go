@@ -6,17 +6,17 @@ import (
 
 	muzak "muzak.dev/framework"
 
-	"github.com/hasan-muzak/keel/pkg/identity"
-	"github.com/hasan-muzak/keel/pkg/platform"
-	"github.com/hasan-muzak/keel/pkg/tenancy"
+	"github.com/hasan-muzak/keel-core/pkg/identity"
+	"github.com/hasan-muzak/keel-core/pkg/platform"
+	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
-	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
-	"github.com/hasan-muzak/keel/products/promptdam/server/core"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/analytics"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/cachedoctor"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
-	"github.com/hasan-muzak/keel/products/promptdam/server/handlers"
+	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/catalog"
+	"github.com/hasan-muzak/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/features/analytics"
+	"github.com/hasan-muzak/promptdam/server/features/cachedoctor"
+	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/handlers"
 )
 
 // Mount registers Promptdam's routes on the API application.

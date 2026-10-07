@@ -7,16 +7,16 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/hasan-muzak/keel/pkg/apikeys"
-	"github.com/hasan-muzak/keel/pkg/cli"
-	"github.com/hasan-muzak/keel/pkg/config"
-	"github.com/hasan-muzak/keel/pkg/entx"
-	"github.com/hasan-muzak/keel/pkg/identity"
-	"github.com/hasan-muzak/keel/pkg/keel"
+	"github.com/hasan-muzak/keel-core/pkg/apikeys"
+	"github.com/hasan-muzak/keel-core/pkg/cli"
+	"github.com/hasan-muzak/keel-core/pkg/config"
+	"github.com/hasan-muzak/keel-core/pkg/entx"
+	"github.com/hasan-muzak/keel-core/pkg/identity"
+	"github.com/hasan-muzak/keel-core/pkg/keel"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
-	"github.com/hasan-muzak/keel/products/promptdam/server/core"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/features/providers"
 )
 
 // devCommands help local development (dev seed refuses to run

@@ -16,22 +16,22 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/hasan-muzak/keel/pkg/apikeys"
-	"github.com/hasan-muzak/keel/pkg/counter"
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
-	"github.com/hasan-muzak/keel/pkg/memcache"
-	"github.com/hasan-muzak/keel/pkg/metering"
-	"github.com/hasan-muzak/keel/pkg/policy"
+	"github.com/hasan-muzak/keel-core/pkg/apikeys"
+	"github.com/hasan-muzak/keel-core/pkg/counter"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/memcache"
+	"github.com/hasan-muzak/keel-core/pkg/metering"
+	"github.com/hasan-muzak/keel-core/pkg/policy"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
-	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/rules"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/snapshot"
+	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/catalog"
+	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/routes"
+	"github.com/hasan-muzak/promptdam/server/features/rules"
+	"github.com/hasan-muzak/promptdam/server/features/snapshot"
 )
 
 // KeyTTL is how long a gateway trusts a key it checked: a revoked key

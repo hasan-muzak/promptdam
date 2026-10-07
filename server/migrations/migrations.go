@@ -7,8 +7,8 @@ import (
 	"embed"
 	"io/fs"
 
-	"github.com/hasan-muzak/keel/pkg/db"
-	"github.com/hasan-muzak/keel/pkg/events"
+	"github.com/hasan-muzak/keel-core/pkg/db"
+	"github.com/hasan-muzak/keel-core/pkg/events"
 )
 
 //go:embed postgres/*.sql

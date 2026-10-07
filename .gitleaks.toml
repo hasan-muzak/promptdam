@@ -1,0 +1,35 @@
+# Secret scanning (gitleaks, run in CI over every commit).
+[extend]
+useDefault = true
+
+# Test fixtures that are fake on purpose: the redaction tests need
+# secret-shaped strings to mask, and the webhook signing test uses the
+# Standard Webhooks published test vector.
+[[allowlists]]
+description = "Deliberate test fixtures"
+paths = [
+  '''pkg/redact/testdata/vectors\.json''',
+  # Each SDK's copy of it (sdks/vectors.sh in Fixwire keeps them identical).
+  '''redact/testdata/vectors\.json''',
+  '''packages/core/test/vectors\.json''',
+  '''tests/vectors\.json''',
+  '''io/fixwire/internal/redact/vectors\.json''',
+  '''Fixwire\.Tests/Redaction/vectors\.json''',
+  '''tests/Internal/Redaction/vectors\.json''',
+  '''test/internal/redaction/vectors\.json''',
+  '''fixwire/testdata/vectors\.json''',
+  '''pkg/redact/(redact|vectors)_test\.go''',
+  '''pkg/webhooks/webhooks_test\.go''',
+]
+
+# Atlas's migration checksums: each line is a file name and its hash, and a
+# name like "api_keys_cascade.sql" next to a hash reads as a generic API key.
+[[allowlists]]
+description = "Migration checksums"
+paths = ['''(^|/)atlas\.sum$''']
+
+# Tests stand in for a customer's upstream API key with an obvious
+# placeholder (a run of 0-9a-f) shaped like a Stripe key.
+[[allowlists]]
+description = "Test placeholder key"
+regexes = ['''sk_(live|test)_0123456789abcdef''']

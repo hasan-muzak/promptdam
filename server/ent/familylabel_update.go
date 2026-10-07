@@ -11,8 +11,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/familylabel"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
+	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
+	"github.com/hasan-muzak/promptdam/server/ent/predicate"
 )
 
 // FamilyLabelUpdate is the builder for updating FamilyLabel entities.

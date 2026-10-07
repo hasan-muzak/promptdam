@@ -13,8 +13,8 @@ import (
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/responses"
 
-	"github.com/hasan-muzak/keel/products/promptdam/bench/fakeupstream"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
+	"github.com/hasan-muzak/promptdam/server/features/gateway"
 )
 
 // The official SDKs work against the gateway with nothing changed but

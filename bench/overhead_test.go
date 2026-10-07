@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hasan-muzak/keel/pkg/safehttp"
+	"github.com/hasan-muzak/keel-core/pkg/safehttp"
 
-	"github.com/hasan-muzak/keel/products/promptdam/bench/fakeupstream"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
+	"github.com/hasan-muzak/promptdam/server/features/gateway"
 )
 
 // Budget is the gateway's overhead budget at p99 (project.md §6.1).

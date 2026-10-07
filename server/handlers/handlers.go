@@ -3,18 +3,18 @@
 package handlers
 
 import (
-	"github.com/hasan-muzak/keel/pkg/notify"
-	"github.com/hasan-muzak/keel/pkg/tenancy"
+	"github.com/hasan-muzak/keel-core/pkg/notify"
+	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/analytics"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/cachedoctor"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/rules"
+	"github.com/hasan-muzak/promptdam/server/features/analytics"
+	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/cachedoctor"
+	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/keysettings"
+	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/routes"
+	"github.com/hasan-muzak/promptdam/server/features/rules"
 )
 
 // Handlers hold Promptdam's services.

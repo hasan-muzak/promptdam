@@ -13,7 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/routingrule"
+	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
 )
 
 // RoutingRuleCreate is the builder for creating a RoutingRule entity.

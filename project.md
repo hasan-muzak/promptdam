@@ -3,7 +3,7 @@
 > **Status:** building (S0 done 2026-10-07; S1 backend done 2026-10-07, exit pending design partners) · **Owner:** Hasan · **Written:** 2026-10-03
 > **MVP build:** Mar 8 – Apr 23, 2027 · **Beta:** Apr 26, 2027 · **Public launch:** Tue May 18, 2027 (moved 5 weeks later to make room for Fixwire for Mobile)
 > **Catalog:** #10 "AI Cost Optimization API" + #17 "AI Firewall". Revenue potential: High.
-> **Location:** `keel/products/promptdam/` inside the root monorepo. Shared Go packages are in `../../pkg/`, shared Nuxt layers in `../../packages/`.
+> **Location:** `hasan-muzak/promptdam` (moves to the product's organization once the name is final), a submodule of the keel workspace at `keel/products/promptdam/promptdam/`. Shared Go packages are the core module (`keel/core/pkg/`, `github.com/hasan-muzak/keel-core`), shared Nuxt layers are in `keel/core/packages/`.
 > **Built on:** Keel (`../../project.md`). Read it first for the stack, conventions, billing and shared modules.
 > **Name (final):** **Promptdam**. A dam holds back spend and stops leaks. Owned by Badele LLC.
 > - Domains: **promptdam.dev** (product) and **promptdam.com** (redirect). Both were unregistered on 2026-10-03 (RDAP/WHOIS check); register them now and run a trademark search before launch.

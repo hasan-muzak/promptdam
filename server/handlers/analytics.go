@@ -8,12 +8,12 @@ import (
 	"github.com/google/uuid"
 	muzak "muzak.dev/framework"
 
-	"github.com/hasan-muzak/keel/pkg/httpx"
-	"github.com/hasan-muzak/keel/pkg/ids"
-	"github.com/hasan-muzak/keel/pkg/platform"
-	"github.com/hasan-muzak/keel/pkg/tenancy"
+	"github.com/hasan-muzak/keel-core/pkg/httpx"
+	"github.com/hasan-muzak/keel-core/pkg/ids"
+	"github.com/hasan-muzak/keel-core/pkg/platform"
+	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/analytics"
+	"github.com/hasan-muzak/promptdam/server/features/analytics"
 )
 
 // CodeInvalidQuery reports an analytics query that can't be answered.

@@ -16,7 +16,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 )
 
 // Flags say which changing values a request's instructions hold, and how

@@ -5,12 +5,12 @@ package enttest
 import (
 	"context"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/ent"
 	// required by schema hooks.
-	_ "github.com/hasan-muzak/keel/products/promptdam/server/ent/runtime"
+	_ "github.com/hasan-muzak/promptdam/server/ent/runtime"
 
 	"entgo.io/ent/dialect/sql/schema"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/migrate"
+	"github.com/hasan-muzak/promptdam/server/ent/migrate"
 )
 
 type (

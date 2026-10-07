@@ -13,6 +13,6 @@ package ent
 // The runtime package registers the schemas' defaults and the tenant
 // interceptor and hook. Importing it here, rather than in each main, means
 // no client can be built without them.
-import _ "github.com/hasan-muzak/keel/products/promptdam/server/ent/runtime"
+import _ "github.com/hasan-muzak/promptdam/server/ent/runtime"
 
-//go:generate go tool ent generate --feature sql/upsert,sql/execquery,sql/lock,intercept --template ../../../../pkg/entx/template ./schema
+//go:generate sh -c "go tool ent generate --feature sql/upsert,sql/execquery,sql/lock,intercept --template \"$(go list -m -f {{.Dir}} github.com/hasan-muzak/keel-core)/pkg/entx/template\" ./schema"

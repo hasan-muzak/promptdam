@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hasan-muzak/keel/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/families"
 )
 
 func TestNormalize(t *testing.T) {

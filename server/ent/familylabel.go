@@ -10,7 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/familylabel"
+	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 )
 
 // FamilyLabel is the model entity for the FamilyLabel schema.

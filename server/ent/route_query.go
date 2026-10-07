@@ -13,8 +13,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
+	"github.com/hasan-muzak/promptdam/server/ent/predicate"
+	"github.com/hasan-muzak/promptdam/server/ent/route"
 )
 
 // RouteQuery is the builder for querying Route entities.

@@ -13,7 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/hasan-muzak/keel/products/promptdam/server/ent/familylabel"
+	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 )
 
 // FamilyLabelCreate is the builder for creating a FamilyLabel entity.

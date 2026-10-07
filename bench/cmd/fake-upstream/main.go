@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/hasan-muzak/keel/products/promptdam/bench/fakeupstream"
+	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
 )
 
 func main() {

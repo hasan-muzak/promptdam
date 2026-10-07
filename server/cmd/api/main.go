@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/hasan-muzak/keel/pkg/billing"
-	"github.com/hasan-muzak/keel/pkg/cli"
-	"github.com/hasan-muzak/keel/pkg/keel"
+	"github.com/hasan-muzak/keel-core/pkg/billing"
+	"github.com/hasan-muzak/keel-core/pkg/cli"
+	"github.com/hasan-muzak/keel-core/pkg/keel"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/core"
-	"github.com/hasan-muzak/keel/products/promptdam/server/routers"
+	"github.com/hasan-muzak/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/routers"
 )
 
 func main() {

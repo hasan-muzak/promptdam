@@ -8,12 +8,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/hasan-muzak/keel/pkg/ids"
-	"github.com/hasan-muzak/keel/pkg/testkit"
+	"github.com/hasan-muzak/keel-core/pkg/ids"
+	"github.com/hasan-muzak/keel-core/pkg/testkit"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/analytics"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/gatewaytest"
+	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/features/analytics"
+	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
 )
 
 func TestRequestLogAndSpend(t *testing.T) {

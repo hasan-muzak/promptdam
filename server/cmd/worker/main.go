@@ -9,12 +9,12 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/hasan-muzak/keel/pkg/keel"
+	"github.com/hasan-muzak/keel-core/pkg/keel"
 
-	"github.com/hasan-muzak/keel/products/promptdam/server/core"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
-	"github.com/hasan-muzak/keel/products/promptdam/server/features/purge"
+	"github.com/hasan-muzak/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/features/purge"
 )
 
 func main() {
