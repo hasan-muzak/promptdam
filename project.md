@@ -1,6 +1,6 @@
 # Promptdam: cut the LLM bill, block the leaks
 
-> **Status:** building (S0 done 2026-10-07; S1 backend done 2026-10-07, exit pending design partners) · **Owner:** Hasan · **Written:** 2026-10-03
+> **Status:** building (S0 done 2026-10-07; S1 and S2 backends done 2026-10-07, exits pending design partners; S3 model routers in progress since 2026-10-08) · **Owner:** Hasan · **Written:** 2026-10-03
 > **MVP build:** Mar 8 – Apr 23, 2027 · **Beta:** Apr 26, 2027 · **Public launch:** Tue May 18, 2027 (moved 5 weeks later to make room for Fixwire for Mobile)
 > **Catalog:** #10 "AI Cost Optimization API" + #17 "AI Firewall". Revenue potential: High.
 > **Location:** `hasan-muzak/promptdam` (moves to the product's organization once the name is final), a submodule of the keel workspace at `keel/products/promptdam/promptdam/`. Shared Go packages are the core module (`keel/core/pkg/`, `github.com/hasan-muzak/keel-core`), shared Nuxt layers are in `keel/core/packages/`.
@@ -24,10 +24,10 @@ LLM spend is now a top-3 cost line for many software companies. Most of it is wa
 At the same time, apps and coding agents send `.env` files, customer emails and card numbers to third-party providers.
 
 **Promptdam is an OpenAI- and Anthropic-compatible gateway (BYOK) that:**
-1. Finds savings automatically:
-   - prompt families
-   - cheaper-model experiments with shadow evaluation
-   - caching fixes
+1. Sends every request to the cheapest model that does it as well:
+   - **model routers:** tiers the customer describes in plain words ("fast", "reasoning", "expert"…), across any providers, with each request placed in a tier by rules, a classifier learned from the customer's own traffic, and a decision model when unsure
+   - every tier verified against the strongest model on real requests before and after it serves them
+   - caching fixes (response cache, prompt caching, the cache doctor)
 2. Proves every saved dollar in a per-request ledger.
 3. Enforces a firewall: secrets and PII detection, redaction and blocking, CEL policies, budgets.
 
@@ -77,7 +77,7 @@ Basic routing and logging are free elsewhere, so Promptdam's plans are priced on
 
 **Wedge:**
 1. **Savings you can audit.** A per-request ledger shows the counterfactual cost on the requested model at list price vs the actual cost, with the reason for each saving (route, response cache, prompt cache, batch). This proof makes savings-share pricing believable.
-2. **Quality-guarded routing.** Cheaper models are adopted only after **shadow evaluation** on the customer's own traffic. A canary keeps sampling afterwards, and routing auto-reverts on drift. Nobody else sells "cheaper and proven not worse."
+2. **Per-request routing that is measured, not guessed.** A router places each request in one of the customer's tiers, across providers and API formats. Tiers serve traffic only after **shadow evaluation** on the customer's own requests shows they hold up against the strongest model. The evaluation keeps sampling afterwards, and a tier that drifts is demoted on its own. Others route by price, availability or a vendor's generic difficulty model; nobody sells "cheaper and proven not worse, on your traffic."
 3. **The prompt-caching doctor.** It detects why cache hit rates are low (unstable prefixes, timestamps, unsorted JSON, tool-list churn) and fixes what it can automatically: it injects Anthropic cache breakpoints when none are set. Often the fastest win.
 4. **A firewall built in, not an enterprise add-on.**
    - Secrets are blocked by default on every plan.
@@ -99,7 +99,7 @@ Basic routing and logging are free elsewhere, so Promptdam's plans are priced on
   - Google Gemini via its OpenAI-compatible endpoint.
   - Mistral, DeepSeek, Groq, Together, xAI and Fireworks (OpenAI-compatible).
   - Azure OpenAI, Bedrock and Vertex come post-launch.
-- **Routing scope at MVP:** requests stay **within their API format family**. OpenAI-format requests can go to any OpenAI-compatible provider or model; Anthropic-format requests go to Anthropic models. Cross-format translation comes after launch (§4.2).
+- **Routing across API formats (moved into the MVP, decided 2026-10-08):** an OpenAI Chat Completions request can be served by an Anthropic model and an Anthropic Messages request by any OpenAI-compatible one. The gateway translates requests, answers and streams, tools and images included, so fallbacks, rules and router tiers can name any provider. The Responses API stays passthrough to OpenAI-format providers.
 - **Promptdam keys** (`pd_sk_…`, via `pkg/apikeys`):
   - per project, team or developer
   - settings: allowed models, budget, policies, tags
@@ -113,7 +113,7 @@ Basic routing and logging are free elsewhere, so Promptdam's plans are priced on
   - **Auto prompt caching for Anthropic:** when the request has no `cache_control`, add top-level automatic caching plus a breakpoint after the stable system/tools prefix (respecting the 4-breakpoint limit and per-model minimum prefix sizes).
   - **Cache doctor:** detects unstable prefixes across requests in a family and explains the fix.
   - **Routes and manual routing rules:** CEL conditions, e.g. `request.input_tokens < 1500 && !request.has_tools` routes the request to a cheaper model.
-  - **Savings experiments:** auto-detected prompt families → candidate cheaper models → shadow sampling → judge → recommendation → approve → active rule with canary and auto-revert.
+  - **Model routers (§6.2):** tiers the project describes, called like a model (`"model": "auto"`) or attached to a route. Each call gets a tier from: the client's explicit choice, the models' capabilities, rules, a classifier learned from judged samples of the project's traffic, an opt-in decision model when the classifier is unsure, else the "unsure" tier. Shadow mode first (decide and evaluate, serve the strong tier), then active, with a canary that demotes a tier whose quality drifts.
 - **Savings ledger:** per request `counterfactual_cost`, `actual_cost`, `savings`, `reason`. A monthly verified-savings report, exportable as CSV.
 - **Firewall:**
   - detectors from `pkg/redact` (secrets, PII, custom dictionaries)
@@ -128,13 +128,13 @@ Basic routing and logging are free elsewhere, so Promptdam's plans are priced on
   - spend by model, provider, key, route, developer and tag
   - latency (TTFB, total), errors, cache hit rates, savings over time
   - request log (metadata by default; payload capture opt-in per project with `redact` applied).
-- **Platform (Keel):** orgs, members, keys, billing, usage, audit, webhooks (`budget.exceeded`, `firewall.blocked`, `experiment.ready`, `rule.reverted`).
+- **Platform (Keel):** orgs, members, keys, billing, usage, audit, webhooks (`budget.exceeded`, `firewall.blocked`, `router.ready`, `router.tier_demoted`).
 
 ### 4.2 Post-launch (May – Jul 2027)
 - **Batch deferral:** `x-promptdam-defer: batch` sends requests to Anthropic Message Batches or the OpenAI Batch API (about 50% cheaper). Results arrive by webhook or polling.
 - **Semantic cache:** embeddings, opt-in per route, similarity threshold, and an eval-guarded hit policy.
-- **Learned router:** decides the model per request, not just per family: a classifier in the gateway first, the OpenAI Decisions API only for the requests it is unsure of (§6.2, step 8).
-- **Cross-format translation** (OpenAI ⇄ Anthropic, including tools and streaming), so any request can use any model.
+- **Router extras:** the Responses API through routers (with translation), a classifier that also learns from the decision model's choices (fewer decision calls over time), bandit exploration between neighbouring tiers, and a Promptdam-paid judge billed at what the provider charges us (§5).
+- (The learned per-request router and cross-format translation moved into the MVP on 2026-10-08.)
 - **Fixwire integration:** every gateway request appears as an LLM span in the customer's Fixwire project.
 - **Coding-agent pack:**
   - per-developer keys with SSO-issued tokens
@@ -158,9 +158,9 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 
 | Plan | Price/mo | Requests/mo | Logs | Key features |
 |---|---|---|---|---|
-| Free | $0 | 50k (hard) | 7 days | Gateway, fallbacks, exact cache, **secrets blocking**, savings report (read-only) |
-| Pro | $49 | 500k | 30 days | Auto prompt caching + cache doctor, routing rules, budgets and alerts, PII redaction, ledger export |
-| Team | $199 | 3M | 90 days | Savings experiments (shadow eval) + auto-revert, CEL firewall policies, per-developer keys, audit log |
+| Free | $0 | 50k (hard) | 7 days | Gateway, fallbacks, exact cache, **secrets blocking**, savings report (read-only), one router in shadow mode (the report shows what routing would save) |
+| Pro | $49 | 500k | 30 days | Auto prompt caching + cache doctor, routing rules, active routers with explicit tiers and rules, budgets and alerts, PII redaction, ledger export |
+| Team | $199 | 3M | 90 days | Learned routing (evaluation, classifier, decision model) + auto-demotion, CEL firewall policies, per-developer keys, audit log |
 | Business | $499+ | 10M | 1 year | Custom policies, payload-free mode guarantees, DPA, SLA, SSO, priority support |
 
 - **Overage** (soft on paid plans): $5 per extra 100k requests on Pro, $3 on Team, $2 on Business.
@@ -168,9 +168,11 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
   - a $500/mo base price that covers 15% of the first $3,333 saved
   - a metered `savings_share` (USD cents) Stripe meter, reported monthly from the verified ledger as `max(0, 0.15 × savings − 500)`
   - the customer approves the monthly savings report before invoicing, with a dispute window of 7 days.
-- **Shadow evaluation cost:** experiments call models with the **customer's own provider keys**. Every experiment has a visible budget cap (default $25/experiment, $100/mo), and its cost is subtracted in the savings ledger.
+- **Router tiers per plan (my proposal, 2026-10-08; change freely):** Free gets one router in shadow mode, so the report shows the savings before any upgrade; Pro serves traffic through routers with explicit tiers and rules; Team adds the learned parts (evaluation, classifier, decision model, auto-demotion).
+- **Evaluation cost:** a router's evaluation (replays, judge and decision-model calls) runs on the **customer's own provider keys** (decided 2026-10-08). Every router has a visible monthly budget cap (default $100), and the cost is subtracted in the savings ledger.
+  - Later, if customers ask: a Promptdam-paid judge on Promptdam's own keys, charged at what the provider charges us.
 - **Path to $10–15k MRR:** for example, 60 Pro ($2.9k) + 30 Team ($6k) + 8 Business ($4k) ≈ $12.9k, before request overage.
-- **Meters:** `requests` (soft on paid, hard on Free). `ai_credits` (judge calls when the customer opts for Promptdam-paid judging) waits for the judge decision (S3); seats are a plan limit, not a meter.
+- **Meters:** `requests` (soft on paid, hard on Free). `ai_credits` comes only with a Promptdam-paid judge; seats are a plan limit, not a meter.
 
 ---
 
@@ -184,15 +186,17 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
  │ key check (checksum → in-memory → Valkey) → budget/rate (local bucket + Valkey)         │
  │ → parse request (OpenAI | Anthropic) → family id (hash of normalised system+tools)      │
  │ → firewall: redact scan + CEL policy → block | redact | tokenize | alert                 │
- │ → route: rules (CEL) → served model (+ fallback chain) → cache lookup (exact)            │
+ │ → route: router (tier cascade) | rules (CEL) → served model (+ fallback chain)           │
+ │ → cache lookup (exact) → translate when the target speaks the other API format           │
  │ → prompt-cache injection (Anthropic) → provider adapter (BYOK key from vault cache)      │
  │ → stream passthrough (SSE tee: usage + response-side scan) → detokenize → client         │
- │ → async: ledger row → events.Writer (ClickHouse) · metering · shadow sample enqueue      │
+ │ → async: ledger row → events.Writer (ClickHouse) · metering · evaluation queue (memory)  │
+ │   evaluator: replays on other tiers + judge, on the project's keys → router_evals       │
  └──────────────────────────────────────────────────────────────────────────────────────────┘
  ┌──── worker (River) ─────────────────────────┐   ┌──── api.<domain> (muzak + keel) ─────────┐
- │ family stats · experiment runner (shadow     │   │ providers, keys, routes, rules, policies,│
- │ calls + judge) · canary checks · auto-revert │   │ budgets, experiments, analytics, ledger  │
- │ · savings reports · cache doctor · alerts    │   └──────────────────────────────────────────┘
+ │ classifier training + calibration · canary   │   │ providers, keys, routes, routers, rules, │
+ │ checks · auto-demotion · savings reports ·   │   │ policies, budgets, analytics, ledger     │
+ │ cache doctor · alerts                        │   └──────────────────────────────────────────┘
  └──────────────────────────────────────────────┘    ▲ app.<domain>: Promptdam's own dashboard (built from @keel/app-kit)
 ```
 
@@ -205,62 +209,79 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
   - Response-side PII found while streaming defaults to **alert**, because blocking mid-stream breaks UX. **Tokenized placeholders** are restored in-stream.
 - **Request-side firewall:** scans all text parts (system, messages, tool results; text extracted from images is out of scope). It decides before anything is sent upstream, so blocked data never leaves.
 - **Fail behaviour:**
-  - On an internal error, Promptdam fails open to direct upstream for routing and caching, but **never** for firewall decisions. A firewall-scanner error under a `block` policy fails closed, configurable per org.
+  - On an internal error, Promptdam fails open to direct upstream for routing and caching, but **never** for firewall decisions. A firewall-scanner error under a `block` policy fails closed for secrets and open for everything else, configurable per project (decided 2026-10-08).
   - A provider outage triggers the fallback chain, then a clear error with a `x-promptdam-trace` id.
 - **Headers returned:** `x-promptdam-trace`, `x-promptdam-served-model`, `x-promptdam-cache` (hit/miss/prompt), `x-promptdam-savings-micros`.
 
-### 6.2 Families, experiments and the savings engine (`features/families`, `features/experiments`)
+### 6.2 Model routers: tiers, the cascade, evaluation and learning (`features/routers`, `features/evaluate`, `features/classifier`, `features/translate`)
 
-**How a model is chosen: the principles (agreed 2026-10-07).**
-- **We don't guess difficulty from the message.** Length and other surface features say little about how hard a request is:
-  - A two-line question ("is this contract clause enforceable?") can need a strong reasoning model.
-  - Fifty paragraphs with a simple question ("how many times is word x used?") may not.
-  - So Promptdam never switches models on its own by length or any other guess.
-- **We answer a narrower question, by trying instead of predicting.** We never decide which model is best for a message in general. We ask: for *this customer's* task (a family, step 1), are a cheaper model's answers as good as those of the model they use today?
-  - Both models answer the same real requests, and the answers are compared (steps 3–4).
-  - A family switches only on evidence (step 5) and with the customer's approval.
-  - The baseline is always the customer's own choice. The claim is "not worse than what you use today, on your traffic", never "the best model".
-- **A family with hard cases mixed in doesn't switch.** The cheaper model loses those comparisons, and the match rate stays below the threshold. Most production calls are templated jobs (extract fields from an invoice, classify a ticket, summarise a call), so difficulty varies far less within a family than across messages in general.
-- **Per-request decisions are learned from outcomes, not length (step 8).**
-  - The classifier's label is "did the cheaper model's answer hold up for this request?"
-  - Its features include the words of the message, not only its size. In a family where "why / prove / is it legal" questions fail on the small model and "count / list / extract" ones pass, it learns that split.
-  - When it can't tell, it asks the Decisions API, which reads the meaning (it sees that counting a word is easy however long the text is). Without that, the request keeps the strong model.
-- **Safety is asymmetric.** A hard request sent to a weak model costs quality; an easy one sent to a strong model only costs money. Every threshold leans to the strong model, and the canary (step 6) keeps checking after a switch and reverts on its own.
+Model routing is one of Promptdam's core features (decided 2026-10-08, replacing per-family experiments; ADR `docs/adr/0001-model-routers.md`). It must be flexible (any tiers, any providers), fast (no extra call for most requests), safe (mistakes lean to the stronger model and roll back on their own) and measured (every claim about quality comes from judged answers on the customer's own traffic).
+
+**The principles (agreed 2026-10-07, kept on 2026-10-08).**
+- **We don't guess difficulty from surface features.** A two-line question ("is this contract clause enforceable?") can need a strong reasoning model; fifty paragraphs with "how many times is word x used?" may not. Length alone never moves a request to a weaker model.
+- **The customer says what each tier is for; outcomes say where the boundaries are.** Tier descriptions and rules are the customer's words. Which requests a tier really handles well is learned from judged answers on their traffic, never assumed.
+- **The baseline is the customer's own choice:** the model a call asked for, else the router's strongest tier. The claim is "not worse than the baseline, on your traffic", never "the best model".
+- **Safety is asymmetric.** A hard request sent to a weak model costs quality; an easy one sent to a strong model only costs money. When unsure, every step picks the stronger tier, failures fall back upwards, and a tier that drifts is demoted on its own.
 - **Limits, said plainly:**
-  - The judge can be wrong. Deterministic checks come first, and a calibration sample is judged by two judges.
-  - Free-form chat (one system prompt, anything from users) varies too much to switch per family. Its savings come from caching and the per-request router, or not at all.
-  - Customers can exclude critical routes from any switch.
+  - No router is 100% accurate. What we promise is measured quality per tier (with its confidence interval), mistakes leaning up, and rollback.
+  - The judge can be wrong. Deterministic checks come first, and a sample is judged in both orders to catch position bias.
+  - A tier needs judged samples before the classifier sends it anything (200 by default). Until then, only explicit choices, rules and the decision model place requests there.
+  - Customers can keep critical routes out of any router.
 
-**The steps:**
-1. **Family ID:** hash of the normalised system prompt (numbers, dates, UUIDs and whitespace normalised) + tool names + response format, or an explicit `x-promptdam-route`. Stats are kept per family: volume, tokens, cost, model mix, latency, error rate.
-2. **Candidate selection:** a family qualifies with ≥ 1,000 requests/week and ≥ $50/week spend. Candidates are cheaper models with the required capabilities (tools, JSON/structured output, context ≥ p99 input, vision if needed), taken from the `pkg/llm` catalog.
-3. **Shadow sampling:**
-   - The worker re-sends a sample (default 5%) of the family's requests to the candidate, asynchronously and outside the user's path, within the budget cap.
-   - Payload capture for the sample is held in memory or briefly in R2 with a 24h TTL, encrypted, and deleted after judging.
-4. **Judging:**
-   - Deterministic checks first: JSON schema validity, tool-call name and argument equivalence, exact match for classification-like outputs.
-   - Otherwise a pairwise LLM judge (`claude-sonnet-5-5` by default, or `claude-haiku-4-5` for simple rubric checks) with a rubric (correctness, completeness, instruction/format adherence) and position-bias control (randomised order).
-   - Each sample is recorded as a win, tie or loss.
-5. **Recommendation:**
-   - Requires ≥ 200 samples and a win + tie rate ≥ the threshold (default 95%, set per route).
-   - Shows projected monthly savings with confidence intervals, plus example pairs (redacted).
-   - The customer approves, or Team+ can enable auto-apply for low-risk families.
-6. **Canary:** after activation, 1% of routed requests also run on the baseline model and are judged. When quality drops below the threshold over a rolling window, the rule **auto-reverts** and fires `rule.reverted`.
-7. **Ledger:** per request, `counterfactual_cost = list price(requested model, tokens, no cache)` and `actual = provider-reported usage × list price` (cache read and write pricing included). Savings are attributed to their reason. Experiment and judge costs are recorded as negative savings.
-8. **Per-request routing, a cascade (decided 2026-10-07; built in S6.4).** Never an LLM call per message by default:
-   1. **Classifier in the gateway.** A small model per family (logistic regression or gradient-boosted trees) predicts whether the cheaper model's answer will be acceptable.
-      - Its features cost nothing to compute: input tokens, message count, tools, `max_tokens`, code or JSON in the last message, tags, hashed n-grams of the last user message.
-      - It is trained in the worker on the judged shadow samples (step 4) and shipped to gateways with the config snapshot. Inference takes microseconds.
-   2. **A decision model, only when the classifier is unsure.** When the classifier's confidence is below the route's threshold, or the family has no trained model yet, a route may opt in to asking a decision model (typed answers: a `score` question on difficulty).
-      - Not tied to one vendor: OpenRouter lists decision models (`?output_modalities=decisions`). On 2026-10-07 the cheapest were Respan span-01 ($0.02 per 1M input tokens); Jev, Liquid d1 and Perplexity's decider (about $0.04); and Inception's mercury-decide (free). For comparison, Cloudflare Clef is $0.24 and OpenAI's `gpt-6-luna` $0.10.
-      - Pick the cheapest that passes calibration against the judged samples, and re-check it when prices or models change.
-      - It has a hard timeout (about 150 ms) and fails open to the family's default model.
-      - It runs on the customer's own key (OpenRouter's or the vendor's) when they have one.
-      - Target: under 10% of a family's requests get here. Measure it in beta.
-   3. **Otherwise the family's default:** the model its experiment proved, else the requested one.
-   - A bandit (Thompson sampling) keeps trying the cheaper model on a few percent of traffic, with the canary's judgments as its reward; auto-revert still applies.
-   - Not chosen: a hosted decision model on every request (70–500 ms added, a per-request bill, every prompt sent to one more vendor).
-   - Recommendation, not yet decided: use the Decisions API as the first-tier judge in step 4, escalating low-confidence verdicts to the strong judge, with a calibration sample judged by both.
+**What a project sets up: routers.**
+- A router has a name and is called like a model (`"model": "auto"`), or a route sends all its calls through it (`router` on the route).
+- **Tiers,** ordered from cheapest to strongest, any number up to 8. Each has a name, a description in plain words of the work it is for, a model with up to 5 fallbacks (any provider: the gateway translates between API formats), and up to 20 example requests.
+- **Rules:** CEL conditions over the request (as routing rules see it), in order, each sending matching calls to a tier.
+- **The unsure tier** serves calls nothing places with confidence: the strongest tier by default. When a route sends a call for a named model through a router, the unsure choice is that model.
+- **The quality floor** (default 95%): the share of a tier's answers that must hold up against the baseline's (judged as good or better).
+- **Evaluation settings:** sample rate (default 2%; 10% in shadow mode), monthly evaluation budget (default $100), the judge model (the project's choice on one of its providers; `claude-sonnet-5-5` by default when it has an Anthropic provider) and an optional decision model.
+- **Modes:** `shadow` (decide and evaluate every sampled call, but serve the unsure tier: the dry-run on live traffic), `active`, `disabled`.
+
+| Tier | Model | For (the customer's words) |
+|---|---|---|
+| fast | claude-haiku-4-5 | greetings, formatting, extraction, yes/no classification |
+| standard | a Gemini Flash model (OpenAI format) | summaries, rewriting, simple questions |
+| reasoning | claude-sonnet-5-5 | multi-step reasoning, code, analysis |
+| expert | claude-opus-5-5 | legal or financial judgment, long planning |
+
+**How a call gets its tier: a cascade.** The cheapest check runs first, and each step runs only when the one before it didn't decide. The tier, the step that chose it and its confidence are logged with the call (`tier`, `tier_source`, `tier_confidence`).
+1. **Explicit:** `"model": "auto:expert"` or `X-Promptdam-Tier: expert`. Developers often know.
+2. **Requirements (a filter, not a guess):** tools, images, a JSON schema, and the context needed (estimated input plus `max_tokens`) against each tier's model, from the price list's capabilities and context windows. A tier whose model can't serve the call is skipped upwards. Unknown capabilities count as present; the fallback chain covers a provider that refuses.
+3. **Rules,** in order.
+4. **The classifier,** inside the gateway: microseconds, no call. It estimates, for each tier below the baseline, the probability that the tier's answer holds up, and picks the cheapest tier whose probability clears that tier's calibrated threshold.
+5. **The decision model,** opt-in, only when the classifier is unsure or not trained yet. It reads the tier descriptions and examples and an excerpt of the request, and answers a tier (structured output).
+   - A hard timeout (default 150 ms) falls through to step 6. Answers are cached per router, family and last message for 10 minutes.
+   - It runs on the project's own key, and its cost counts against the call. Any model works: OpenRouter's decision models (on 2026-10-07 the cheapest were Respan span-01 at $0.02 per 1M input tokens; Jev, Liquid d1 and Perplexity's decider about $0.04; Inception's mercury-decide free) or a small chat model.
+   - Target: under 10% of a router's calls get here once the classifier is trained. Measure it in beta.
+6. **The unsure tier.**
+- Then: a tier's own fallbacks, then the next tier up, on rate limits, overload, server errors and timeouts.
+
+**Evaluation (in the gateway, off the call's path; `features/evaluate`).**
+- A sample of a router's calls goes to an in-memory queue (bounded; samples are dropped when it is full). Requests are never stored: they live in the gateway's memory until judged.
+- Each sample is replayed, not streamed, on every tier cheaper than the baseline, and on the baseline when another tier served the call (a served baseline answer is reused).
+- **Judging:** deterministic checks first (valid JSON, the schema, tool names and arguments, exact match, refusals). Otherwise a pairwise judge with a rubric (correctness, completeness, following the instructions and format) and the answers in random order; 10% are judged in both orders, and a disagreement counts as a tie.
+- Every verdict is a row of `router_evals`: the tiers, the verdict, the costs, and the request's features as hashes (never its text).
+- Replays, judge and decision-model calls run on the project's own provider keys (decided 2026-10-08), within the router's monthly budget, and count as the project's spend. Their cost is subtracted from the router's savings.
+
+**Learning (in the worker; `features/classifier`).**
+- **Features** cost nothing to compute: hashed words and word pairs of the last user message and of the instructions, estimated input tokens, messages, tools, `max_tokens`, a JSON answer, code or JSON in the last message, the family, tags. So the classifier learns splits like "count / list / extract" vs "why / prove / is it legal" within one task.
+- **Label:** for each judged sample and tier, whether that tier's answer held up against the baseline.
+- **Model:** a logistic regression per tier below the baseline (sparse weights on hashed features), retrained daily and when enough new samples arrive, shipped to gateways with the project's configuration.
+- **Calibration:** on held-out samples (cross-validation), each tier's threshold is the lowest at which the calls it would route meet the quality floor. A tier with fewer than 200 samples gets no threshold.
+
+**Shadow report, activation and the canary.**
+- **The report** (shadow or active): the share of calls per tier and per cascade step, each tier's quality against the baseline with a 95% interval (Wilson), the classifier's held-out accuracy, and projected monthly cost and savings at the project's prices.
+- **Activating** needs the quality interval's lower bound at or above the floor for every tier the router would use, or an explicit override (as with routing rules). `router.ready` fires when a shadow router first qualifies.
+- **The canary:** sampling goes on while active. A tier whose quality interval's upper bound falls below the floor (at least 50 samples in 7 days) is **demoted**: its calls go one tier up, `router.tier_demoted` fires and the project's channels are alerted. The customer restores it.
+
+**Families stay** (`features/families`): a hash of the normalised system prompt (numbers, dates, UUIDs and whitespace normalised) + tool names + response format, or `X-Promptdam-Family`. They feed spend breakdowns, the cache doctor, the classifier (as a feature) and a per-family view of a router's report ("summarise ticket: fast holds up 98%, n = 240").
+
+**Ledger:** per request, `counterfactual_cost = list price(baseline model, tokens, no cache)` and `actual = provider-reported usage × list price` (cache read and write pricing included). Savings are attributed to their reason (`routing` for routers and rules). Evaluation and decision costs are recorded as negative savings.
+
+**Not chosen:**
+- A hosted decision model on every request: 70–500 ms added, a per-request bill, every prompt sent to one more vendor.
+- Routing by length or other surface features alone.
+- Embedding the request for a nearest-neighbour router: an embedding call per request (latency, cost, one more vendor). Revisit if the classifier plateaus.
 
 ### 6.3 Prompt-caching doctor (`features/cachedoctor`)
 - For Anthropic-format families:
@@ -294,19 +315,20 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 |---|---|
 | `providers` | kind (openai/anthropic/gemini/…/custom), name, base_url, key_ref (vault), regions, enabled, priority |
 | `key_settings` | api_key_id (core apikeys), allowed_models[], default_route, budget_id, policy_set_id, tags, developer_email |
-| `routes` | name, match (header / family ids), cache_policy, prompt_cache_autofix, quality_threshold, fallback_chain |
-| `families` | hash, label (auto/human), sample_ref (redacted, TTL), first_seen, stats snapshot |
-| `routing_rules` | route_id / family_id, from_model, to_model, condition (CEL), status (proposed/active/reverted/disabled), activated_by, activated_at, reverted_at, reason |
-| `experiments` | family_id, baseline_model, candidate_model, sample_rate, budget_micros, spent_micros, samples, wins, ties, losses, status, est_monthly_savings_micros |
+| `routes` | name, fallbacks, retries, cache_ttl_seconds, prompt_cache, router |
+| `family_labels` | family, label (human) |
+| `routing_rules` | route, condition (CEL), to_model, priority, status (draft/active/disabled), activated_at |
+| `model_routers` | name, status (shadow/active/disabled), tiers jsonb (name, description, targets, examples), rules jsonb (condition → tier), unsure_tier, quality_floor, sample_rate, eval_budget_micros, judge, decision (model, timeout), demoted jsonb, activated_at |
+| `router_classifiers` | router_id, version, trained_at, samples, metrics jsonb (per tier: threshold, held-out quality), weights (compact binary) |
 | `policy_sets` | name, rules jsonb (CEL), version, default_effect |
 | `budgets` | scope (org/project/key/developer/route), scope_id, window (day/month), limit_micros, action (alert/block), thresholds[] |
 | `savings_reports` | period, verified_savings_micros, share_micros, status (draft/approved/disputed/invoiced), approved_by |
 | `alert_rules` | kind (spend_spike, error_rate, provider_down, budget, firewall), params, channel_ids[] |
 
 **ClickHouse:**
-- `requests(org_id, project_id, key_id, route, family_id, provider, requested_model, served_model, api_format, stream, status, http_status, ttfb_ms, latency_ms, upstream_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_micros, counterfactual_micros, savings_micros, savings_reason, response_cache_hit, firewall_action, findings_kinds Array(LowCardinality(String)), developer, tags Array(String), error_code, payload_ref, ts, retention_days)`
+- `requests(org_id, project_id, key_id, route, family_id, provider, requested_model, served_model, api_format, stream, status, http_status, ttfb_ms, latency_ms, upstream_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_micros, counterfactual_micros, savings_micros, savings_reason, response_cache_hit, router, tier, tier_source, tier_confidence, router_micros, firewall_action, findings_kinds Array(LowCardinality(String)), developer, tags Array(String), error_code, payload_ref, ts, retention_days)`
 - `firewall_events(…, finding_kind, location, action, policy_rule, excerpt_masked, ts)`
-- `experiment_samples(experiment_id, request_id, verdict, scores, baseline_cost, candidate_cost, judge_cost, ts)`
+- `router_evals(project_id, ts, router, trace, family_id, served_tier, tier_source, baseline_model, candidate_tier, candidate_model, verdict, check, judge_model, candidate_micros, baseline_micros, judge_micros, features Array(UInt32), retention_days)`
 
 All tables have TTL by plan, and `ORDER BY` starts with `(project_id, ts)`.
 
@@ -319,7 +341,10 @@ products/promptdam/
 │   │   ├── gateway/        hot path: parse, snapshot config, route, cache, stream tee, ledger emit
 │   │   ├── providers/      adapters (openai-compatible, anthropic, gemini-compat, azure later), errors → fallback
 │   │   ├── families/       normalisation, hashing, stats
-│   │   ├── experiments/    candidate selection, shadow runner, judge, canary, auto-revert
+│   │   ├── translate/      OpenAI Chat ⇄ Anthropic Messages: requests, answers, streams, errors
+│   │   ├── routers/        tiers, rules, the cascade, reports, activation, canary and demotion
+│   │   ├── evaluate/       in-gateway sampling, replays, deterministic checks, the pairwise judge
+│   │   ├── classifier/     features, training, calibration, inference
 │   │   ├── cachedoctor/    prefix-stability analysis, autofix
 │   │   ├── firewall/       presets, policy evaluation, tokenisation, events
 │   │   ├── budgets/        counters, windows, enforcement, alerts
@@ -332,8 +357,9 @@ products/promptdam/
 │   └── migrations/{postgres,clickhouse}/
 ├── web/{app,site,api}/             Promptdam's OWN dashboard and landing site (built from @keel/app-kit and
 │                                   @keel/site-kit), plus the generated API client
-│   └── app/pages: index (spend + savings), requests/, requests/[id], families/, families/[id], experiments/,
-│                  routes/, firewall/, budgets/, providers/, savings/ (ledger + reports), settings/* (keel)
+│   └── app/pages: index (spend + savings), requests/, requests/[id], families/, families/[id], routers/,
+│                  routers/[id] (tiers, report), routes/, firewall/, budgets/, providers/, savings/ (ledger +
+│                  reports), settings/* (keel)
 ├── bench/                         latency + throughput harness (vegeta/k6 scripts, fake upstream)
 ├── deploy/                        compose.yaml (api, gateway, worker + shared fragments), Caddyfile, env.*.sops;
 │                                  later a second gateway VPS behind Cloudflare Load Balancing
@@ -356,7 +382,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - [x] S0.3 `bench/` harness with a fake upstream (configurable latency and streaming) for repeatable overhead measurement in CI.
   - **Done 2026-10-07:** `bench/fakeupstream` (all four formats) and `task promptdam:bench`. The timing gate runs on demand (`PROMPTDAM_BENCH=1`), not in CI: shared CI runners are too noisy for p99s. The functional tests run in CI.
 - [ ] S0.4 Catalog (`plans.go`), Stripe sync (test), real landing page; recruit 10 design partners with ≥ $2k/mo LLM spend (waitlist, interviews, Fixwire customers with high cost-per-run).
-  - **Done 2026-10-07, catalog:** `server/catalog/plans.go` per §5: Free, Pro, Team and Business with request overage. The savings plan is deferred (decided 2026-10-07). `ai_credits` waits for the judge decision (S3). Seats are 3 on Free and 10 on Pro (my numbers, change freely).
+  - **Done 2026-10-07, catalog:** `server/catalog/plans.go` per §5: Free, Pro, Team and Business with request overage. The savings plan is deferred (decided 2026-10-07). No `ai_credits`: the judge runs on the customer's keys (decided 2026-10-08). Seats are 3 on Free and 10 on Pro (my numbers, change freely).
   - **Done 2026-10-07, Stripe (test mode):** `api stripe sync` created the portal, the `promptdam_requests` meter, and Pro, Team and Business with monthly and yearly prices plus request overage. The webhook events are those of `docs/billing-policy.md`; others are acknowledged and ignored.
   - **Needs you:** the landing page and design partners.
 - **Exit (met 2026-10-07):** proxy overhead p99 < 40 ms on the bench with streaming; OpenAI and Anthropic SDKs work unmodified with only `base_url` changed.
@@ -453,7 +479,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
     - The gateway adds breakpoints on the last tool and the end of the system prompt: two, within Anthropic's limit of four. Content is never moved.
     - The response says `x-promptdam-cache: prompt`. Cache reads and writes come from the provider's usage, and the savings ledger counts them.
 - [ ] S2.5 Routes + manual routing rules (CEL conditions, same-format targets only), rules UI with dry-run on recent traffic ("would have saved $X").
-  - A rule is a customer's guess (e.g. `request.input_tokens < 1500`), so it is shadow-tested like an experiment before it routes anything. The dry-run shows both the savings and the quality on the requests the rule would match (win/tie/loss from steps 3–4 of §6.2). Activating a rule whose matched traffic fails the route's quality threshold needs an explicit override (decided 2026-10-07).
+  - A rule is a customer's guess (e.g. `request.input_tokens < 1500`), so it is shadow-tested before it routes anything. The dry-run shows both the savings and the quality on the requests the rule would match (judged as in §6.2's evaluation). Activating a rule whose matched traffic fails the route's quality threshold needs an explicit override (decided 2026-10-07).
   - **Done 2026-10-07, the backend (cost half):**
     - Rules are CEL conditions over the call as the gateway sees it, via `pkg/policy`: `model`, `format`, `input_tokens` (estimated from bytes), `messages`, `max_tokens`, `has_tools`, `json`, `stream`, `family`, `tags`, `user`, `developer` and `route`.
     - The request is a typed object, so a misspelt field or a wrong type is refused on save, with its line and column. A rule can be limited to one route.
@@ -461,7 +487,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
     - Dry-run, saved or not, over the most recent 20,000 calls of a range of up to 31 days: calls matched, their cost, and the cost on the rule's model with the same tokens. Project prices come first. Calls the gateway can't price are counted apart.
     - The first active rule that holds puts its model first, and the model asked for stays the first fallback. The rule is logged with the call, and its savings count as routing.
   - **Still open:**
-    - The quality half of the dry-run (win/tie/loss) and the activation gate, which needs S3's shadow tests. Until then, activating a rule is the customer's call, on cost evidence only.
+    - The quality half of the dry-run (win/tie/loss) and the activation gate, which needs S3's evaluation. Until then, activating a rule is the customer's call, on cost evidence only. A rule whose quality matters can be a router rule instead: routers in shadow mode measure it (S3.4).
     - The rules UI is the owner's.
 - [ ] S2.6 Savings ledger (counterfactual pricing, reasons) and savings dashboard.
   - **Done 2026-10-07, the backend:**
@@ -471,22 +497,27 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
   - The savings dashboard is the owner's.
 - **Exit:** at least 3 design partners show ≥ 15% verified savings from caching and manual rules alone.
 
-### S3: Firewall and savings experiments (Thu Apr 1 – Mon Apr 12)
-- [ ] S3.1 Keel K7.1: streaming-safe redact scanner with chunk overlap; reversible tokenisation restored in streamed responses.
-- [ ] S3.2 Firewall presets (source code, customer data), CEL policy sets, actions (block/redact/tokenize/alert/route_to), fail-closed option.
-- [ ] S3.3 Firewall UI (events with masked excerpts, stats), alerts, weekly digest.
-- [ ] S3.4 Experiments: candidate selection by capabilities, shadow runner within budget caps, deterministic checks + pairwise LLM judge with position randomisation.
-- [ ] S3.5 Recommendations UI (savings projection with confidence, example pairs, approve) → active routing rule.
-- [ ] S3.6 Canary sampling + auto-revert + `rule.reverted` webhook/email.
-- [ ] S3.7 Tag core milestone **`core-v0.4.0`**.
-- **Exit:** an end-to-end experiment on a design partner's family reaches a recommendation; a forced quality drop triggers auto-revert within one window; secrets in a test prompt are blocked before leaving.
+### S3: Model routers and the firewall (Thu Apr 1 – Mon Apr 12; routers built ahead, from 2026-10-08)
+Model routers replace per-family savings experiments, and cross-format translation and the learned router moved here from S6 (decided 2026-10-08, §6.2, ADR 0001). The steps, each committed on its own:
+- [ ] S3.1 Cross-format translation: OpenAI Chat Completions ⇄ Anthropic Messages requests, answers, streams (tools, images, JSON answers, usage, stop reasons) and errors; golden tests per direction, and the official SDKs through the gateway. Fallbacks and rules may then name a model of the other format.
+- [ ] S3.2 Model capabilities in the price list (tools, images, structured output, reasoning, context window), from OpenRouter's models API (core `pkg/llm`).
+- [ ] S3.3 Routers: tiers, rules, explicit tiers (`model: "auto:tier"`, `X-Promptdam-Tier`), requirement filters, the unsure tier, shadow and active modes; routes may send their calls through a router. API, snapshot, gateway, request log (`router`, `tier`, `tier_source`, `tier_confidence`) and ledger (baseline counterfactual).
+- [ ] S3.4 Evaluation in the gateway: sampling into a bounded in-memory queue, replays on the cheaper tiers and the baseline on the project's keys, deterministic checks, the pairwise judge (random order, 10% in both orders), the evaluation budget, `router_evals`.
+- [ ] S3.5 The classifier: features shared by gateway and worker, training and calibration in the worker, shipping to gateways; the router report (tier shares, quality with intervals, held-out accuracy, projected savings, per family).
+- [ ] S3.6 The decision model for unsure calls (opt-in): structured answer, hard timeout, cache, cost on the call.
+- [ ] S3.7 Activation gate, `router.ready`, the canary and auto-demotion (`router.tier_demoted`, alerts).
+- [ ] S3.8 Keel K7.1: streaming-safe redact scanner with chunk overlap; reversible tokenisation restored in streamed responses.
+- [ ] S3.9 Firewall presets (source code, customer data), CEL policy sets, actions (block/redact/tokenize/alert/route_to), fail-closed for secrets and open for the rest by default (decided 2026-10-08).
+- [ ] S3.10 Firewall events (masked excerpts, stats), alerts, weekly digest; the firewall UI is the owner's.
+- [ ] S3.11 Tag core milestone **`core-v0.4.0`**.
+- **Exit:** a router in shadow mode on a design partner's traffic reaches `router.ready`, then serves it active with measured savings; a forced quality drop demotes a tier within one window; secrets in a test prompt are blocked before leaving.
 
 ### S4: Billing, launch readiness and lead magnet (Tue Apr 13 – Fri Apr 23)
 - [ ] S4.1 Billing: plans and the `requests` overage meter. The savings-plan base, `savings_share` meter and monthly report approval are deferred (2026-10-07).
 - [ ] S4.2 "LLM Bill Audit" free tool on the site. The user uploads OpenAI/Anthropic usage exports (CSV), or a 7-day sample through Promptdam's free plan. Output:
   - an estimated savings breakdown (model downgrade potential by family size, caching potential, batch potential)
   - a PDF/email report and a CTA.
-- [ ] S4.3 Docs: concepts (families, rules, experiments, ledger, firewall), provider setup, migration guides (from OpenRouter, LiteLLM, Portkey, Helicone), security and data handling page, API reference, `llms.txt`.
+- [ ] S4.3 Docs: concepts (families, rules, routers, ledger, firewall), provider setup, migration guides (from OpenRouter, LiteLLM, Portkey, Helicone), security and data handling page, API reference, `llms.txt`.
 - [ ] S4.4 Load test at 1k req/s with streaming on the Promptdam VPS (2 gateway replicas behind Caddy); uptime checks; status page; documented client-side fallback to the provider for when the gateway is unreachable.
 - [ ] S4.5 Security pass: vault for provider keys, payload-free default, tenant isolation, SSRF guard on custom provider URLs, dependency audit, signed container images.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
@@ -505,8 +536,8 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 ### S6: Post-launch (May – Jul 2027; shares time with Fixwire for Games, May 19 – Jun 25)
 - [ ] S6.1 Batch deferral (Anthropic Message Batches, OpenAI Batch).
 - [ ] S6.2 Semantic cache with eval guard.
-- [ ] S6.3 Cross-format translation (OpenAI ⇄ Anthropic incl. tools + streaming), unlocking cross-provider routing.
-- [ ] S6.4 Learned per-request router: the cascade of §6.2 step 8 (classifier in the gateway, the Decisions API only for its unsure cases, bandit exploration).
+- S6.3 and S6.4 (cross-format translation, the learned per-request router) moved to S3 on 2026-10-08.
+- [ ] S6.4b Router extras (§4.2): the Responses API through routers, learning from decision-model choices, bandit exploration, a Promptdam-paid judge.
 - [ ] S6.5 Fixwire span export; coding-agent pack (per-developer SSO keys); employee-chat guides (Open WebUI, LibreChat).
 - [ ] S6.6 SSO/SCIM; Azure OpenAI, Bedrock and Vertex providers.
 
@@ -534,7 +565,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 |---|---|---|
 | Orgs routing traffic | 8 | 150 |
 | Monthly requests through Promptdam | 5M | 150M |
-| Median verified savings (orgs with experiments) | 25% | 30% |
+| Median verified savings (orgs with an active router) | 25% | 30% |
 | Secrets blocked (all orgs, monthly) | tracked | tracked (marketing stat) |
 | Paying orgs | 0 (coupons) | 40 |
 | MRR | $0 | $3,000 |
@@ -546,16 +577,20 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 |---|---|
 | Passthrough gateways are free or zero-markup (Vercel, Cloudflare) | Never charge for passthrough; charge for proven savings and the firewall; Free plan includes the gateway |
 | Providers cut prices and cache implicitly, shrinking savings | Savings-share aligns incentives; the levers diversify (routing, caching fixes, batch, semantic cache); value shifts to firewall and budgets |
-| Routing hurts quality | Shadow eval before adoption, canary after, auto-revert, per-route thresholds, customer approval by default |
+| Routing hurts quality | Routers start in shadow mode; activation needs measured quality per tier (or an explicit override); unsure calls go to the strong tier; thresholds calibrated on held-out samples; the canary demotes a drifting tier on its own; critical routes can stay out |
+| A wrong judge teaches the router wrong boundaries | Deterministic checks first; random answer order with 10% judged both ways; the customer picks the judge model; the report shows example verdicts; quality intervals, not point estimates, gate activation |
+| Evaluation spends the customer's money | Visible monthly budget per router (default $100), sample rates the customer sets, costs shown and subtracted from savings |
 | Hot-path reliability and latency (one VPS) | Go, in-memory snapshots, no DB on the hot path, two gateway replicas, fallbacks, bench in CI, documented fail-open client pattern; a second VPS behind Cloudflare Load Balancing before any SLA |
 | Gateway is hosted in Europe only (Contabo): US apps add a transatlantic round trip (~80–100 ms) per LLM call | Small relative to LLM latency (seconds) but visible in time-to-first-token. Measure in beta. Add a US gateway VPS only when US revenue justifies it (owner keeps all VPS in Europe for now). Market EU residency to EU customers |
 | Trust: a proxy sees all prompts | Payload-free logging by default, vault-encrypted keys, minimal dependencies, signed images, DPA, EU data residency and BYOC data plane (S7), no certification claims; contrast with self-run proxies after the Mar 2026 LiteLLM supply-chain incident |
 | Savings-share disputes | Transparent per-request ledger, monthly approval with a dispute window, conservative counterfactual (list prices, provider-reported usage) |
-| API format translation complexity | MVP routes only within a format family; translation is post-launch with golden tests |
+| API format translation complexity (now in the MVP) | Chat Completions ⇄ Messages only (the Responses API stays passthrough); golden tests per direction for requests, answers and streams; the official SDKs run through the gateway in tests; anything the target can't express is refused with a clear error, never dropped silently |
 
 ## 11. Decisions needed
 - [x] Name and domain: **Promptdam**, promptdam.dev + promptdam.com (decided 2026-10-03; register the domains).
 - [x] Savings-share pricing: **deferred** (decided 2026-10-07). Bill a subscription plus requests only. The savings ledger proves value but doesn't set invoices. Revisit if large customers ask.
-- [ ] `DECISION NEEDED:` default judge model for experiments (recommendation: `claude-sonnet-5-5` pairwise judge, run on the customer's Anthropic key when present; otherwise billed as AI credits).
-- [ ] `DECISION NEEDED:` firewall fail-closed default for `block` policies (recommendation: fail closed for secrets, fail open for everything else).
+- [x] Model routing: **routers with customer-described tiers are a core MVP feature** (decided 2026-10-08): the cascade, evaluation and learning of §6.2, with cross-format translation, replacing per-family experiments. ADR 0001.
+- [x] Judge: **the customer's own provider keys only** (decided 2026-10-08). The project picks the judge model, `claude-sonnet-5-5` by default when it has an Anthropic provider. Later, maybe: Promptdam's own keys, charging the customer what the provider charges us.
+- [x] Firewall default for `block` policies when the scanner itself fails: **closed for secrets, open for everything else**, configurable per project (decided 2026-10-08).
+- [ ] `DECISION NEEDED:` which plans get routers (my proposal in §5: one shadow router on Free, active routers with explicit tiers and rules on Pro, learned routing on Team).
 - [x] Include OpenAI Responses API routing at MVP: **passthrough only** (auth, budgets, usage, cost, log; no model routing or caching), routing later (decided 2026-10-07).
