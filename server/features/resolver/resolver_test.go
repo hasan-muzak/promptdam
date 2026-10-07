@@ -205,3 +205,42 @@ func TestRoutingRules(t *testing.T) {
 		t.Fatalf("fallback: %d %s", status, h.Get(brand.HeaderServedModel))
 	}
 }
+
+// A call for a model only a provider of the other API serves is sent to
+// it, translated; so is a fallback naming one.
+func TestCallsCrossFormats(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{})
+	// "main" serves every model unless it lists its own.
+	ps, err := w.App.Providers.List(w.Scoped(), w.Project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := ps[0]
+	if _, err := w.App.Providers.Update(w.Scoped(), w.Org, w.Project, main.ID, providers.Input{Name: main.Name, Kind: main.Kind,
+		Format: string(main.APIFormat), BaseURL: main.BaseURL, Models: []string{"gpt-5-mini"}, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	w.Provider("claude", providers.FormatAnthropic, []string{"claude-haiku-4-5"})
+	w.Eventually(func() bool {
+		status, h, body := w.Call("/v1/chat/completions", `{"model":"claude-haiku-4-5","messages":[{"role":"user","content":"hi"}]}`)
+		return status == 200 && h.Get(brand.HeaderProvider) == "claude" && strings.Contains(body, `"object":"chat.completion"`)
+	})
+	reqs := w.Fake.Requests()
+	if last := reqs[len(reqs)-1]; last.Path != "/messages" || last.Header.Get("X-Api-Key") != "sk-claude-0000000000" {
+		t.Fatalf("upstream %s %v", last.Path, last.Header)
+	}
+
+	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{
+		Name: routes.Default, Fallbacks: []string{"claude/claude-haiku-4-5"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	w.Eventually(func() bool {
+		w.Fake.Fail(http.StatusServiceUnavailable)
+		status, h, _ := w.Call("/v1/chat/completions", chat)
+		return status == 200 && h.Get(brand.HeaderProvider) == "claude" && h.Get(brand.HeaderServedModel) == "claude-haiku-4-5"
+	})
+	if rec := w.Records()[len(w.Records())-1]; !rec.Translated || !rec.Fallback {
+		t.Fatalf("record %+v", rec)
+	}
+}

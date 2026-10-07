@@ -79,6 +79,24 @@ type Target struct {
 	Model string
 	// Header holds the provider's credentials and any fixed headers.
 	Header http.Header
+	// Format is the API the target is called in when it isn't the call's
+	// own (0): a Chat Completions call sent to a Messages provider, or the
+	// other way round, translated both ways (features/translate).
+	Format wire.Format
+	// Reasoning reports that the target's model takes a reasoning effort,
+	// which translation passes on rather than drops.
+	Reasoning bool
+	// MaxTokens caps a translated Messages call that set no limit (0: the
+	// translation's default).
+	MaxTokens int
+}
+
+// formatOf is the API format a target is called in for a call of format f.
+func (t Target) formatOf(f wire.Format) wire.Format {
+	if t.Format == 0 {
+		return f
+	}
+	return t.Format
 }
 
 // endpoint is a gateway path and the provider path it maps to.
@@ -94,6 +112,9 @@ var endpoints = map[string]endpoint{
 	"/v1/messages":              {wire.AnthropicMessages, "/messages"},
 	"/v1/messages/count_tokens": {wire.AnthropicCountTokens, "/messages/count_tokens"},
 }
+
+// paths are the provider paths of the formats calls are translated to.
+var paths = map[wire.Format]string{wire.OpenAIChat: "/chat/completions", wire.AnthropicMessages: "/messages"}
 
 // Record is what happened to one call, for the request log and the ledger.
 type Record struct {
@@ -122,6 +143,10 @@ type Record struct {
 	Cache string
 	// PromptCached reports that the gateway added prompt cache breakpoints.
 	PromptCached bool
+	// Translated reports that the call was answered in the other API
+	// format, translated; Dropped lists the parameters it left out.
+	Translated bool
+	Dropped    []string
 	// Status is the HTTP status the client got; ErrorCode says why a call
 	// failed ("" when it didn't).
 	Status    int

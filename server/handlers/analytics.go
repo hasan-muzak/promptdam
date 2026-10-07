@@ -56,6 +56,7 @@ type RequestOut struct {
 	RequestedModel   string    `json:"requested_model"`
 	ServedModel      string    `json:"served_model"`
 	Stream           bool      `json:"stream"`
+	Translated       bool      `json:"translated" doc:"A provider of the other API format answered, translated (Chat Completions ⇄ Messages)"`
 	Status           int       `json:"status" doc:"HTTP status the client got (499: it left)"`
 	ErrorCode        string    `json:"error_code"`
 	Attempts         int       `json:"attempts" doc:"Provider calls made, retries and fallbacks included"`
@@ -79,7 +80,7 @@ func requestOut(r analytics.Request) RequestOut {
 	return RequestOut{
 		ID: r.Trace, Time: r.TS.UTC(), Key: ids.Encode(ids.APIKey, r.KeyID), Developer: r.Developer, User: r.User,
 		Tags: r.Tags, Route: r.Route, APIFormat: r.APIFormat, Provider: r.Provider, RequestedModel: r.RequestedModel,
-		ServedModel: r.ServedModel, Stream: r.Stream, Status: int(r.Status), ErrorCode: r.ErrorCode, Attempts: int(r.Attempts),
+		ServedModel: r.ServedModel, Stream: r.Stream, Translated: r.Translated, Status: int(r.Status), ErrorCode: r.ErrorCode, Attempts: int(r.Attempts),
 		TTFBms: int(r.TTFBms), LatencyMs: int(r.LatencyMs), UpstreamMs: int(r.UpstreamMs), UsageKnown: r.UsageKnown,
 		InputTokens: int(r.InputTokens), OutputTokens: int(r.OutputTokens), CacheReadTokens: int(r.CacheReadTokens),
 		CacheWriteTokens: int(r.CacheWriteTokens), ReasoningTokens: int(r.ReasoningTokens), CostMicros: r.CostMicros,

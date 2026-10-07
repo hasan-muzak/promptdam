@@ -203,12 +203,13 @@ func TestSavingsLedger(t *testing.T) {
 		_, h, _ := w.Call("/v1/chat/completions", body)
 		return h.Get(brand.HeaderCache) == "miss"
 	})
-	upstream := len(w.Fake.Requests())
-	// The same request, written differently: answered from the cache.
-	status, h, _ := w.Call("/v1/chat/completions", `{"temperature":0,"user":"u1","model":"gpt-5-mini","messages":[{"role":"user","content":"hi"}]}`)
-	if status != 200 || h.Get(brand.HeaderCache) != "hit" || len(w.Fake.Requests()) != upstream {
-		t.Fatalf("%d, cache %q, %d upstream calls", status, h.Get(brand.HeaderCache), len(w.Fake.Requests()))
-	}
+	// The same request, written differently: answered from the cache, once
+	// the answer is stored (in the background), without calling upstream.
+	w.Eventually(func() bool {
+		upstream := len(w.Fake.Requests())
+		status, h, _ := w.Call("/v1/chat/completions", `{"temperature":0,"user":"u1","model":"gpt-5-mini","messages":[{"role":"user","content":"hi"}]}`)
+		return status == 200 && h.Get(brand.HeaderCache) == "hit" && len(w.Fake.Requests()) == upstream
+	})
 	// Streams aren't cached.
 	if _, h, _ := w.Call("/v1/chat/completions", strings.Replace(body, `"temperature"`, `"stream":true,"temperature"`, 1)); h.Get(brand.HeaderCache) != "" {
 		t.Fatalf("a stream: cache %q", h.Get(brand.HeaderCache))

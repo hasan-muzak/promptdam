@@ -210,10 +210,7 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		e.RetryAfter = time.Until(until)
 		return nil, e
 	}
-	format := providers.FormatOpenAI
-	if c.Format.Anthropic() {
-		format = providers.FormatAnthropic
-	}
+	format := c.Format
 	targets := r.targets(snap, format, model, nil)
 	// An active rule that holds sends the call to its model first; the
 	// model asked for stays the first fallback.
@@ -236,7 +233,7 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	}
 	if len(targets) == 0 {
 		return nil, refuse(http.StatusNotFound, gateway.TypeNotFound, "no_provider",
-			"no provider of the project serves model "+model+" in the "+format+" API format: add one, or list the model on a provider")
+			"no provider of the project serves model "+model+" for "+format.String()+" calls: add one, or list the model on a provider")
 	}
 	for _, f := range route.Fallbacks {
 		targets = append(targets, r.fallback(snap, format, f, targets)...)
@@ -277,32 +274,76 @@ func pickRoute(named, keys string, snap *snapshot.Snapshot) (snapshot.Route, err
 	return snapshot.Route{Retries: 1}, nil
 }
 
-// targets are the providers serving model in format, by priority, minus
-// those already tried.
-func (r *Resolver) targets(snap *snapshot.Snapshot, format, model string, skip []gateway.Target) []gateway.Target {
-	var out []gateway.Target
+// apiFormat is the providers' API format a call of format f is sent in
+// without translation.
+func apiFormat(f wire.Format) string {
+	if f.Anthropic() {
+		return providers.FormatAnthropic
+	}
+	return providers.FormatOpenAI
+}
+
+// crossFormat is the format a call of format f is translated to for a
+// provider of the other API (0 when it can't be: only Chat Completions and
+// Messages calls are).
+func crossFormat(f wire.Format) wire.Format {
+	switch f {
+	case wire.OpenAIChat:
+		return wire.AnthropicMessages
+	case wire.AnthropicMessages:
+		return wire.OpenAIChat
+	}
+	return 0
+}
+
+// target is a provider's target for a model and a call of format f, and
+// whether the provider can take the call at all.
+func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gateway.Target, bool) {
+	t := gateway.Target{ID: p.ID.String() + ":" + model, Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL, Model: model, Header: p.Header}
+	if p.Format == apiFormat(f) {
+		return t, true
+	}
+	t.Format = crossFormat(f)
+	return t, t.Format != 0
+}
+
+// targets are the providers serving model for a call of format f, by
+// priority: those speaking its API first, then those of the other API, the
+// call translated, minus those already tried. A custom endpoint of the
+// other API serves only the models it lists: without a list, nothing says
+// it knows the model.
+func (r *Resolver) targets(snap *snapshot.Snapshot, f wire.Format, model string, skip []gateway.Target) []gateway.Target {
+	var same, cross []gateway.Target
 	for _, p := range snap.Providers {
-		if p.Format != format || !r.serves(p.Provider, model) || tried(skip, p.Name, model) {
+		if tried(skip, p.Name, model) || !r.serves(p.Provider, model) {
 			continue
 		}
-		out = append(out, gateway.Target{ID: p.ID.String() + ":" + model, Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL,
-			Model: model, Header: p.Header})
+		t, ok := r.target(p, f, model)
+		switch {
+		case !ok:
+		case t.Format == 0:
+			same = append(same, t)
+		case p.Kind != providers.Custom || len(p.Models) > 0:
+			cross = append(cross, t)
+		}
 	}
-	return out
+	return append(same, cross...)
 }
 
 // fallback resolves a route's fallback: provider/model when a provider of
 // the project has that name, else a model any serving provider answers.
-func (r *Resolver) fallback(snap *snapshot.Snapshot, format, f string, skip []gateway.Target) []gateway.Target {
-	if name, model, ok := strings.Cut(f, "/"); ok {
+func (r *Resolver) fallback(snap *snapshot.Snapshot, f wire.Format, fb string, skip []gateway.Target) []gateway.Target {
+	if name, model, ok := strings.Cut(fb, "/"); ok {
 		for _, p := range snap.Providers {
-			if p.Name == name && p.Format == format && !tried(skip, p.Name, model) {
-				return []gateway.Target{{ID: p.ID.String() + ":" + model, Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL,
-					Model: model, Header: p.Header}}
+			if p.Name != name || tried(skip, p.Name, model) {
+				continue
+			}
+			if t, ok := r.target(p, f, model); ok {
+				return []gateway.Target{t}
 			}
 		}
 	}
-	return r.targets(snap, format, f, skip)
+	return r.targets(snap, f, fb, skip)
 }
 
 func tried(ts []gateway.Target, provider, model string) bool {
@@ -344,16 +385,25 @@ func (r *Resolver) serves(p snapshot.Provider, model string) bool {
 
 // Models implements gateway.ModelLister: the models the key may call, from
 // its project's providers (their lists, else the catalog's models of their
-// kind), in the API format the client speaks.
+// kind), those of the client's API format first. Models of the other
+// format answer Chat Completions and Messages calls, translated.
 func (r *Resolver) Models(ctx context.Context, c *gateway.Call) ([]gateway.Model, error) {
 	m, snap, err := r.caller(ctx, c)
 	if err != nil {
 		return nil, err
 	}
 	settings := snap.Keys[m.Key]
-	format := providers.FormatOpenAI
-	if c.Format == wire.AnthropicMessages {
-		format = providers.FormatAnthropic
+	format := apiFormat(c.Format)
+	ordered := make([]snapshot.Opened, 0, len(snap.Providers))
+	for _, p := range snap.Providers {
+		if p.Format == format {
+			ordered = append(ordered, p)
+		}
+	}
+	for _, p := range snap.Providers {
+		if p.Format != format {
+			ordered = append(ordered, p)
+		}
 	}
 	seen := map[string]bool{}
 	var out []gateway.Model
@@ -363,10 +413,7 @@ func (r *Resolver) Models(ctx context.Context, c *gateway.Call) ([]gateway.Model
 			out = append(out, gateway.Model{ID: id, Provider: provider})
 		}
 	}
-	for _, p := range snap.Providers {
-		if p.Format != format {
-			continue
-		}
+	for _, p := range ordered {
 		if len(p.Models) > 0 {
 			for _, id := range p.Models {
 				add(id, p.Name)

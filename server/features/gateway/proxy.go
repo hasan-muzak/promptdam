@@ -21,6 +21,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/families"
 	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 	"github.com/hasan-muzak/promptdam/server/features/responsecache"
+	"github.com/hasan-muzak/promptdam/server/features/translate"
 )
 
 // statusClientClosed is logged for calls the client gave up on (nginx's
@@ -44,6 +45,9 @@ type call struct {
 	// caches them.
 	cacheKey string
 	cacheTTL time.Duration
+	// promptCache adds Anthropic cache breakpoints, to calls translated to
+	// the Messages API too.
+	promptCache bool
 }
 
 func (c *call) serve() {
@@ -104,6 +108,7 @@ func (c *call) serve() {
 		}
 	}
 
+	c.promptCache = route.PromptCache
 	if route.PromptCache && c.ep.format == wire.AnthropicMessages {
 		body, c.rec.PromptCached = promptcache.Mark(body, req)
 	}
@@ -164,7 +169,33 @@ func pause(ctx context.Context, d time.Duration) bool {
 // call may go on (final is false); failed reports a failure of the provider
 // (unreachable, rate limiting, overloaded, a server error), for its circuit.
 func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, final bool) (done, failed bool) {
-	if t.Model != req.Model {
+	format, path := t.formatOf(c.ep.format), c.ep.path
+	var dropped []string
+	switch {
+	case format != c.ep.format:
+		// A target of the other API format gets the call translated; one
+		// that can't express it is passed over for the next.
+		out, d, err := translate.Request(c.ep.format, format, body,
+			translate.Options{Model: t.Model, Kind: t.Kind, Reasoning: t.Reasoning, MaxTokens: t.MaxTokens})
+		if err != nil {
+			if !final {
+				return false, false
+			}
+			msg := "the request can't be sent to " + t.Model
+			var te *translate.Error
+			if errors.As(err, &te) {
+				msg += ": " + te.Message
+			}
+			c.fail(&Error{Status: http.StatusBadRequest, Type: TypeInvalidRequest, Code: "untranslatable_request", Message: msg})
+			return true, false
+		}
+		body, dropped, path, dropUsage = out, d, paths[format], false
+		if c.promptCache && format == wire.AnthropicMessages {
+			if areq, err := wire.ParseRequest(format, body); err == nil {
+				body, c.rec.PromptCached = promptcache.Mark(body, areq)
+			}
+		}
+	case t.Model != req.Model:
 		model, _ := json.Marshal(t.Model)
 		swapped, err := wire.SetField(body, "model", model)
 		if err != nil {
@@ -175,12 +206,12 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, final
 	}
 	ctx, cancel := context.WithCancel(c.r.Context())
 	defer cancel()
-	up, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+c.ep.path, bytes.NewReader(body))
+	up, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+path, bytes.NewReader(body))
 	if err != nil {
 		c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_misconfigured", Message: "the provider's base URL is invalid"})
 		return true, false
 	}
-	upstreamHeader(up.Header, c.r.Header, c.ep.format, t.Header)
+	upstreamHeader(up.Header, c.r.Header, format, t.Header)
 
 	sent := time.Now()
 	res, err := c.h.cfg.Transport.RoundTrip(up)
@@ -206,19 +237,29 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, final
 		return false, true
 	}
 	defer func() { _ = res.Body.Close() }()
-	c.relay(res, t, cancel, dropUsage)
+	c.relay(res, t, cancel, dropUsage, format, dropped)
 	return true, retryable(res.StatusCode)
 }
 
 // relay streams a provider's response to the client, reading its usage.
-func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dropUsage bool) {
+// format is the API the provider answers in: a call translated to it gets
+// its answer translated back.
+func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dropUsage bool, format wire.Format, dropped []string) {
 	c.rec.Provider, c.rec.Kind, c.rec.ServedModel, c.rec.Status = t.Provider, t.Kind, t.Model, res.StatusCode
 	c.rec.TargetModel = t.Model
+	translating := format != c.ep.format
+	c.rec.Translated, c.rec.Dropped = translating, dropped
 	h := c.w.Header()
 	responseHeader(h, res.Header)
 	h.Set(brand.HeaderTrace, c.rec.Trace)
 	h.Set(brand.HeaderProvider, t.Provider)
 	h.Set(brand.HeaderServedModel, t.Model)
+	if translating {
+		h.Del("Content-Length") // the answer is rewritten
+	}
+	if len(dropped) > 0 {
+		h.Set(brand.HeaderDropped, strings.Join(dropped, ","))
+	}
 	switch {
 	case c.rec.Cache != "":
 		h.Set(brand.HeaderCache, c.rec.Cache)
@@ -231,26 +272,51 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	body.timer = time.AfterFunc(body.d, func() { body.fired.Store(true); cancel() })
 	defer body.timer.Stop()
 
-	meter := wire.NewMeter(c.ep.format)
+	meter := wire.NewMeter(format)
 	rc := http.NewResponseController(c.w)
 	var readErr error
-	if eventStream(res.Header) {
+	switch {
+	case eventStream(res.Header):
 		h.Del("Content-Length")
 		c.w.WriteHeader(res.StatusCode)
 		_ = rc.Flush()
+		var st translate.Stream
+		if translating {
+			st, _ = translate.NewStream(format, c.ep.format, c.rec.Request.IncludeUsage)
+		}
+		var out []byte
+		gone := false
 		s := wire.NewScanner(body, 0)
 		for s.Next() {
 			ev := s.Event()
-			if meter.Event(ev) && dropUsage {
+			usage := meter.Event(ev)
+			if st != nil {
+				if out = st.Event(out[:0], ev); len(out) > 0 {
+					if gone = !c.write(out); gone {
+						break
+					}
+					_ = rc.Flush()
+				}
 				continue
 			}
-			if !c.write(ev.Raw) {
+			if usage && dropUsage {
+				continue
+			}
+			if gone = !c.write(ev.Raw); gone {
 				break
 			}
 			_ = rc.Flush()
 		}
 		readErr = s.Err()
-	} else {
+		if st != nil && !gone && readErr == nil && !body.fired.Load() {
+			if out = st.End(out[:0]); len(out) > 0 {
+				c.write(out)
+				_ = rc.Flush()
+			}
+		}
+	case translating:
+		readErr = c.relayTranslated(res, t, body, meter, format)
+	default:
 		c.w.WriteHeader(res.StatusCode)
 		keep := res.StatusCode < 300
 		var kept []byte
@@ -279,7 +345,7 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 		if keep {
 			meter.Body(kept)
 			if c.cacheKey != "" && res.StatusCode == http.StatusOK && readErr == nil {
-				c.store(res, t, meter, kept)
+				c.store(res.StatusCode, res.Header.Get("Content-Type"), t, meter, kept)
 			}
 		}
 	}
@@ -287,6 +353,9 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	c.rec.Usage, c.rec.UsageKnown = meter.Usage()
 	if m := meter.Model(); m != "" {
 		c.rec.ServedModel = m
+	}
+	if c.rec.ErrorCode != "" {
+		return // the gateway answered with its own error
 	}
 	switch {
 	case c.r.Context().Err() != nil:
@@ -300,6 +369,39 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	case res.StatusCode >= 400:
 		c.rec.ErrorCode = "provider_" + strconv.Itoa(res.StatusCode)
 	}
+}
+
+// relayTranslated answers a call translated to another API format with the
+// provider's whole answer, or its error, translated back.
+func (c *call) relayTranslated(res *http.Response, t Target, body io.Reader, meter *wire.Meter, format wire.Format) error {
+	kept, err := io.ReadAll(io.LimitReader(body, maxMeteredBody+1))
+	if err != nil {
+		c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_stream_broken", Message: "the provider's answer broke off"})
+		return err
+	}
+	if len(kept) > maxMeteredBody {
+		c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "answer_too_large",
+			Message: "the provider's answer is too large to translate"})
+		return nil
+	}
+	var out []byte
+	if res.StatusCode < 300 {
+		meter.Body(kept)
+		if out, err = translate.Response(format, c.ep.format, kept); err != nil {
+			c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "untranslatable_answer",
+				Message: "the provider's answer couldn't be translated"})
+			return nil
+		}
+		if c.cacheKey != "" && res.StatusCode == http.StatusOK {
+			c.store(res.StatusCode, "application/json", t, meter, out)
+		}
+	} else {
+		out = translate.ErrorBody(c.ep.format, res.StatusCode, kept)
+	}
+	c.w.Header().Set("Content-Type", "application/json")
+	c.w.WriteHeader(res.StatusCode)
+	c.write(out)
+	return nil
 }
 
 // serveCached answers from the response cache.
@@ -318,7 +420,7 @@ func (c *call) serveCached(e *responsecache.Entry) {
 }
 
 // store caches a successful answer, in the background.
-func (c *call) store(res *http.Response, t Target, meter *wire.Meter, body []byte) {
+func (c *call) store(status int, contentType string, t Target, meter *wire.Meter, body []byte) {
 	if len(body) > responsecache.MaxEntry {
 		return
 	}
@@ -327,7 +429,7 @@ func (c *call) store(res *http.Response, t Target, meter *wire.Meter, body []byt
 	if model == "" {
 		model = t.Model
 	}
-	e := &responsecache.Entry{Status: res.StatusCode, ContentType: res.Header.Get("Content-Type"), Body: bytes.Clone(body),
+	e := &responsecache.Entry{Status: status, ContentType: contentType, Body: bytes.Clone(body),
 		Provider: t.Provider, Kind: t.Kind, Model: model, Usage: usage}
 	key, ttl := c.cacheKey, c.cacheTTL
 	go func() {
@@ -399,8 +501,13 @@ var forwarded = []string{"Content-Type", "Accept", "Anthropic-Version", "Anthrop
 // naming a version, which Anthropic requires.
 const anthropicVersion = "2023-06-01"
 
+// upstreamHeader sets the headers of a call to a provider speaking f. A
+// translated call keeps none of its own format's headers.
 func upstreamHeader(dst, src http.Header, f wire.Format, target http.Header) {
 	for _, k := range forwarded {
+		if strings.HasPrefix(k, "Anthropic-") && !f.Anthropic() || k == "Openai-Beta" && f.Anthropic() {
+			continue
+		}
 		if v := src.Values(k); len(v) > 0 {
 			dst[k] = v
 		}

@@ -60,6 +60,7 @@ type Request struct {
 	RequestedModel   string    `ch:"requested_model"`
 	ServedModel      string    `ch:"served_model"`
 	Stream           bool      `ch:"stream"`
+	Translated       bool      `ch:"translated"`
 	Status           uint16    `ch:"status"`
 	ErrorCode        string    `ch:"error_code"`
 	Attempts         uint8     `ch:"attempts"`
@@ -80,7 +81,7 @@ type Request struct {
 }
 
 const requestColumns = `ts, trace, key_id, developer, end_user, tags, route, api_format, provider, requested_model,
-	served_model, stream, status, error_code, attempts, ttfb_ms, latency_ms, upstream_ms, usage_known, input_tokens,
+	served_model, stream, translated, status, error_code, attempts, ttfb_ms, latency_ms, upstream_ms, usage_known, input_tokens,
 	output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_micros, savings_micros,
 	savings_reason, cache, family_id`
 
