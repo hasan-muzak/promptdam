@@ -30,6 +30,9 @@ type Call struct {
 	Header http.Header
 	// Trace identifies the call (the X-Promptdam-Trace header).
 	Trace string
+	// Client identifies the caller's address, for holding back clients that
+	// guess keys (Config.ClientKey).
+	Client string
 }
 
 // Route is where a call goes.
@@ -37,6 +40,9 @@ type Route struct {
 	// Targets are tried in order until one answers: the first is the
 	// model asked for (or the one a rule chose), the others fallbacks.
 	Targets []Target
+	// Retries is how often a target is retried, with jitter, before the
+	// next one.
+	Retries int
 	// Meta is the resolver's own data about the call (the caller, its
 	// project…), handed back in the Record.
 	Meta any
@@ -44,8 +50,11 @@ type Route struct {
 
 // Target is one provider and model to send a call to.
 type Target struct {
-	// Provider names the provider, e.g. "openai", for logs and costs.
+	// Provider names the provider, e.g. "openai" or a project's
+	// "openai-backup", for logs and the X-Promptdam-Provider header.
 	Provider string
+	// Kind is the provider's kind ("openai", "anthropic", …), for costs.
+	Kind string
 	// BaseURL is the provider API's root, the part before the endpoint
 	// path: https://api.openai.com/v1, https://api.anthropic.com/v1.
 	BaseURL string
@@ -77,6 +86,7 @@ type Record struct {
 	// Meta is the Route's Meta (nil when the call wasn't resolved).
 	Meta           any
 	Provider       string
+	Kind           string
 	RequestedModel string
 	// ServedModel is the model the provider says answered, else the one
 	// asked for.
@@ -115,6 +125,19 @@ type Config struct {
 	IdleTimeout time.Duration
 	// NewTrace makes call IDs.
 	NewTrace func() string
+	// ClientKey identifies a request's client (its address), for Call.Client.
+	ClientKey func(*http.Request) string
+}
+
+// Model is a model the caller may use (GET /v1/models).
+type Model struct {
+	ID       string
+	Provider string
+}
+
+// ModelLister is a Resolver that lists the models a caller may use.
+type ModelLister interface {
+	Models(ctx context.Context, c *Call) ([]Model, error)
 }
 
 // Handler serves the gateway's endpoints.
@@ -141,6 +164,10 @@ func New(cfg Config) *Handler {
 
 // ServeHTTP serves one call.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/v1/models" {
+		h.models(w, r)
+		return
+	}
 	ep, ok := endpoints[r.URL.Path]
 	format := ep.format
 	if !ok {

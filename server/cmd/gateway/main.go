@@ -14,9 +14,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hasan-muzak/keel/pkg/config"
+	"github.com/hasan-muzak/keel/pkg/counter"
 	"github.com/hasan-muzak/keel/pkg/keel"
+	"github.com/hasan-muzak/keel/pkg/safehttp"
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/core"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/snapshot"
 )
 
 func main() {
@@ -24,6 +30,13 @@ func main() {
 		slog.Error("promptdam gateway", "err", err)
 		os.Exit(1)
 	}
+}
+
+// lifecycle is a background component started before serving and stopped
+// (flushed) after.
+type lifecycle interface {
+	Start(context.Context) error
+	Stop(context.Context) error
 }
 
 func run() error {
@@ -40,8 +53,41 @@ func run() error {
 		return err
 	}
 	defer c.Close()
+	prices, err := cfg.Prices()
+	if err != nil {
+		return err
+	}
+	app := core.NewApp(c, core.WithPrices(prices))
+
+	snapshots := snapshot.NewStore(c.KV, app.Sources())
+	rates := counter.New(c.KV, "rpm", counter.Options{})
+	res := resolver.New(resolver.Config{
+		Keys: c.APIKeys, Snapshots: snapshots, Quota: c.Metering, Spend: app.Spend, Rates: rates, Prices: app.Prices,
+		Scope: core.ScopeGateway,
+	})
+	h := gateway.New(gateway.Config{
+		Resolver: res,
+		// Providers' base URLs are public addresses; a local stack's fake
+		// provider runs on this machine.
+		Transport: safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: cfg.Env == config.Development}),
+		ClientKey: c.ClientIP.Key,
+	})
+
+	// Usage, spend and rate counters are flushed in the background, key
+	// last-used times batched, and configuration changes listened for.
+	for _, l := range []lifecycle{c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, snapshots} {
+		if err := l.Start(ctx); err != nil {
+			return err
+		}
+		defer func() {
+			sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = l.Stop(sctx)
+		}()
+	}
 
 	mux := http.NewServeMux()
+	mux.Handle("/v1/", h)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{"status":"ok"}`)) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if err := c.KV.Ping(r.Context()); err != nil {

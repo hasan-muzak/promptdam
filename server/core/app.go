@@ -19,6 +19,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/purge"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/snapshot"
 )
 
 // App is Promptdam on top of keel: the shared services plus Promptdam's own
@@ -102,6 +103,9 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.Budgets = budgets.New(budgets.Config{
 		Ent: a.Ent, Spend: a.Spend, Notifier: c.Notifier, Webhooks: c.Webhooks, AppURL: c.Config.AppURL, Changed: a.configChanged,
 	})
+	// Every change to a project's gateway configuration reaches the
+	// gateways' snapshots.
+	a.OnChanged(snapshot.NewInvalidator(c.KV).Changed)
 	// No foreign keys cross the graphs (ADR 0004): deleting an organization
 	// or a project deletes Promptdam's rows in the deletion's transaction,
 	// and enqueues the purge of its ClickHouse rows and Valkey keys with it.
@@ -109,4 +113,9 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	c.Tenancy.OnOrgDeleted(a.Purge.OrgDeleted)
 	c.Tenancy.OnProjectDeleted(a.Purge.ProjectDeleted)
 	return a
+}
+
+// Sources are where the gateway's snapshots are built from.
+func (a *App) Sources() snapshot.Sources {
+	return snapshot.Sources{Providers: a.Providers, Keys: a.Keys, Routes: a.Routes, Budgets: a.Budgets}
 }

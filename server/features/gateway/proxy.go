@@ -68,7 +68,9 @@ func (c *call) serve() {
 	}
 	c.rec.RequestedModel, c.rec.Stream = req.Model, req.Stream
 
-	route, err := c.h.cfg.Resolver.Resolve(c.r.Context(), &Call{Format: c.ep.format, Request: req, Header: c.r.Header, Trace: c.rec.Trace})
+	route, err := c.h.cfg.Resolver.Resolve(c.r.Context(), &Call{
+		Format: c.ep.format, Request: req, Header: c.r.Header, Trace: c.rec.Trace, Client: c.h.clientKey(c.r),
+	})
 	if err != nil {
 		c.fail(err)
 		return
@@ -150,7 +152,7 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, last 
 
 // relay streams a provider's response to the client, reading its usage.
 func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dropUsage bool) {
-	c.rec.Provider, c.rec.ServedModel, c.rec.Status = t.Provider, t.Model, res.StatusCode
+	c.rec.Provider, c.rec.Kind, c.rec.ServedModel, c.rec.Status = t.Provider, t.Kind, t.Model, res.StatusCode
 	h := c.w.Header()
 	responseHeader(h, res.Header)
 	h.Set(brand.HeaderTrace, c.rec.Trace)

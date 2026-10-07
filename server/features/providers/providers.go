@@ -286,18 +286,23 @@ func (s *Service) seal(org uuid.UUID, key *string) (sealed, hint string, err err
 	return sealed, hint, nil
 }
 
-// Header returns the headers that carry a provider's key: a bearer token
-// for the OpenAI API, x-api-key for Anthropic's. No key, no headers.
+// Header returns the headers that carry a provider's key.
 func (s *Service) Header(p *pdent.Provider) (http.Header, error) {
+	return s.HeaderFor(p.OrgID, string(p.APIFormat), p.Secrets)
+}
+
+// HeaderFor returns the headers that carry a sealed key of org's: a bearer
+// token for the OpenAI API, x-api-key for Anthropic's. No key, no headers.
+func (s *Service) HeaderFor(org uuid.UUID, format, sealed string) (http.Header, error) {
 	h := http.Header{}
-	if p.Secrets == "" {
+	if sealed == "" {
 		return h, nil
 	}
-	key, err := s.cfg.Vault.Open(p.OrgID, purpose, p.Secrets)
+	key, err := s.cfg.Vault.Open(org, purpose, sealed)
 	if err != nil {
-		return nil, fmt.Errorf("providers: opening the key of %s: %w", p.ID, err)
+		return nil, fmt.Errorf("providers: opening a key: %w", err)
 	}
-	if p.APIFormat == provider.APIFormatAnthropic {
+	if format == FormatAnthropic {
 		h.Set("X-Api-Key", string(key))
 	} else {
 		h.Set("Authorization", "Bearer "+string(key))
