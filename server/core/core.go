@@ -4,11 +4,13 @@ package core
 import (
 	"github.com/hasan-muzak/keel/pkg/apikeys"
 	"github.com/hasan-muzak/keel/pkg/config"
+	"github.com/hasan-muzak/keel/pkg/db"
 	"github.com/hasan-muzak/keel/pkg/keel"
 	"github.com/hasan-muzak/keel/pkg/llm"
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
 	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
+	"github.com/hasan-muzak/keel/products/promptdam/server/migrations"
 )
 
 // Version is set at build time (-ldflags "-X …/core.Version=v1.2.3").
@@ -55,6 +57,7 @@ var Product = keel.Product{
 	Scopes: []apikeys.Scope{
 		{Name: ScopeGateway, Description: "Call LLM providers through the gateway."},
 	},
+	Migrations:   []db.MigrationSet{migrations.Postgres()},
 	Color:        "#0b7285",
 	SupportEmail: brand.SupportEmail,
 }

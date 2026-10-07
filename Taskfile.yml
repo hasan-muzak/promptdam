@@ -36,6 +36,11 @@ tasks:
     cmds:
       - go run ./server/cmd/migrate
 
+  migration:
+    desc: "Author a Postgres migration from the Ent schema with Atlas (task promptdam:migration -- <name>; needs Docker)"
+    cmds:
+      - atlas migrate diff {{.CLI_ARGS}} --dir "file://server/migrations/postgres?format=goose" --to "ent://server/ent/schema" --dev-url "docker://postgres/18/dev?search_path=public"
+
   dev:api:
     desc: Run Promptdam's API on :8281 (needs `task promptdam:dev:stack`)
     dotenv: [".env"]
