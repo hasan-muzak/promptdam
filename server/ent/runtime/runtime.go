@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
@@ -86,6 +87,65 @@ func init() {
 	budgetDescID := budgetMixinFields0[0].Descriptor()
 	// budget.DefaultID holds the default value on creation for the id field.
 	budget.DefaultID = budgetDescID.Default.(func() uuid.UUID)
+	familylabelMixin := schema.FamilyLabel{}.Mixin()
+	familylabelMixinHooks1 := familylabelMixin[1].Hooks()
+	familylabel.Hooks[0] = familylabelMixinHooks1[0]
+	familylabelMixinInters1 := familylabelMixin[1].Interceptors()
+	familylabel.Interceptors[0] = familylabelMixinInters1[0]
+	familylabelMixinFields0 := familylabelMixin[0].Fields()
+	_ = familylabelMixinFields0
+	familylabelFields := schema.FamilyLabel{}.Fields()
+	_ = familylabelFields
+	// familylabelDescCreatedAt is the schema descriptor for created_at field.
+	familylabelDescCreatedAt := familylabelMixinFields0[1].Descriptor()
+	// familylabel.DefaultCreatedAt holds the default value on creation for the created_at field.
+	familylabel.DefaultCreatedAt = familylabelDescCreatedAt.Default.(func() time.Time)
+	// familylabelDescUpdatedAt is the schema descriptor for updated_at field.
+	familylabelDescUpdatedAt := familylabelMixinFields0[2].Descriptor()
+	// familylabel.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	familylabel.DefaultUpdatedAt = familylabelDescUpdatedAt.Default.(func() time.Time)
+	// familylabel.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	familylabel.UpdateDefaultUpdatedAt = familylabelDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// familylabelDescFamilyID is the schema descriptor for family_id field.
+	familylabelDescFamilyID := familylabelFields[0].Descriptor()
+	// familylabel.FamilyIDValidator is a validator for the "family_id" field. It is called by the builders before save.
+	familylabel.FamilyIDValidator = func() func(string) error {
+		validators := familylabelDescFamilyID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(family_id string) error {
+			for _, fn := range fns {
+				if err := fn(family_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// familylabelDescLabel is the schema descriptor for label field.
+	familylabelDescLabel := familylabelFields[1].Descriptor()
+	// familylabel.LabelValidator is a validator for the "label" field. It is called by the builders before save.
+	familylabel.LabelValidator = func() func(string) error {
+		validators := familylabelDescLabel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(label string) error {
+			for _, fn := range fns {
+				if err := fn(label); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// familylabelDescID is the schema descriptor for id field.
+	familylabelDescID := familylabelMixinFields0[0].Descriptor()
+	// familylabel.DefaultID holds the default value on creation for the id field.
+	familylabel.DefaultID = familylabelDescID.Default.(func() uuid.UUID)
 	keysettingMixin := schema.KeySetting{}.Mixin()
 	keysettingMixinHooks1 := keysettingMixin[1].Hooks()
 	keysetting.Hooks[0] = keysettingMixinHooks1[0]

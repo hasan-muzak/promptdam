@@ -16,6 +16,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
@@ -32,6 +33,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// Budget is the client for interacting with the Budget builders.
 	Budget *BudgetClient
+	// FamilyLabel is the client for interacting with the FamilyLabel builders.
+	FamilyLabel *FamilyLabelClient
 	// KeySetting is the client for interacting with the KeySetting builders.
 	KeySetting *KeySettingClient
 	// PriceList is the client for interacting with the PriceList builders.
@@ -54,6 +57,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Budget = NewBudgetClient(c.config)
+	c.FamilyLabel = NewFamilyLabelClient(c.config)
 	c.KeySetting = NewKeySettingClient(c.config)
 	c.PriceList = NewPriceListClient(c.config)
 	c.PriceOverride = NewPriceOverrideClient(c.config)
@@ -152,6 +156,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:           ctx,
 		config:        cfg,
 		Budget:        NewBudgetClient(cfg),
+		FamilyLabel:   NewFamilyLabelClient(cfg),
 		KeySetting:    NewKeySettingClient(cfg),
 		PriceList:     NewPriceListClient(cfg),
 		PriceOverride: NewPriceOverrideClient(cfg),
@@ -177,6 +182,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:           ctx,
 		config:        cfg,
 		Budget:        NewBudgetClient(cfg),
+		FamilyLabel:   NewFamilyLabelClient(cfg),
 		KeySetting:    NewKeySettingClient(cfg),
 		PriceList:     NewPriceListClient(cfg),
 		PriceOverride: NewPriceOverrideClient(cfg),
@@ -211,7 +217,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Budget, c.KeySetting, c.PriceList, c.PriceOverride, c.Provider, c.Route,
+		c.Budget, c.FamilyLabel, c.KeySetting, c.PriceList, c.PriceOverride, c.Provider,
+		c.Route,
 	} {
 		n.Use(hooks...)
 	}
@@ -221,7 +228,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Budget, c.KeySetting, c.PriceList, c.PriceOverride, c.Provider, c.Route,
+		c.Budget, c.FamilyLabel, c.KeySetting, c.PriceList, c.PriceOverride, c.Provider,
+		c.Route,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -232,6 +240,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *BudgetMutation:
 		return c.Budget.mutate(ctx, m)
+	case *FamilyLabelMutation:
+		return c.FamilyLabel.mutate(ctx, m)
 	case *KeySettingMutation:
 		return c.KeySetting.mutate(ctx, m)
 	case *PriceListMutation:
@@ -379,6 +389,141 @@ func (c *BudgetClient) mutate(ctx context.Context, m *BudgetMutation) (Value, er
 		return (&BudgetDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Budget mutation op: %q", m.Op())
+	}
+}
+
+// FamilyLabelClient is a client for the FamilyLabel schema.
+type FamilyLabelClient struct {
+	config
+}
+
+// NewFamilyLabelClient returns a client for the FamilyLabel from the given config.
+func NewFamilyLabelClient(c config) *FamilyLabelClient {
+	return &FamilyLabelClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `familylabel.Hooks(f(g(h())))`.
+func (c *FamilyLabelClient) Use(hooks ...Hook) {
+	c.hooks.FamilyLabel = append(c.hooks.FamilyLabel, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `familylabel.Intercept(f(g(h())))`.
+func (c *FamilyLabelClient) Intercept(interceptors ...Interceptor) {
+	c.inters.FamilyLabel = append(c.inters.FamilyLabel, interceptors...)
+}
+
+// Create returns a builder for creating a FamilyLabel entity.
+func (c *FamilyLabelClient) Create() *FamilyLabelCreate {
+	mutation := newFamilyLabelMutation(c.config, OpCreate)
+	return &FamilyLabelCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of FamilyLabel entities.
+func (c *FamilyLabelClient) CreateBulk(builders ...*FamilyLabelCreate) *FamilyLabelCreateBulk {
+	return &FamilyLabelCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *FamilyLabelClient) MapCreateBulk(slice any, setFunc func(*FamilyLabelCreate, int)) *FamilyLabelCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &FamilyLabelCreateBulk{err: fmt.Errorf("calling to FamilyLabelClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*FamilyLabelCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &FamilyLabelCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for FamilyLabel.
+func (c *FamilyLabelClient) Update() *FamilyLabelUpdate {
+	mutation := newFamilyLabelMutation(c.config, OpUpdate)
+	return &FamilyLabelUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *FamilyLabelClient) UpdateOne(_m *FamilyLabel) *FamilyLabelUpdateOne {
+	mutation := newFamilyLabelMutation(c.config, OpUpdateOne, withFamilyLabel(_m))
+	return &FamilyLabelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *FamilyLabelClient) UpdateOneID(id uuid.UUID) *FamilyLabelUpdateOne {
+	mutation := newFamilyLabelMutation(c.config, OpUpdateOne, withFamilyLabelID(id))
+	return &FamilyLabelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for FamilyLabel.
+func (c *FamilyLabelClient) Delete() *FamilyLabelDelete {
+	mutation := newFamilyLabelMutation(c.config, OpDelete)
+	return &FamilyLabelDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *FamilyLabelClient) DeleteOne(_m *FamilyLabel) *FamilyLabelDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *FamilyLabelClient) DeleteOneID(id uuid.UUID) *FamilyLabelDeleteOne {
+	builder := c.Delete().Where(familylabel.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &FamilyLabelDeleteOne{builder}
+}
+
+// Query returns a query builder for FamilyLabel.
+func (c *FamilyLabelClient) Query() *FamilyLabelQuery {
+	return &FamilyLabelQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeFamilyLabel},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a FamilyLabel entity by its id.
+func (c *FamilyLabelClient) Get(ctx context.Context, id uuid.UUID) (*FamilyLabel, error) {
+	return c.Query().Where(familylabel.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *FamilyLabelClient) GetX(ctx context.Context, id uuid.UUID) *FamilyLabel {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *FamilyLabelClient) Hooks() []Hook {
+	hooks := c.hooks.FamilyLabel
+	return append(hooks[:len(hooks):len(hooks)], familylabel.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *FamilyLabelClient) Interceptors() []Interceptor {
+	inters := c.inters.FamilyLabel
+	return append(inters[:len(inters):len(inters)], familylabel.Interceptors[:]...)
+}
+
+func (c *FamilyLabelClient) mutate(ctx context.Context, m *FamilyLabelMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&FamilyLabelCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&FamilyLabelUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&FamilyLabelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&FamilyLabelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown FamilyLabel mutation op: %q", m.Op())
 	}
 }
 
@@ -1058,10 +1203,12 @@ func (c *RouteClient) mutate(ctx context.Context, m *RouteMutation) (Value, erro
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Budget, KeySetting, PriceList, PriceOverride, Provider, Route []ent.Hook
+		Budget, FamilyLabel, KeySetting, PriceList, PriceOverride, Provider,
+		Route []ent.Hook
 	}
 	inters struct {
-		Budget, KeySetting, PriceList, PriceOverride, Provider, Route []ent.Interceptor
+		Budget, FamilyLabel, KeySetting, PriceList, PriceOverride, Provider,
+		Route []ent.Interceptor
 	}
 )
 

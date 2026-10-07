@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/hasan-muzak/keel/pkg/llm/wire"
+
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
 )
 
 // Resolver decides where a call goes: it authenticates the caller and picks
@@ -33,6 +35,8 @@ type Call struct {
 	// Client identifies the caller's address, for holding back clients that
 	// guess keys (Config.ClientKey).
 	Client string
+	// Shape is the call's prompt family and how its prefix looks.
+	Shape families.Shape
 }
 
 // Route is where a call goes.
@@ -95,6 +99,10 @@ type Record struct {
 	// asked for.
 	ServedModel string
 	Stream      bool
+	// Shape is the call's prompt family and how its prefix looks.
+	Shape families.Shape
+	// Fallback reports that a fallback target answered, not the first.
+	Fallback bool
 	// Status is the HTTP status the client got; ErrorCode says why a call
 	// failed ("" when it didn't).
 	Status    int

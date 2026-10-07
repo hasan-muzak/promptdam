@@ -9,6 +9,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/pricelist"
@@ -98,6 +99,33 @@ func (f TraverseBudget) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.BudgetQuery", q)
+}
+
+// The FamilyLabelFunc type is an adapter to allow the use of ordinary function as a Querier.
+type FamilyLabelFunc func(context.Context, *ent.FamilyLabelQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f FamilyLabelFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.FamilyLabelQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.FamilyLabelQuery", q)
+}
+
+// The TraverseFamilyLabel type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseFamilyLabel func(context.Context, *ent.FamilyLabelQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseFamilyLabel) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseFamilyLabel) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.FamilyLabelQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.FamilyLabelQuery", q)
 }
 
 // The KeySettingFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -240,6 +268,8 @@ func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
 	case *ent.BudgetQuery:
 		return &query[*ent.BudgetQuery, predicate.Budget, budget.OrderOption]{typ: ent.TypeBudget, tq: q}, nil
+	case *ent.FamilyLabelQuery:
+		return &query[*ent.FamilyLabelQuery, predicate.FamilyLabel, familylabel.OrderOption]{typ: ent.TypeFamilyLabel, tq: q}, nil
 	case *ent.KeySettingQuery:
 		return &query[*ent.KeySettingQuery, predicate.KeySetting, keysetting.OrderOption]{typ: ent.TypeKeySetting, tq: q}, nil
 	case *ent.PriceListQuery:

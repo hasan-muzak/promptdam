@@ -45,6 +45,34 @@ var (
 			},
 		},
 	}
+	// FamilyLabelsColumns holds the columns for the "family_labels" table.
+	FamilyLabelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "family_id", Type: field.TypeString, Size: 110},
+		{Name: "label", Type: field.TypeString, Size: 100},
+	}
+	// FamilyLabelsTable holds the schema information for the "family_labels" table.
+	FamilyLabelsTable = &schema.Table{
+		Name:       "family_labels",
+		Columns:    FamilyLabelsColumns,
+		PrimaryKey: []*schema.Column{FamilyLabelsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "familylabel_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{FamilyLabelsColumns[3], FamilyLabelsColumns[4]},
+			},
+			{
+				Name:    "familylabel_project_id_family_id",
+				Unique:  true,
+				Columns: []*schema.Column{FamilyLabelsColumns[4], FamilyLabelsColumns[5]},
+			},
+		},
+	}
 	// KeySettingsColumns holds the columns for the "key_settings" table.
 	KeySettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -201,6 +229,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		BudgetsTable,
+		FamilyLabelsTable,
 		KeySettingsTable,
 		PriceListsTable,
 		PriceOverridesTable,

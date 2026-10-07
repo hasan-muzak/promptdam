@@ -455,7 +455,7 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 		"org": org.ID, "project": prj.ID, "user": me.User.ID, "invitation": inv.ID, "key": key.ID, "channel": ch.ID,
 		"webhook": ids.Encode(ids.WebhookEndpoint, ep.ID), "delivery": ids.Encode(ids.WebhookDelivery, del.ID),
 		"meter": "requests", "provider": p.ID, "route": rte.ID, "budget": bdg.ID,
-		"request": ids.Encode("req", ids.New()), "price": prc.ID,
+		"request": ids.Encode("req", ids.New()), "price": prc.ID, "family": "0123456789abcdef",
 	}
 	e.client.Put(base+"/keys/"+key.ID+"/gateway", alice, testclient.JSON(map[string]any{"rpm": 10})).AssertStatus(http.StatusOK)
 	mallory := e.as("mallory")
@@ -468,8 +468,11 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 	e.c.DB.Ent.OrgFlag.Create().SetOrgID(ownOrgID).SetKey("feature." + catalog.Budgets).SetValue(json.RawMessage(`true`)).
 		SaveX(entx.SkipTenant(ctx))
 	e.c.Billing.BustEntitlements(ctx, ownOrgID)
-	testkit.AssertNoForeignIDs(t, e.client, map[string]string{"org": ownOrg.ID, "project": ownPrj.ID, "meter": "requests"},
-		victim, []string{"meter"}, map[string]string{
+	// A family's ID is its template's hash, the same in every project that
+	// uses the template: not another tenant's to protect.
+	testkit.AssertNoForeignIDs(t, e.client, map[string]string{"org": ownOrg.ID, "project": ownPrj.ID, "meter": "requests",
+		"family": "0123456789abcdef"},
+		victim, []string{"meter", "family"}, map[string]string{
 			"PATCH /v1/orgs/{org}/members/{user}":                        `{"role":"viewer"}`,
 			"PUT /v1/orgs/{org}/projects/{project}/providers/{provider}": `{"name":"x","kind":"openai","api_key":"sk-x-0000000000"}`,
 			"PUT /v1/orgs/{org}/projects/{project}/keys/{key}/gateway":   `{"rpm":1}`,

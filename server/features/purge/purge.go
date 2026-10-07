@@ -34,6 +34,7 @@ import (
 
 	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
@@ -161,6 +162,7 @@ func deleteRows(ctx context.Context, c *pdent.Client, org uuid.UUID, projects []
 	scoped := len(projects) > 0
 	for _, d := range []deleter{
 		c.Budget.Delete().Where(budget.OrgID(org), only(scoped, budget.ProjectIDIn(projects...))),
+		c.FamilyLabel.Delete().Where(familylabel.OrgID(org), only(scoped, familylabel.ProjectIDIn(projects...))),
 		c.KeySetting.Delete().Where(keysetting.OrgID(org), only(scoped, keysetting.ProjectIDIn(projects...))),
 		c.PriceOverride.Delete().Where(priceoverride.OrgID(org), only(scoped, priceoverride.ProjectIDIn(projects...))),
 		c.Provider.Delete().Where(provider.OrgID(org), only(scoped, provider.ProjectIDIn(projects...))),

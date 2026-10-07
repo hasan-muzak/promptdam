@@ -18,6 +18,7 @@ import (
 	"github.com/hasan-muzak/keel/pkg/llm/wire"
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/brand"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
 )
 
 // statusClientClosed is logged for calls the client gave up on (nginx's
@@ -68,9 +69,11 @@ func (c *call) serve() {
 		return
 	}
 	c.rec.RequestedModel, c.rec.Stream = req.Model, req.Stream
+	c.rec.Shape = families.Of(req.Prefix, c.r.Header.Get(brand.HeaderFamily))
 
 	route, err := c.h.cfg.Resolver.Resolve(c.r.Context(), &Call{
 		Format: c.ep.format, Request: req, Header: c.r.Header, Trace: c.rec.Trace, Client: c.h.clientKey(c.r),
+		Shape: c.rec.Shape,
 	})
 	if err != nil {
 		c.fail(err)
@@ -105,6 +108,7 @@ func (c *call) serve() {
 				return
 			}
 			c.rec.Attempts++
+			c.rec.Fallback = i > 0
 			done, failed := c.attempt(t, req, body, dropUsage, last && try == max(route.Retries, 0))
 			c.h.breakers.record(t.ID, !failed, time.Now())
 			if done {

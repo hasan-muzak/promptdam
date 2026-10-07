@@ -8,6 +8,7 @@ import (
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/analytics"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
@@ -24,4 +25,5 @@ type Handlers struct {
 	Notifier  *notify.Notifier
 	Analytics *analytics.Service
 	Prices    *prices.Overrides
+	Families  *families.Service
 }

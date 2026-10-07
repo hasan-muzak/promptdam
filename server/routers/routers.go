@@ -14,6 +14,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/core"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/analytics"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
 	"github.com/hasan-muzak/keel/products/promptdam/server/handlers"
 )
 
@@ -22,7 +23,7 @@ func Mount(a *muzak.App, app *core.App) {
 	c := app.Core
 	h := &handlers.Handlers{
 		Tenancy: c.Tenancy, Providers: app.Providers, Keys: app.Keys, Routes: app.Routes, Budgets: app.Budgets, Notifier: c.Notifier,
-		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides,
+		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides, Families: families.NewService(app.Ent, c.Events),
 	}
 	r := muzak.NewRouter(
 		muzak.WithTags(brand.Key),
@@ -128,6 +129,18 @@ func Mount(a *muzak.App, app *core.App) {
 			"provider. Applies to calls from a few seconds later."))
 	r.Delete(pr+"/{price}", h.DeletePrice, pcat, muzak.Title("Delete Price"), project(tenancy.PermProjectsManage),
 		muzak.Status(http.StatusNoContent), muzak.Summary("Remove the project's own price: the price list's applies again"))
+
+	fcat := muzak.WithCategory("Prompt Families")
+	fb := "/v1/orgs/{org}/projects/{project}/families"
+	r.Get(fb, h.ListFamilies, fcat, muzak.Title("List Families"), project(tenancy.PermProjectsRead),
+		muzak.Summary("A project's prompt families, by spend"),
+		muzak.Description("A family is one task template: calls whose instructions, tools and answer format match once "+
+			"changing values (dates, IDs, numbers) are set aside, or that name it in X-Promptdam-Family. Default the "+
+			"last 7 days."))
+	r.Get(fb+"/{family}", h.GetFamily, fcat, muzak.Title("Get Family"), project(tenancy.PermProjectsRead),
+		muzak.Summary("A family's spend, model mix and daily series"))
+	r.Put(fb+"/{family}", h.LabelFamily, fcat, muzak.Title("Label Family"), project(tenancy.PermProjectsManage),
+		muzak.Summary("Name a family"))
 
 	ana := muzak.WithCategory("Analytics")
 	r.Get("/v1/orgs/{org}/projects/{project}/analytics/spend", h.GetSpend, ana, muzak.Title("Get Spend"),

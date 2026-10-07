@@ -16,6 +16,8 @@ type Tx struct {
 	config
 	// Budget is the client for interacting with the Budget builders.
 	Budget *BudgetClient
+	// FamilyLabel is the client for interacting with the FamilyLabel builders.
+	FamilyLabel *FamilyLabelClient
 	// KeySetting is the client for interacting with the KeySetting builders.
 	KeySetting *KeySettingClient
 	// PriceList is the client for interacting with the PriceList builders.
@@ -158,6 +160,7 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Budget = NewBudgetClient(tx.config)
+	tx.FamilyLabel = NewFamilyLabelClient(tx.config)
 	tx.KeySetting = NewKeySettingClient(tx.config)
 	tx.PriceList = NewPriceListClient(tx.config)
 	tx.PriceOverride = NewPriceOverrideClient(tx.config)

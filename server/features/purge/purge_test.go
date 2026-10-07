@@ -18,6 +18,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/core"
 	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
@@ -87,6 +88,9 @@ func seeds(c *pdent.Client) []seed {
 			return c.Budget.Create().SetOrgID(org).SetProjectID(p).SetName("month").SetScope(budget.ScopeProject).
 				SetWindow(budget.WindowMonth).SetLimitMicros(1_000_000).Exec(ctx)
 		}},
+		{"FamilyLabel", familylabel.Table, func(ctx context.Context, org, p uuid.UUID) error {
+			return c.FamilyLabel.Create().SetOrgID(org).SetProjectID(p).SetFamilyID("0123456789abcdef").SetLabel("x").Exec(ctx)
+		}},
 		{"KeySetting", keysetting.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.KeySetting.Create().SetOrgID(org).SetProjectID(p).SetAPIKeyID(uuid.New()).Exec(ctx)
 		}},
@@ -135,8 +139,8 @@ func (w *world) fill(tn tenant) {
 	}
 	// The request log and, through its views, every rollup.
 	for _, p := range tn.projects {
-		err := w.c.Events.Unscoped().Exec(w.ctx, `INSERT INTO requests (project_id, ts, org_id, tags, developer, retention_days)
-			VALUES (?, now64(3), ?, ['t'], 'dev', 7)`, p, tn.org)
+		err := w.c.Events.Unscoped().Exec(w.ctx, `INSERT INTO requests (project_id, ts, org_id, tags, developer, family_id,
+			usage_known, retention_days) VALUES (?, now64(3), ?, ['t'], 'dev', '0123456789abcdef', true, 7)`, p, tn.org)
 		if err != nil {
 			w.t.Fatal(err)
 		}
@@ -168,7 +172,8 @@ func (w *world) rows(column string, id uuid.UUID) int {
 func (w *world) clickhouse(project uuid.UUID) uint64 {
 	w.t.Helper()
 	var total uint64
-	for _, table := range []string{"requests", "requests_hourly", "requests_hourly_developer", "requests_hourly_tag"} {
+	for _, table := range []string{"requests", "requests_hourly", "requests_hourly_developer", "requests_hourly_tag",
+		"families_hourly", "prefixes_hourly"} {
 		var n uint64
 		if err := w.c.Events.Unscoped().QueryRow(w.ctx, `SELECT count() FROM `+table+` WHERE project_id = ?`, project).Scan(&n); err != nil {
 			w.t.Fatal(err)
@@ -224,7 +229,7 @@ func TestDeletingAProjectThenItsOrgLeavesNothing(t *testing.T) {
 	if n := w.clickhouse(p); n != 0 {
 		t.Fatalf("%d ClickHouse rows of the deleted project are left", n)
 	}
-	if w.clickhouse(sibling) != 4 {
+	if w.clickhouse(sibling) != 6 {
 		t.Fatal("the purge took ClickHouse rows of a project that wasn't deleted")
 	}
 	if w.rows("project_id", sibling) == 0 || w.keys(sibling) == 0 || w.rows("org_id", b.org) == 0 || w.keys(b.projects[0]) == 0 {
@@ -247,7 +252,7 @@ func TestDeletingAProjectThenItsOrgLeavesNothing(t *testing.T) {
 	if n := w.clickhouse(sibling); n != 0 {
 		t.Fatalf("%d ClickHouse rows of the deleted organization are left", n)
 	}
-	if w.clickhouse(b.projects[0]) != 4 {
+	if w.clickhouse(b.projects[0]) != 6 {
 		t.Fatal("the purge took another organization's ClickHouse rows")
 	}
 	if w.rows("org_id", b.org) == 0 || w.keys(b.projects[0]) == 0 {

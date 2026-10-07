@@ -31,6 +31,9 @@ const (
 	HeaderRoute = HeaderPrefix + "Route"
 	// HeaderTags lists tags, comma-separated.
 	HeaderTags = HeaderPrefix + "Tags"
+	// HeaderFamily names the call's prompt family (its task), instead of the
+	// family Promptdam derives from its instructions.
+	HeaderFamily = HeaderPrefix + "Family"
 )
 
 // Response headers the gateway adds.

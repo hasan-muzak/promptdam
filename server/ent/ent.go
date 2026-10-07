@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
@@ -79,6 +80,7 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			budget.Table:        budget.ValidColumn,
+			familylabel.Table:   familylabel.ValidColumn,
 			keysetting.Table:    keysetting.ValidColumn,
 			pricelist.Table:     pricelist.ValidColumn,
 			priceoverride.Table: priceoverride.ValidColumn,

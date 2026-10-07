@@ -1,7 +1,8 @@
-h1:hTjLO+zflfFM7C5PTl/qQjw6shCBYZFMK4uIJIx7mTg=
+h1:1ZpdeTF09E2f976dD6hTdNiUhIXIGazdeW9alT2VloA=
 20261007103513_init.sql h1:bVyQ6g9OmnroRSresfeNjfapdzWItSeWtS+hU8gXKag=
 20261007110117_key_settings.sql h1:0IhbZBSVxQ8bGE34nOm201ldybxwuXeg6GBHg1dLZD4=
 20261007110559_routes.sql h1:qT7mskL0wkHMlY7VDpj+jQQBgVQO98wZ1DfkOybjk/o=
 20261007111103_budgets.sql h1:rfIlbvhQd6A8FcWGI7Qr/MYlnjElOcU/fZUGUsLjgLo=
 20261007130035_price_lists.sql h1:sRqlMlIyZNaoqjrZkRCpIp/8U3/vYdv3t9lcRjlPNR4=
 20261007130330_price_overrides.sql h1:w6Y1xWOaHfnZGN7OtXOp/phhlcxshdCHuoXFKe6tVqA=
+20261007143430_family_labels.sql h1:U7sGGMJ+5YljXV/KHfx6L+PEIB4vqY0D9Zm6MWUVVrg=
