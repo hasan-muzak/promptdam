@@ -51,12 +51,18 @@ func TestSync(t *testing.T) {
 	var body atomic.Value
 	body.Store(list(60, "0.000001"))
 	fetches := atomic.Int32{}
-	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/down" {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
 		fetches.Add(1)
 		_, _ = w.Write([]byte(body.Load().(string)))
 	}))
 	defer src.Close()
-	cfg := prices.Config{Ent: client, KV: store, URL: src.URL, HTTP: safehttp.NewClient(safehttp.Options{AllowLoopback: true})}
+	// The second list (embeddings) is down: syncs go on without it.
+	cfg := prices.Config{Ent: client, KV: store, URLs: []string{src.URL, src.URL + "/down"},
+		HTTP: safehttp.NewClient(safehttp.Options{AllowLoopback: true})}
 	a, b := prices.New(cfg), prices.New(cfg)
 
 	// Until a list is synced, the fallback prices calls.

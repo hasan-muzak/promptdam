@@ -1,7 +1,8 @@
 // Package prices keeps the model price list Promptdam costs calls with. It
 // is reference data, never a bill: customers pay their providers. A job
-// syncs it daily from OpenRouter's public models API; every process holds
-// the newest in memory and reloads it when a sync announces a new one.
+// syncs it daily from OpenRouter's public model lists (text, embedding and
+// decision models); every process holds the newest in memory and reloads
+// it when a sync announces a new one.
 //
 // A sync can't make prices wrong at once: a list much shorter than the
 // last is refused, and a model whose price moved more than tenfold keeps
@@ -16,6 +17,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -69,8 +71,10 @@ type Config struct {
 	// Fallback prices calls until a list has been synced (the embedded
 	// catalog, or a configured file).
 	Fallback *llm.Catalog
-	// URL is the list's source (llm.OpenRouterModelsURL).
-	URL string
+	// URLs are the lists' sources: the first is required, the others are
+	// added when they answer (default OpenRouter's text, embedding and
+	// decision models).
+	URLs []string
 	// HTTP fetches it (safehttp.NewClient).
 	HTTP *http.Client
 	Now  func() time.Time
@@ -87,8 +91,8 @@ type Store struct {
 
 // New returns a Store serving the fallback until Load finds a list.
 func New(cfg Config) *Store {
-	if cfg.URL == "" {
-		cfg.URL = llm.OpenRouterModelsURL
+	if len(cfg.URLs) == 0 {
+		cfg.URLs = []string{llm.OpenRouterModelsURL, llm.OpenRouterEmbeddingsURL, llm.OpenRouterDecisionsURL}
 	}
 	if cfg.HTTP == nil {
 		cfg.HTTP = safehttp.NewClient(safehttp.Options{Timeout: time.Minute, MaxResponseBytes: 32 << 20})
@@ -152,7 +156,7 @@ func (s *Store) Sync(ctx context.Context, force bool) error {
 	if err != nil {
 		return err
 	}
-	if err := s.cfg.Ent.PriceList.Create().SetSource(s.cfg.URL).SetCatalog(data).SetModels(len(next.Models)).SetHeld(held).
+	if err := s.cfg.Ent.PriceList.Create().SetSource(strings.Join(s.cfg.URLs, " ")).SetCatalog(data).SetModels(len(next.Models)).SetHeld(held).
 		Exec(ctx); err != nil {
 		return fmt.Errorf("prices: storing the list: %w", err)
 	}
@@ -168,23 +172,53 @@ func (s *Store) Sync(ctx context.Context, force bool) error {
 	return nil
 }
 
+// fetch reads every list into one catalog: the first must answer, the
+// others are added when they do.
 func (s *Store) fetch(ctx context.Context) (*llm.Catalog, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.URL, nil)
+	var out *llm.Catalog
+	for i, url := range s.cfg.URLs {
+		c, err := s.fetchOne(ctx, url)
+		if err != nil {
+			if i == 0 {
+				return nil, err
+			}
+			slog.Warn("prices: a list didn't answer; syncing without it", "url", url, "err", err)
+			continue
+		}
+		if out == nil {
+			out = c
+			continue
+		}
+		seen := make(map[[2]string]bool, len(out.Models))
+		for _, m := range out.Models {
+			seen[[2]string{m.Provider, m.ID}] = true
+		}
+		for _, m := range c.Models {
+			if !seen[[2]string{m.Provider, m.ID}] {
+				out.Models = append(out.Models, m)
+			}
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) fetchOne(ctx context.Context, url string) (*llm.Catalog, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
 	res, err := s.cfg.HTTP.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("prices: fetching the list: %w", err)
+		return nil, fmt.Errorf("prices: fetching %s: %w", url, err)
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("prices: the list answered %d", res.StatusCode)
+		return nil, fmt.Errorf("prices: %s answered %d", url, res.StatusCode)
 	}
 	data, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, fmt.Errorf("prices: reading the list: %w", err)
+		return nil, fmt.Errorf("prices: reading %s: %w", url, err)
 	}
 	return llm.FromOpenRouter(data)
 }

@@ -251,10 +251,11 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
    1. **Classifier in the gateway.** A small model per family (logistic regression or gradient-boosted trees) predicts whether the cheaper model's answer will be acceptable.
       - Its features cost nothing to compute: input tokens, message count, tools, `max_tokens`, code or JSON in the last message, tags, hashed n-grams of the last user message.
       - It is trained in the worker on the judged shadow samples (step 4) and shipped to gateways with the config snapshot. Inference takes microseconds.
-   2. **OpenAI Decisions API, only when the classifier is unsure.** When the classifier's confidence is below the route's threshold, or the family has no trained model yet, a route may opt in to asking `gpt-6-luna` (`POST /v1/decisions`, a `score` question on difficulty).
-      - It costs $0.10 per 1M input tokens, nothing for output.
+   2. **A decision model, only when the classifier is unsure.** When the classifier's confidence is below the route's threshold, or the family has no trained model yet, a route may opt in to asking a decision model (typed answers: a `score` question on difficulty).
+      - Not tied to one vendor: OpenRouter lists decision models (`?output_modalities=decisions`). On 2026-10-07 the cheapest were Respan span-01 ($0.02 per 1M input tokens); Jev, Liquid d1 and Perplexity's decider (about $0.04); and Inception's mercury-decide (free). For comparison, Cloudflare Clef is $0.24 and OpenAI's `gpt-6-luna` $0.10.
+      - Pick the cheapest that passes calibration against the judged samples, and re-check it when prices or models change.
       - It has a hard timeout (about 150 ms) and fails open to the family's default model.
-      - It runs on the customer's own OpenAI key when they have one.
+      - It runs on the customer's own key (OpenRouter's or the vendor's) when they have one.
       - Target: under 10% of a family's requests get here. Measure it in beta.
    3. **Otherwise the family's default:** the model its experiment proved, else the requested one.
    - A bandit (Thompson sampling) keeps trying the cheaper model on a few percent of traffic, with the canary's judgments as its reward; auto-revert still applies.
@@ -356,7 +357,8 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
   - **Done 2026-10-07:** `bench/fakeupstream` (all four formats) and `task promptdam:bench`. The timing gate runs on demand (`PROMPTDAM_BENCH=1`), not in CI: shared CI runners are too noisy for p99s. The functional tests run in CI.
 - [ ] S0.4 Catalog (`plans.go`), Stripe sync (test), real landing page; recruit 10 design partners with ≥ $2k/mo LLM spend (waitlist, interviews, Fixwire customers with high cost-per-run).
   - **Done 2026-10-07, catalog:** `server/catalog/plans.go` per §5: Free, Pro, Team and Business with request overage. The savings plan is deferred (decided 2026-10-07). `ai_credits` waits for the judge decision (S3). Seats are 3 on Free and 10 on Pro (my numbers, change freely).
-  - **Needs you:** a Promptdam Stripe sub-account's test keys for `task promptdam:stripe:sync`; the landing page and design partners.
+  - **Done 2026-10-07, Stripe (test mode):** `api stripe sync` created the portal, the `promptdam_requests` meter, and Pro, Team and Business with monthly and yearly prices plus request overage. The webhook events are those of `docs/billing-policy.md`; others are acknowledged and ignored.
+  - **Needs you:** the landing page and design partners.
 - **Exit (met 2026-10-07):** proxy overhead p99 < 40 ms on the bench with streaming; OpenAI and Anthropic SDKs work unmodified with only `base_url` changed.
   - Bench on a laptop running client, fake provider and gateway at once: p99 overhead +2.4 ms (chat), +13.7 ms (chat stream), +19.1 ms (Anthropic stream). To re-measure on the VPS in S4.4.
   - `openai-go` (Chat stream and not, Responses stream and not, error codes) and `anthropic-sdk-go` (Messages stream and not, count_tokens) pass through the gateway in `features/gateway/sdk_test.go`.
@@ -401,14 +403,14 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
     - Every call is logged to ClickHouse `requests` (metadata only, plan retention). Rollups by provider/model/key/route (with latency percentiles), developer and tag.
     - The plan's `requests` meter is counted (hard on Free).
   - **Done 2026-10-07, prices (decided with the owner):** prices are reference data for spend and dollar budgets, never a bill; customers pay their providers.
-    - The worker syncs OpenRouter's public models API daily (`api prices sync` does it now): 519 entries today. Each model is listed under OpenRouter's ID, and under its vendor's own name for OpenAI, Anthropic, Google, Mistral, DeepSeek and xAI.
+    - The worker syncs OpenRouter's public model lists daily (text, embedding and decision models; `api prices sync` does it now). Each model is listed under OpenRouter's ID, and under its vendor's own name for OpenAI, Anthropic, Google, Mistral, DeepSeek and xAI.
     - The list includes cache prices, Anthropic's one-hour writes and long-prompt tiers.
     - Guards: a much shorter list is refused; a price moving more than tenfold, or to or from free, keeps its old value until checked.
     - Projects can set their own prices (`PUT …/prices`) for discounts and models the list lacks. The order is the project's price for that provider, then for any provider, then the list.
   - **Known gaps:**
     - Groq, Together and Fireworks name and price open models their own way: tokens only, unless a project sets prices.
     - DeepSeek shows OpenRouter's resold price.
-    - Embedding models aren't in the list.
+    - Embedding and decision models are priced by input alone, as listed.
 - [ ] S1.8 Dashboard: providers, keys, requests log (metadata), spend analytics (by model/provider/key/developer/tag), budgets.
   - **Done 2026-10-07, the backend:**
     - APIs for providers, key settings, routes and budgets.
