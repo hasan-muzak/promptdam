@@ -33,6 +33,12 @@ const (
 	// ToolsUnsorted marks tools not listed in name order: a list built in
 	// changing order breaks prompt caches.
 	ToolsUnsorted
+	// Breakpoints marks a request that set prompt cache breakpoints
+	// itself (Anthropic's cache_control).
+	Breakpoints
+	// GatewayBreakpoints marks one the gateway added breakpoints to (the
+	// route's prompt caching).
+	GatewayBreakpoints
 )
 
 // Names lists the flags set, for reports.
@@ -41,7 +47,8 @@ func (f Flags) Names() []string {
 	for _, n := range []struct {
 		f    Flags
 		name string
-	}{{Dates, "dates"}, {Times, "times"}, {UUIDs, "uuids"}, {HexIDs, "hex_ids"}, {Numbers, "numbers"}, {ToolsUnsorted, "tools_unsorted"}} {
+	}{{Dates, "dates"}, {Times, "times"}, {UUIDs, "uuids"}, {HexIDs, "hex_ids"}, {Numbers, "numbers"}, {ToolsUnsorted, "tools_unsorted"},
+		{Breakpoints, "breakpoints"}, {GatewayBreakpoints, "gateway_breakpoints"}} {
 		if f&n.f != 0 {
 			out = append(out, n.name)
 		}
@@ -58,6 +65,8 @@ type Shape struct {
 	// calls of a family with different prefixes miss providers' caches.
 	Prefix string
 	Flags  Flags
+	// PrefixTokens estimates the prefix's length (four bytes a token).
+	PrefixTokens int
 }
 
 var nameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$`)
@@ -73,7 +82,11 @@ func Of(p wire.Prefix, named string) Shape {
 	if !slices.IsSorted(p.Tools) {
 		flags |= ToolsUnsorted
 	}
+	if p.CacheControl {
+		flags |= Breakpoints
+	}
 	s.Flags = flags
+	s.PrefixTokens = (len(p.System) + len(p.ToolsRaw)) / 4
 
 	h := sha256.New()
 	h.Write([]byte(p.System))

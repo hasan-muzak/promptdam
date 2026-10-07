@@ -8,6 +8,7 @@ import (
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/analytics"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/cachedoctor"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
@@ -17,13 +18,14 @@ import (
 
 // Handlers hold Promptdam's services.
 type Handlers struct {
-	Tenancy   *tenancy.Service
-	Providers *providers.Service
-	Keys      *keysettings.Service
-	Routes    *routes.Service
-	Budgets   *budgets.Service
-	Notifier  *notify.Notifier
-	Analytics *analytics.Service
-	Prices    *prices.Overrides
-	Families  *families.Service
+	Tenancy     *tenancy.Service
+	Providers   *providers.Service
+	Keys        *keysettings.Service
+	Routes      *routes.Service
+	Budgets     *budgets.Service
+	Notifier    *notify.Notifier
+	Analytics   *analytics.Service
+	Prices      *prices.Overrides
+	Families    *families.Service
+	CacheDoctor *cachedoctor.Service
 }

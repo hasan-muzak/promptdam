@@ -14,6 +14,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/core"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/analytics"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/cachedoctor"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/families"
 	"github.com/hasan-muzak/keel/products/promptdam/server/handlers"
 )
@@ -24,6 +25,7 @@ func Mount(a *muzak.App, app *core.App) {
 	h := &handlers.Handlers{
 		Tenancy: c.Tenancy, Providers: app.Providers, Keys: app.Keys, Routes: app.Routes, Budgets: app.Budgets, Notifier: c.Notifier,
 		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides, Families: families.NewService(app.Ent, c.Events),
+		CacheDoctor: cachedoctor.New(c.Events, app.Prices),
 	}
 	r := muzak.NewRouter(
 		muzak.WithTags(brand.Key),
@@ -141,6 +143,13 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Summary("A family's spend, model mix and daily series"))
 	r.Put(fb+"/{family}", h.LabelFamily, fcat, muzak.Title("Label Family"), project(tenancy.PermProjectsManage),
 		muzak.Summary("Name a family"))
+	r.Get(fb+"/{family}/cache-doctor", h.GetFamilyCacheDoctor, fcat, muzak.Title("Diagnose Family Caching"),
+		project(tenancy.PermProjectsRead), muzak.Summary("Why a family's calls miss the providers' prompt caches, and the fix"))
+	r.Get("/v1/orgs/{org}/projects/{project}/cache-doctor", h.GetCacheDoctor, fcat, muzak.Title("Diagnose Caching"),
+		project(tenancy.PermProjectsRead), muzak.Summary("The 20 busiest families' prompt cache health, by what fixing it is worth"),
+		muzak.Description("Read from the request log's prefix rollup, never from prompts: how often a family's prefix "+
+			"changes and why (dates, IDs, numbers, tool order), missing Anthropic breakpoints, prefixes too short to "+
+			"cache. Default the last 7 days."))
 
 	ana := muzak.WithCategory("Analytics")
 	r.Get("/v1/orgs/{org}/projects/{project}/analytics/spend", h.GetSpend, ana, muzak.Title("Get Spend"),
