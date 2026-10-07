@@ -124,6 +124,8 @@ var (
 		{Name: "decision_model", Type: field.TypeString, Size: 300, Default: ""},
 		{Name: "decision_timeout_ms", Type: field.TypeInt, Default: 150},
 		{Name: "activated_at", Type: field.TypeTime, Nullable: true},
+		{Name: "demoted", Type: field.TypeJSON},
+		{Name: "ready_at", Type: field.TypeTime, Nullable: true},
 	}
 	// ModelRoutersTable holds the schema information for the "model_routers" table.
 	ModelRoutersTable = &schema.Table{

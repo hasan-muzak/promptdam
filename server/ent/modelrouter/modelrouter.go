@@ -49,6 +49,10 @@ const (
 	FieldDecisionTimeoutMs = "decision_timeout_ms"
 	// FieldActivatedAt holds the string denoting the activated_at field in the database.
 	FieldActivatedAt = "activated_at"
+	// FieldDemoted holds the string denoting the demoted field in the database.
+	FieldDemoted = "demoted"
+	// FieldReadyAt holds the string denoting the ready_at field in the database.
+	FieldReadyAt = "ready_at"
 	// Table holds the table name of the modelrouter in the database.
 	Table = "model_routers"
 )
@@ -72,6 +76,8 @@ var Columns = []string{
 	FieldDecisionModel,
 	FieldDecisionTimeoutMs,
 	FieldActivatedAt,
+	FieldDemoted,
+	FieldReadyAt,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -120,6 +126,8 @@ var (
 	DecisionModelValidator func(string) error
 	// DefaultDecisionTimeoutMs holds the default value on creation for the "decision_timeout_ms" field.
 	DefaultDecisionTimeoutMs int
+	// DefaultDemoted holds the default value on creation for the "demoted" field.
+	DefaultDemoted []tiers.Demotion
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() uuid.UUID
 )
@@ -227,4 +235,9 @@ func ByDecisionTimeoutMs(opts ...sql.OrderTermOption) OrderOption {
 // ByActivatedAt orders the results by the activated_at field.
 func ByActivatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldActivatedAt, opts...).ToFunc()
+}
+
+// ByReadyAt orders the results by the ready_at field.
+func ByReadyAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReadyAt, opts...).ToFunc()
 }

@@ -75,8 +75,9 @@ func (s *Service) Train(ctx context.Context, r *pdent.ModelRouter) (*classifier.
 	// Only calls judged against the router's current default tier say
 	// anything of its tiers now.
 	err := s.cfg.Events.Select(ctx, &rows, events.Project(r.ProjectID), `SELECT candidate_tier, verdict, features
-		FROM router_evals WHERE {tenant} AND router = ? AND baseline_tier = ? AND verdict != '' AND ts >= ?
-		ORDER BY ts DESC LIMIT ?`, r.Name, r.DefaultTier, s.cfg.Now().Add(-Window), maxPerTier*len(r.Tiers))
+		FROM router_evals WHERE {tenant} AND router = ? AND baseline_tier = ? AND verdict != ''
+		AND ts >= fromUnixTimestamp64Milli(?) ORDER BY ts DESC LIMIT ?`, r.Name, r.DefaultTier, s.cfg.Now().Add(-Window).UnixMilli(),
+		maxPerTier*len(r.Tiers))
 	if err != nil {
 		return nil, fmt.Errorf("training: reading judged calls: %w", err)
 	}
@@ -145,7 +146,7 @@ func (s *Service) TrainDue(ctx context.Context) error {
 		Last    time.Time `ch:"last"`
 	}
 	if err := s.cfg.Events.Unscoped().Select(ctx, &latest, `SELECT project_id, router, max(ts) AS last FROM router_evals
-		WHERE verdict != '' AND ts >= ? GROUP BY project_id, router`, s.cfg.Now().Add(-Window)); err != nil {
+		WHERE verdict != '' AND ts >= fromUnixTimestamp64Milli(?) GROUP BY project_id, router`, s.cfg.Now().Add(-Window).UnixMilli()); err != nil {
 		return fmt.Errorf("training: finding routers to train: %w", err)
 	}
 	var errs []error

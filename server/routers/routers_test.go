@@ -385,9 +385,23 @@ func TestRouters(t *testing.T) {
 	e.c.DB.Ent.OrgFlag.Create().SetOrgID(orgID).SetKey("feature." + catalog.Routers).SetValue(json.RawMessage(`true`)).
 		SaveX(entx.SkipTenant(ctx))
 	e.c.Billing.BustEntitlements(ctx, orgID)
+	// Without evidence that its tiers hold up, only an override activates
+	// it.
+	if res := e.client.Put(path+"/"+rtr.ID, alice, testclient.JSON(auto)); res.Status != http.StatusConflict ||
+		res.Error().Error.Code != handlers.CodeRouterNotReady {
+		t.Fatalf("no evidence: %d %s", res.Status, res.String())
+	}
+	auto["override"] = true
 	got := testclient.Decoded[handlers.RouterOut](e.client.Put(path+"/"+rtr.ID, alice, testclient.JSON(auto)).AssertStatus(http.StatusOK))
-	if got.Status != "active" || got.ActivatedAt == nil {
+	if got.Status != "active" || got.ActivatedAt == nil || got.Demoted == nil {
 		t.Fatalf("updated %+v", got)
+	}
+	delete(auto, "override")
+	// Active already: edits need no override.
+	e.client.Put(path+"/"+rtr.ID, alice, testclient.JSON(auto)).AssertStatus(http.StatusOK)
+	if res := e.client.Post(path+"/"+rtr.ID+"/restore", alice, testclient.JSON(map[string]string{"tier": "fast"})); res.Status !=
+		http.StatusUnprocessableEntity {
+		t.Fatalf("restore a tier not demoted: %d %s", res.Status, res.String())
 	}
 
 	for name, tt := range map[string]struct {
@@ -678,5 +692,6 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 			"PUT /v1/orgs/{org}/projects/{project}/rules/{rule}":              `{"name":"x","when":"true","to_model":"m"}`,
 			"PUT /v1/orgs/{org}/projects/{project}/routers/{router}":          `{"name":"x","tiers":[{"name":"a","model":"m"}]}`,
 			"POST /v1/orgs/{org}/projects/{project}/routers/{router}/explain": `{"request":{"model":"x","messages":[]}}`,
+			"POST /v1/orgs/{org}/projects/{project}/routers/{router}/restore": `{"tier":"fast"}`,
 		}, mallory)
 }

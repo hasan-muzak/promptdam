@@ -234,6 +234,38 @@ func (_u *ModelRouterUpdate) ClearActivatedAt() *ModelRouterUpdate {
 	return _u
 }
 
+// SetDemoted sets the "demoted" field.
+func (_u *ModelRouterUpdate) SetDemoted(v []tiers.Demotion) *ModelRouterUpdate {
+	_u.mutation.SetDemoted(v)
+	return _u
+}
+
+// AppendDemoted appends value to the "demoted" field.
+func (_u *ModelRouterUpdate) AppendDemoted(v []tiers.Demotion) *ModelRouterUpdate {
+	_u.mutation.AppendDemoted(v)
+	return _u
+}
+
+// SetReadyAt sets the "ready_at" field.
+func (_u *ModelRouterUpdate) SetReadyAt(v time.Time) *ModelRouterUpdate {
+	_u.mutation.SetReadyAt(v)
+	return _u
+}
+
+// SetNillableReadyAt sets the "ready_at" field if the given value is not nil.
+func (_u *ModelRouterUpdate) SetNillableReadyAt(v *time.Time) *ModelRouterUpdate {
+	if v != nil {
+		_u.SetReadyAt(*v)
+	}
+	return _u
+}
+
+// ClearReadyAt clears the value of the "ready_at" field.
+func (_u *ModelRouterUpdate) ClearReadyAt() *ModelRouterUpdate {
+	_u.mutation.ClearReadyAt()
+	return _u
+}
+
 // Mutation returns the ModelRouterMutation object of the builder.
 func (_u *ModelRouterUpdate) Mutation() *ModelRouterMutation {
 	return _u.mutation
@@ -386,6 +418,20 @@ func (_u *ModelRouterUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if _u.mutation.ActivatedAtCleared() {
 		_spec.ClearField(modelrouter.FieldActivatedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Demoted(); ok {
+		_spec.SetField(modelrouter.FieldDemoted, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDemoted(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, modelrouter.FieldDemoted, value)
+		})
+	}
+	if value, ok := _u.mutation.ReadyAt(); ok {
+		_spec.SetField(modelrouter.FieldReadyAt, field.TypeTime, value)
+	}
+	if _u.mutation.ReadyAtCleared() {
+		_spec.ClearField(modelrouter.FieldReadyAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -611,6 +657,38 @@ func (_u *ModelRouterUpdateOne) ClearActivatedAt() *ModelRouterUpdateOne {
 	return _u
 }
 
+// SetDemoted sets the "demoted" field.
+func (_u *ModelRouterUpdateOne) SetDemoted(v []tiers.Demotion) *ModelRouterUpdateOne {
+	_u.mutation.SetDemoted(v)
+	return _u
+}
+
+// AppendDemoted appends value to the "demoted" field.
+func (_u *ModelRouterUpdateOne) AppendDemoted(v []tiers.Demotion) *ModelRouterUpdateOne {
+	_u.mutation.AppendDemoted(v)
+	return _u
+}
+
+// SetReadyAt sets the "ready_at" field.
+func (_u *ModelRouterUpdateOne) SetReadyAt(v time.Time) *ModelRouterUpdateOne {
+	_u.mutation.SetReadyAt(v)
+	return _u
+}
+
+// SetNillableReadyAt sets the "ready_at" field if the given value is not nil.
+func (_u *ModelRouterUpdateOne) SetNillableReadyAt(v *time.Time) *ModelRouterUpdateOne {
+	if v != nil {
+		_u.SetReadyAt(*v)
+	}
+	return _u
+}
+
+// ClearReadyAt clears the value of the "ready_at" field.
+func (_u *ModelRouterUpdateOne) ClearReadyAt() *ModelRouterUpdateOne {
+	_u.mutation.ClearReadyAt()
+	return _u
+}
+
 // Mutation returns the ModelRouterMutation object of the builder.
 func (_u *ModelRouterUpdateOne) Mutation() *ModelRouterMutation {
 	return _u.mutation
@@ -793,6 +871,20 @@ func (_u *ModelRouterUpdateOne) sqlSave(ctx context.Context) (_node *ModelRouter
 	}
 	if _u.mutation.ActivatedAtCleared() {
 		_spec.ClearField(modelrouter.FieldActivatedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Demoted(); ok {
+		_spec.SetField(modelrouter.FieldDemoted, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDemoted(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, modelrouter.FieldDemoted, value)
+		})
+	}
+	if value, ok := _u.mutation.ReadyAt(); ok {
+		_spec.SetField(modelrouter.FieldReadyAt, field.TypeTime, value)
+	}
+	if _u.mutation.ReadyAtCleared() {
+		_spec.ClearField(modelrouter.FieldReadyAt, field.TypeTime)
 	}
 	_node = &ModelRouter{config: _u.config}
 	_spec.Assign = _node.assignValues

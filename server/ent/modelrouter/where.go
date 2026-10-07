@@ -120,6 +120,11 @@ func ActivatedAt(v time.Time) predicate.ModelRouter {
 	return predicate.ModelRouter(sql.FieldEQ(FieldActivatedAt, v))
 }
 
+// ReadyAt applies equality check predicate on the "ready_at" field. It's identical to ReadyAtEQ.
+func ReadyAt(v time.Time) predicate.ModelRouter {
+	return predicate.ModelRouter(sql.FieldEQ(FieldReadyAt, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.ModelRouter {
 	return predicate.ModelRouter(sql.FieldEQ(FieldCreatedAt, v))
@@ -768,6 +773,56 @@ func ActivatedAtIsNil() predicate.ModelRouter {
 // ActivatedAtNotNil applies the NotNil predicate on the "activated_at" field.
 func ActivatedAtNotNil() predicate.ModelRouter {
 	return predicate.ModelRouter(sql.FieldNotNull(FieldActivatedAt))
+}
+
+// ReadyAtEQ applies the EQ predicate on the "ready_at" field.
+func ReadyAtEQ(v time.Time) predicate.ModelRouter {
+	return predicate.ModelRouter(sql.FieldEQ(FieldReadyAt, v))
+}
+
+// ReadyAtNEQ applies the NEQ predicate on the "ready_at" field.
+func ReadyAtNEQ(v time.Time) predicate.ModelRouter {
+	return predicate.ModelRouter(sql.FieldNEQ(FieldReadyAt, v))
+}
+
+// ReadyAtIn applies the In predicate on the "ready_at" field.
+func ReadyAtIn(vs ...time.Time) predicate.ModelRouter {
+	return predicate.ModelRouter(sql.FieldIn(FieldReadyAt, vs...))
+}
+
+// ReadyAtNotIn applies the NotIn predicate on the "ready_at" field.
+func ReadyAtNotIn(vs ...time.Time) predicate.ModelRouter {
+	return predicate.ModelRouter(sql.FieldNotIn(FieldReadyAt, vs...))
+}
+
+// ReadyAtGT applies the GT predicate on the "ready_at" field.
+func ReadyAtGT(v time.Time) predicate.ModelRouter {
+	return predicate.ModelRouter(sql.FieldGT(FieldReadyAt, v))
+}
+
+// ReadyAtGTE applies the GTE predicate on the "ready_at" field.
+func ReadyAtGTE(v time.Time) predicate.ModelRouter {
+	return predicate.ModelRouter(sql.FieldGTE(FieldReadyAt, v))
+}
+
+// ReadyAtLT applies the LT predicate on the "ready_at" field.
+func ReadyAtLT(v time.Time) predicate.ModelRouter {
+	return predicate.ModelRouter(sql.FieldLT(FieldReadyAt, v))
+}
+
+// ReadyAtLTE applies the LTE predicate on the "ready_at" field.
+func ReadyAtLTE(v time.Time) predicate.ModelRouter {
+	return predicate.ModelRouter(sql.FieldLTE(FieldReadyAt, v))
+}
+
+// ReadyAtIsNil applies the IsNil predicate on the "ready_at" field.
+func ReadyAtIsNil() predicate.ModelRouter {
+	return predicate.ModelRouter(sql.FieldIsNull(FieldReadyAt))
+}
+
+// ReadyAtNotNil applies the NotNil predicate on the "ready_at" field.
+func ReadyAtNotNil() predicate.ModelRouter {
+	return predicate.ModelRouter(sql.FieldNotNull(FieldReadyAt))
 }
 
 // And groups predicates with the AND operator between them.

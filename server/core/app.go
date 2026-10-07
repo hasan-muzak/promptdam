@@ -46,6 +46,8 @@ type App struct {
 	// Training trains their classifiers on their judged calls.
 	Routers  *routers.Service
 	Training *training.Service
+	// Watcher announces ready routers and demotes drifting tiers.
+	Watcher *routers.Watcher
 	// GatewayURL is where clients reach the gateway, for setup instructions.
 	GatewayURL string
 	// Providers keeps projects' LLM providers and their keys.
@@ -109,6 +111,8 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.Rules = rules.New(a.Ent, env, a.configChanged)
 	a.Routers = routers.New(a.Ent, env, a.Prices, a.configChanged)
 	a.Training = training.New(training.Config{Ent: a.Ent, Events: c.Events, Changed: a.configChanged})
+	a.Watcher = routers.NewWatcher(routers.WatchConfig{Ent: a.Ent, Events: c.Events, Notifier: c.Notifier, Webhooks: c.Webhooks,
+		AppURL: c.Config.AppURL, Changed: a.configChanged})
 	if a.GatewayURL == "" {
 		a.GatewayURL = "http://localhost:8282"
 	}

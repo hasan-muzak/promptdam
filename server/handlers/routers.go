@@ -29,7 +29,7 @@ import (
 )
 
 // RouterPrefix starts model router IDs: rtr_….
-const RouterPrefix = "rtr"
+const RouterPrefix = routers.IDPrefix
 
 // Error codes of the router routes.
 const (
@@ -37,6 +37,7 @@ const (
 	CodeRouterNameTaken = "router_name_taken"
 	CodeRouterLimit     = "router_limit"
 	CodeRouterInUse     = "router_in_use"
+	CodeRouterNotReady  = "router_not_ready"
 )
 
 // RouterDeps are what the router routes need beyond the routers service.
@@ -83,15 +84,29 @@ type RouterOut struct {
 	DecisionModel     string        `json:"decision_model" doc:"Asked when the classifier is unsure; empty: never"`
 	DecisionTimeoutMS int           `json:"decision_timeout_ms"`
 	ActivatedAt       *time.Time    `json:"activated_at"`
+	Demoted           []DemotionOut `json:"demoted" doc:"Tiers the canary demoted: the router places no call on them until restored"`
+	ReadyAt           *time.Time    `json:"ready_at" doc:"When the router's shadow evidence first met its floor (router.ready)"`
 	CreatedAt         time.Time     `json:"created_at"`
 	UpdatedAt         time.Time     `json:"updated_at"`
+}
+
+// DemotionOut is a demoted tier.
+type DemotionOut struct {
+	Tier    string    `json:"tier"`
+	At      time.Time `json:"at"`
+	Judged  int       `json:"judged" doc:"Calls the tier served that were judged"`
+	Quality float64   `json:"quality" doc:"The share of them that held up"`
 }
 
 func routerOut(r *pdent.ModelRouter) RouterOut {
 	out := RouterOut{ID: ids.Encode(RouterPrefix, r.ID), Name: r.Name, Status: string(r.Status), DefaultTier: r.DefaultTier,
 		QualityFloor: r.QualityFloor, SampleRate: r.SampleRate, EvalBudgetMicros: r.EvalBudgetMicros, Judge: r.Judge,
 		DecisionModel: r.DecisionModel, DecisionTimeoutMS: r.DecisionTimeoutMs, ActivatedAt: r.ActivatedAt,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Tiers: make([]TierOut, len(r.Tiers)), Rules: make([]TierRuleOut, len(r.Rules))}
+		ReadyAt: r.ReadyAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Tiers: make([]TierOut, len(r.Tiers)),
+		Rules: make([]TierRuleOut, len(r.Rules)), Demoted: make([]DemotionOut, len(r.Demoted))}
+	for i, d := range r.Demoted {
+		out.Demoted[i] = DemotionOut{Tier: d.Tier, At: d.At, Judged: d.Judged, Quality: float64(d.Right) / float64(max(d.Judged, 1))}
+	}
 	for i, t := range r.Tiers {
 		out.Tiers[i] = TierOut{Name: t.Name, Description: t.Description, Model: t.Model, Fallbacks: orEmpty(t.Fallbacks),
 			Examples: orEmpty(t.Examples)}
@@ -122,6 +137,7 @@ type RouterIn struct {
 	Judge             string        `json:"judge,omitempty"`
 	DecisionModel     string        `json:"decision_model,omitempty"`
 	DecisionTimeoutMS int           `json:"decision_timeout_ms,omitempty" doc:"20 to 2000 (default 150)"`
+	Override          bool          `json:"override,omitempty" doc:"Make the router active without the evidence asked for: each cheaper tier it chose in shadow mode meeting the floor"`
 }
 
 func (in *RouterIn) validate(v *muzak.Validation) {
@@ -198,12 +214,53 @@ func (h *Handlers) planAllows(ctx *muzak.Context, status string) error {
 	return err
 }
 
+// readyToServe refuses making a router active before its shadow evidence
+// shows every cheaper tier it chose meeting the floor, unless overridden.
+func (h *Handlers) readyToServe(ctx *muzak.Context, row *pdent.ModelRouter, override bool) error {
+	if override {
+		return nil
+	}
+	notReady := func(msg string) *muzak.HTTPError {
+		return muzak.Conflict(msg + "; run it in shadow mode until it is ready, or activate it with override").
+			WithCode(CodeRouterNotReady)
+	}
+	if row == nil {
+		return notReady("a new router has no evidence yet")
+	}
+	if h.RouterDeps.Events == nil {
+		return notReady("the request log, which holds the router's evidence, isn't available")
+	}
+	pa := muzak.From[tenancy.ProjectAccess](ctx)
+	now := time.Now()
+	rep, err := routers.BuildReport(ctx.Context(), h.RouterDeps.Events, pa.Project.ID, routers.Of(row), now.Add(-routers.Evidence), now, nil)
+	if err != nil {
+		return err
+	}
+	if rep.Ready {
+		return nil
+	}
+	var short []muzak.ErrorDetail
+	for _, t := range rep.Tiers {
+		if t.Rank < 0 && t.Decided > 0 && !t.MeetsFloor {
+			short = append(short, muzak.ErrorDetail{Field: "tiers", Location: "body",
+				Issue: fmt.Sprintf("tier %s: %d judged, quality %.1f%% (at least %.1f%%), floor %.0f%%", t.Name, t.Judged,
+					100*t.Quality, 100*t.Low, 100*row.QualityFloor)})
+		}
+	}
+	return notReady("the router's tiers haven't shown their quality on enough judged calls").WithDetails(short...)
+}
+
 // CreateRouter adds a router.
 func (h *Handlers) CreateRouter(ctx *muzak.Context, in CreateRouterIn) (RouterOut, error) {
 	pa := muzak.From[tenancy.ProjectAccess](ctx)
 	input := in.input()
 	if err := h.planAllows(ctx, input.Status); err != nil {
 		return RouterOut{}, err
+	}
+	if input.Status == tiers.Active {
+		if err := h.readyToServe(ctx, nil, in.Override); err != nil {
+			return RouterOut{}, err
+		}
 	}
 	r, err := h.Routers.Create(ctx.Context(), pa.OrgID(), pa.Project.ID, input)
 	if err != nil {
@@ -245,6 +302,17 @@ func (h *Handlers) UpdateRouter(ctx *muzak.Context, in UpdateRouterIn) (RouterOu
 	if err := h.planAllows(ctx, input.Status); err != nil {
 		return RouterOut{}, err
 	}
+	if input.Status == tiers.Active {
+		cur, err := h.Routers.Get(ctx.Context(), pa.Project.ID, id)
+		if err != nil {
+			return RouterOut{}, routerFail(err)
+		}
+		if cur.Status != tiers.Active {
+			if err := h.readyToServe(ctx, cur, in.Override); err != nil {
+				return RouterOut{}, err
+			}
+		}
+	}
 	r, err := h.Routers.Update(ctx.Context(), pa.Project.ID, id, input)
 	if err != nil {
 		return RouterOut{}, routerFail(err)
@@ -260,6 +328,31 @@ func (h *Handlers) DeleteRouter(ctx *muzak.Context, in RouterPath) (muzak.Empty,
 		return muzak.Empty{}, httpx.NotFound("router")
 	}
 	return muzak.Empty{}, routerFail(h.Routers.Delete(ctx.Context(), pa.Project.ID, id))
+}
+
+// RestoreTierIn names a demoted tier to restore.
+type RestoreTierIn struct {
+	RouterPath
+	Tier string `json:"tier"`
+}
+
+// Validate implements muzak.Validatable.
+func (in *RestoreTierIn) Validate(v *muzak.Validation) {
+	v.String(&in.Tier).Trim().Required().MaxLen(32)
+}
+
+// RestoreTier puts a demoted tier back in the router's placements.
+func (h *Handlers) RestoreTier(ctx *muzak.Context, in RestoreTierIn) (RouterOut, error) {
+	pa := muzak.From[tenancy.ProjectAccess](ctx)
+	id, err := ids.Decode(RouterPrefix, in.Router)
+	if err != nil {
+		return RouterOut{}, httpx.NotFound("router")
+	}
+	r, err := h.Routers.Restore(ctx.Context(), pa.Project.ID, id, in.Tier)
+	if err != nil {
+		return RouterOut{}, routerFail(err)
+	}
+	return routerOut(r), nil
 }
 
 // ExplainRouterIn is a request to place, as a client would send it.

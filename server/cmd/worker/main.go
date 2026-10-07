@@ -1,7 +1,7 @@
 // Command worker runs Promptdam's background jobs: Stripe events, emails,
 // usage rollups and reports, webhook deliveries, budget alerts, the daily
-// price list sync, model routers' classifier training, and the purge of
-// deleted organizations' and projects' data.
+// price list sync, model routers' classifier training and canary, and the
+// purge of deleted organizations' and projects' data.
 package main
 
 import (
@@ -15,6 +15,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/purge"
+	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/training"
 )
 
@@ -41,5 +42,6 @@ func run() error {
 	budgets.RegisterWorkers(c.Jobs, app.Budgets)
 	prices.RegisterWorkers(c.Jobs, app.Prices)
 	training.RegisterWorkers(c.Jobs, app.Training)
+	routers.RegisterWorkers(c.Jobs, app.Watcher)
 	return c.Worker(core.Version).RunSignals()
 }

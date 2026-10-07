@@ -201,6 +201,26 @@ func (_c *ModelRouterCreate) SetNillableActivatedAt(v *time.Time) *ModelRouterCr
 	return _c
 }
 
+// SetDemoted sets the "demoted" field.
+func (_c *ModelRouterCreate) SetDemoted(v []tiers.Demotion) *ModelRouterCreate {
+	_c.mutation.SetDemoted(v)
+	return _c
+}
+
+// SetReadyAt sets the "ready_at" field.
+func (_c *ModelRouterCreate) SetReadyAt(v time.Time) *ModelRouterCreate {
+	_c.mutation.SetReadyAt(v)
+	return _c
+}
+
+// SetNillableReadyAt sets the "ready_at" field if the given value is not nil.
+func (_c *ModelRouterCreate) SetNillableReadyAt(v *time.Time) *ModelRouterCreate {
+	if v != nil {
+		_c.SetReadyAt(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *ModelRouterCreate) SetID(v uuid.UUID) *ModelRouterCreate {
 	_c.mutation.SetID(v)
@@ -298,6 +318,10 @@ func (_c *ModelRouterCreate) defaults() error {
 		v := modelrouter.DefaultDecisionTimeoutMs
 		_c.mutation.SetDecisionTimeoutMs(v)
 	}
+	if _, ok := _c.mutation.Demoted(); !ok {
+		v := modelrouter.DefaultDemoted
+		_c.mutation.SetDemoted(v)
+	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if modelrouter.DefaultID == nil {
 			return fmt.Errorf("ent: uninitialized modelrouter.DefaultID (forgotten import ent/runtime?)")
@@ -379,6 +403,9 @@ func (_c *ModelRouterCreate) check() error {
 	}
 	if _, ok := _c.mutation.DecisionTimeoutMs(); !ok {
 		return &ValidationError{Name: "decision_timeout_ms", err: errors.New(`ent: missing required field "ModelRouter.decision_timeout_ms"`)}
+	}
+	if _, ok := _c.mutation.Demoted(); !ok {
+		return &ValidationError{Name: "demoted", err: errors.New(`ent: missing required field "ModelRouter.demoted"`)}
 	}
 	return nil
 }
@@ -479,6 +506,14 @@ func (_c *ModelRouterCreate) createSpec() (*ModelRouter, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ActivatedAt(); ok {
 		_spec.SetField(modelrouter.FieldActivatedAt, field.TypeTime, value)
 		_node.ActivatedAt = &value
+	}
+	if value, ok := _c.mutation.Demoted(); ok {
+		_spec.SetField(modelrouter.FieldDemoted, field.TypeJSON, value)
+		_node.Demoted = value
+	}
+	if value, ok := _c.mutation.ReadyAt(); ok {
+		_spec.SetField(modelrouter.FieldReadyAt, field.TypeTime, value)
+		_node.ReadyAt = &value
 	}
 	return _node, _spec
 }
@@ -715,6 +750,36 @@ func (u *ModelRouterUpsert) UpdateActivatedAt() *ModelRouterUpsert {
 // ClearActivatedAt clears the value of the "activated_at" field.
 func (u *ModelRouterUpsert) ClearActivatedAt() *ModelRouterUpsert {
 	u.SetNull(modelrouter.FieldActivatedAt)
+	return u
+}
+
+// SetDemoted sets the "demoted" field.
+func (u *ModelRouterUpsert) SetDemoted(v []tiers.Demotion) *ModelRouterUpsert {
+	u.Set(modelrouter.FieldDemoted, v)
+	return u
+}
+
+// UpdateDemoted sets the "demoted" field to the value that was provided on create.
+func (u *ModelRouterUpsert) UpdateDemoted() *ModelRouterUpsert {
+	u.SetExcluded(modelrouter.FieldDemoted)
+	return u
+}
+
+// SetReadyAt sets the "ready_at" field.
+func (u *ModelRouterUpsert) SetReadyAt(v time.Time) *ModelRouterUpsert {
+	u.Set(modelrouter.FieldReadyAt, v)
+	return u
+}
+
+// UpdateReadyAt sets the "ready_at" field to the value that was provided on create.
+func (u *ModelRouterUpsert) UpdateReadyAt() *ModelRouterUpsert {
+	u.SetExcluded(modelrouter.FieldReadyAt)
+	return u
+}
+
+// ClearReadyAt clears the value of the "ready_at" field.
+func (u *ModelRouterUpsert) ClearReadyAt() *ModelRouterUpsert {
+	u.SetNull(modelrouter.FieldReadyAt)
 	return u
 }
 
@@ -989,6 +1054,41 @@ func (u *ModelRouterUpsertOne) UpdateActivatedAt() *ModelRouterUpsertOne {
 func (u *ModelRouterUpsertOne) ClearActivatedAt() *ModelRouterUpsertOne {
 	return u.Update(func(s *ModelRouterUpsert) {
 		s.ClearActivatedAt()
+	})
+}
+
+// SetDemoted sets the "demoted" field.
+func (u *ModelRouterUpsertOne) SetDemoted(v []tiers.Demotion) *ModelRouterUpsertOne {
+	return u.Update(func(s *ModelRouterUpsert) {
+		s.SetDemoted(v)
+	})
+}
+
+// UpdateDemoted sets the "demoted" field to the value that was provided on create.
+func (u *ModelRouterUpsertOne) UpdateDemoted() *ModelRouterUpsertOne {
+	return u.Update(func(s *ModelRouterUpsert) {
+		s.UpdateDemoted()
+	})
+}
+
+// SetReadyAt sets the "ready_at" field.
+func (u *ModelRouterUpsertOne) SetReadyAt(v time.Time) *ModelRouterUpsertOne {
+	return u.Update(func(s *ModelRouterUpsert) {
+		s.SetReadyAt(v)
+	})
+}
+
+// UpdateReadyAt sets the "ready_at" field to the value that was provided on create.
+func (u *ModelRouterUpsertOne) UpdateReadyAt() *ModelRouterUpsertOne {
+	return u.Update(func(s *ModelRouterUpsert) {
+		s.UpdateReadyAt()
+	})
+}
+
+// ClearReadyAt clears the value of the "ready_at" field.
+func (u *ModelRouterUpsertOne) ClearReadyAt() *ModelRouterUpsertOne {
+	return u.Update(func(s *ModelRouterUpsert) {
+		s.ClearReadyAt()
 	})
 }
 
@@ -1430,6 +1530,41 @@ func (u *ModelRouterUpsertBulk) UpdateActivatedAt() *ModelRouterUpsertBulk {
 func (u *ModelRouterUpsertBulk) ClearActivatedAt() *ModelRouterUpsertBulk {
 	return u.Update(func(s *ModelRouterUpsert) {
 		s.ClearActivatedAt()
+	})
+}
+
+// SetDemoted sets the "demoted" field.
+func (u *ModelRouterUpsertBulk) SetDemoted(v []tiers.Demotion) *ModelRouterUpsertBulk {
+	return u.Update(func(s *ModelRouterUpsert) {
+		s.SetDemoted(v)
+	})
+}
+
+// UpdateDemoted sets the "demoted" field to the value that was provided on create.
+func (u *ModelRouterUpsertBulk) UpdateDemoted() *ModelRouterUpsertBulk {
+	return u.Update(func(s *ModelRouterUpsert) {
+		s.UpdateDemoted()
+	})
+}
+
+// SetReadyAt sets the "ready_at" field.
+func (u *ModelRouterUpsertBulk) SetReadyAt(v time.Time) *ModelRouterUpsertBulk {
+	return u.Update(func(s *ModelRouterUpsert) {
+		s.SetReadyAt(v)
+	})
+}
+
+// UpdateReadyAt sets the "ready_at" field to the value that was provided on create.
+func (u *ModelRouterUpsertBulk) UpdateReadyAt() *ModelRouterUpsertBulk {
+	return u.Update(func(s *ModelRouterUpsert) {
+		s.UpdateReadyAt()
+	})
+}
+
+// ClearReadyAt clears the value of the "ready_at" field.
+func (u *ModelRouterUpsertBulk) ClearReadyAt() *ModelRouterUpsertBulk {
+	return u.Update(func(s *ModelRouterUpsert) {
+		s.ClearReadyAt()
 	})
 }
 

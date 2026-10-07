@@ -51,7 +51,11 @@ type ModelRouter struct {
 	// How long the decision model may take before the default tier serves
 	DecisionTimeoutMs int `json:"decision_timeout_ms,omitempty"`
 	// ActivatedAt holds the value of the "activated_at" field.
-	ActivatedAt  *time.Time `json:"activated_at,omitempty"`
+	ActivatedAt *time.Time `json:"activated_at,omitempty"`
+	// Tiers the canary demoted: the router places no call on them until restored
+	Demoted []tiers.Demotion `json:"demoted,omitempty"`
+	// When the router's evidence first met its floor (router.ready); cleared when it changes
+	ReadyAt      *time.Time `json:"ready_at,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -60,7 +64,7 @@ func (*ModelRouter) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case modelrouter.FieldTiers, modelrouter.FieldRules:
+		case modelrouter.FieldTiers, modelrouter.FieldRules, modelrouter.FieldDemoted:
 			values[i] = new([]byte)
 		case modelrouter.FieldQualityFloor, modelrouter.FieldSampleRate:
 			values[i] = new(sql.NullFloat64)
@@ -68,7 +72,7 @@ func (*ModelRouter) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case modelrouter.FieldName, modelrouter.FieldStatus, modelrouter.FieldDefaultTier, modelrouter.FieldJudge, modelrouter.FieldDecisionModel:
 			values[i] = new(sql.NullString)
-		case modelrouter.FieldCreatedAt, modelrouter.FieldUpdatedAt, modelrouter.FieldActivatedAt:
+		case modelrouter.FieldCreatedAt, modelrouter.FieldUpdatedAt, modelrouter.FieldActivatedAt, modelrouter.FieldReadyAt:
 			values[i] = new(sql.NullTime)
 		case modelrouter.FieldID, modelrouter.FieldOrgID, modelrouter.FieldProjectID:
 			values[i] = new(uuid.UUID)
@@ -194,6 +198,21 @@ func (_m *ModelRouter) assignValues(columns []string, values []any) error {
 				_m.ActivatedAt = new(time.Time)
 				*_m.ActivatedAt = value.Time
 			}
+		case modelrouter.FieldDemoted:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field demoted", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Demoted); err != nil {
+					return fmt.Errorf("unmarshal field demoted: %w", err)
+				}
+			}
+		case modelrouter.FieldReadyAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field ready_at", values[i])
+			} else if value.Valid {
+				_m.ReadyAt = new(time.Time)
+				*_m.ReadyAt = value.Time
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -277,6 +296,14 @@ func (_m *ModelRouter) String() string {
 	builder.WriteString(", ")
 	if v := _m.ActivatedAt; v != nil {
 		builder.WriteString("activated_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("demoted=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Demoted))
+	builder.WriteString(", ")
+	if v := _m.ReadyAt; v != nil {
+		builder.WriteString("ready_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteByte(')')

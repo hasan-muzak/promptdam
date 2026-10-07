@@ -172,6 +172,11 @@ func Mount(a *muzak.App, app *core.App) {
 			"each tier's judged calls against the default tier with a 95% interval and whether it meets the quality "+
 			"floor; the classifier's held-out precision and coverage per tier; the families judged most. Default the "+
 			"last 7 days; at most 90."))
+	r.Post(mr+"/{router}/restore", h.RestoreTier, mrcat, muzak.Title("Restore Tier"), project(tenancy.PermProjectsManage),
+		muzak.Summary("Put a demoted tier back in the router's placements"),
+		muzak.Description("The canary demotes an active router's cheaper tier whose answers, on the calls it served over the "+
+			"last 7 days, are below the quality floor with 95% confidence (router.tier_demoted). Restore it once its model "+
+			"or the router changed."))
 	r.Post(mr+"/{router}/train", h.TrainRouter, mrcat, muzak.Title("Train Router"), project(tenancy.PermProjectsManage),
 		muzak.Status(http.StatusAccepted), muzak.Summary("Train the router's classifier now"),
 		muzak.Description("Routers with new judged calls are trained hourly; this queues a training at once. Gateways use "+

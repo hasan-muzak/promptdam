@@ -545,7 +545,13 @@ Model routers replace per-family savings experiments, and cross-format translati
     - What it cost counts as the call's spend (and against its budgets), is logged as `router_micros` and comes off the call's savings.
     - Explain says `unsure` when a decision model would be asked.
     - Not yet: OpenRouter's typed decision models (`output_modalities=decisions`), whose request shape differs; any chat model works meanwhile.
-- [ ] S3.7 Activation gate, `router.ready`, the canary and auto-demotion (`router.tier_demoted`, alerts).
+- [x] S3.7 Activation gate, `router.ready`, the canary and auto-demotion (`router.tier_demoted`, alerts).
+  - **Done 2026-10-08 (`routers/watch.go`):**
+    - **The gate:** making a router active needs its last 14 days of shadow evidence to show every cheaper tier it chose meeting the floor (the Wilson lower bound, at least 50 judged calls), else 409 `router_not_ready` naming the tiers that fall short. `override: true` activates it anyway, the customer's call. A new router can't start active without the override; an active router's edits need none.
+    - **`router.ready`:** the worker checks shadow routers hourly and announces the first time one qualifies (webhook and the organization's alert channels); a changed router is announced anew.
+    - **The canary:** hourly, for each active router's cheaper tier, the calls it served in the last 7 days that were judged. When the upper bound of their quality's 95% interval is under the floor (at least 50 judged), the tier is demoted: the router sends its calls to the next stronger tier, `router.tier_demoted` fires and the channels are alerted. A client may still name a demoted tier. `POST …/routers/{router}/restore` puts it back.
+    - Routers, their reports and explanations show demoted tiers and `ready_at`.
+    - On the way: ClickHouse compares the millisecond `ts` column wrongly with a whole-second time within that second, so the routers' queries bind times in milliseconds, as the request log's already did.
 - [ ] S3.8 Keel K7.1: streaming-safe redact scanner with chunk overlap; reversible tokenisation restored in streamed responses.
 - [ ] S3.9 Firewall presets (source code, customer data), CEL policy sets, actions (block/redact/tokenize/alert/route_to), fail-closed for secrets and open for the rest by default (decided 2026-10-08).
 - [ ] S3.10 Firewall events (masked excerpts, stats), alerts, weekly digest; the firewall UI is the owner's.

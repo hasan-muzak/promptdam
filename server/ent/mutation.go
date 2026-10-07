@@ -2775,6 +2775,9 @@ type ModelRouterMutation struct {
 	decision_timeout_ms    *int
 	adddecision_timeout_ms *int
 	activated_at           *time.Time
+	demoted                *[]tiers.Demotion
+	appenddemoted          []tiers.Demotion
+	ready_at               *time.Time
 	clearedFields          map[string]struct{}
 	done                   bool
 	oldValue               func(context.Context) (*ModelRouter, error)
@@ -3584,6 +3587,106 @@ func (m *ModelRouterMutation) ResetActivatedAt() {
 	delete(m.clearedFields, modelrouter.FieldActivatedAt)
 }
 
+// SetDemoted sets the "demoted" field.
+func (m *ModelRouterMutation) SetDemoted(t []tiers.Demotion) {
+	m.demoted = &t
+	m.appenddemoted = nil
+}
+
+// Demoted returns the value of the "demoted" field in the mutation.
+func (m *ModelRouterMutation) Demoted() (r []tiers.Demotion, exists bool) {
+	v := m.demoted
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDemoted returns the old "demoted" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldDemoted(ctx context.Context) (v []tiers.Demotion, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDemoted is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDemoted requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDemoted: %w", err)
+	}
+	return oldValue.Demoted, nil
+}
+
+// AppendDemoted adds t to the "demoted" field.
+func (m *ModelRouterMutation) AppendDemoted(t []tiers.Demotion) {
+	m.appenddemoted = append(m.appenddemoted, t...)
+}
+
+// AppendedDemoted returns the list of values that were appended to the "demoted" field in this mutation.
+func (m *ModelRouterMutation) AppendedDemoted() ([]tiers.Demotion, bool) {
+	if len(m.appenddemoted) == 0 {
+		return nil, false
+	}
+	return m.appenddemoted, true
+}
+
+// ResetDemoted resets all changes to the "demoted" field.
+func (m *ModelRouterMutation) ResetDemoted() {
+	m.demoted = nil
+	m.appenddemoted = nil
+}
+
+// SetReadyAt sets the "ready_at" field.
+func (m *ModelRouterMutation) SetReadyAt(t time.Time) {
+	m.ready_at = &t
+}
+
+// ReadyAt returns the value of the "ready_at" field in the mutation.
+func (m *ModelRouterMutation) ReadyAt() (r time.Time, exists bool) {
+	v := m.ready_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReadyAt returns the old "ready_at" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldReadyAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReadyAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReadyAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReadyAt: %w", err)
+	}
+	return oldValue.ReadyAt, nil
+}
+
+// ClearReadyAt clears the value of the "ready_at" field.
+func (m *ModelRouterMutation) ClearReadyAt() {
+	m.ready_at = nil
+	m.clearedFields[modelrouter.FieldReadyAt] = struct{}{}
+}
+
+// ReadyAtCleared returns if the "ready_at" field was cleared in this mutation.
+func (m *ModelRouterMutation) ReadyAtCleared() bool {
+	_, ok := m.clearedFields[modelrouter.FieldReadyAt]
+	return ok
+}
+
+// ResetReadyAt resets all changes to the "ready_at" field.
+func (m *ModelRouterMutation) ResetReadyAt() {
+	m.ready_at = nil
+	delete(m.clearedFields, modelrouter.FieldReadyAt)
+}
+
 // Where appends a list predicates to the ModelRouterMutation builder.
 func (m *ModelRouterMutation) Where(ps ...predicate.ModelRouter) {
 	m.predicates = append(m.predicates, ps...)
@@ -3618,7 +3721,7 @@ func (m *ModelRouterMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ModelRouterMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 18)
 	if m.created_at != nil {
 		fields = append(fields, modelrouter.FieldCreatedAt)
 	}
@@ -3667,6 +3770,12 @@ func (m *ModelRouterMutation) Fields() []string {
 	if m.activated_at != nil {
 		fields = append(fields, modelrouter.FieldActivatedAt)
 	}
+	if m.demoted != nil {
+		fields = append(fields, modelrouter.FieldDemoted)
+	}
+	if m.ready_at != nil {
+		fields = append(fields, modelrouter.FieldReadyAt)
+	}
 	return fields
 }
 
@@ -3707,6 +3816,10 @@ func (m *ModelRouterMutation) Field(name string) (ent.Value, bool) {
 		return m.DecisionTimeoutMs()
 	case modelrouter.FieldActivatedAt:
 		return m.ActivatedAt()
+	case modelrouter.FieldDemoted:
+		return m.Demoted()
+	case modelrouter.FieldReadyAt:
+		return m.ReadyAt()
 	}
 	return nil, false
 }
@@ -3748,6 +3861,10 @@ func (m *ModelRouterMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldDecisionTimeoutMs(ctx)
 	case modelrouter.FieldActivatedAt:
 		return m.OldActivatedAt(ctx)
+	case modelrouter.FieldDemoted:
+		return m.OldDemoted(ctx)
+	case modelrouter.FieldReadyAt:
+		return m.OldReadyAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown ModelRouter field %s", name)
 }
@@ -3869,6 +3986,20 @@ func (m *ModelRouterMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetActivatedAt(v)
 		return nil
+	case modelrouter.FieldDemoted:
+		v, ok := value.([]tiers.Demotion)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDemoted(v)
+		return nil
+	case modelrouter.FieldReadyAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReadyAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown ModelRouter field %s", name)
 }
@@ -3953,6 +4084,9 @@ func (m *ModelRouterMutation) ClearedFields() []string {
 	if m.FieldCleared(modelrouter.FieldActivatedAt) {
 		fields = append(fields, modelrouter.FieldActivatedAt)
 	}
+	if m.FieldCleared(modelrouter.FieldReadyAt) {
+		fields = append(fields, modelrouter.FieldReadyAt)
+	}
 	return fields
 }
 
@@ -3969,6 +4103,9 @@ func (m *ModelRouterMutation) ClearField(name string) error {
 	switch name {
 	case modelrouter.FieldActivatedAt:
 		m.ClearActivatedAt()
+		return nil
+	case modelrouter.FieldReadyAt:
+		m.ClearReadyAt()
 		return nil
 	}
 	return fmt.Errorf("unknown ModelRouter nullable field %s", name)
@@ -4025,6 +4162,12 @@ func (m *ModelRouterMutation) ResetField(name string) error {
 		return nil
 	case modelrouter.FieldActivatedAt:
 		m.ResetActivatedAt()
+		return nil
+	case modelrouter.FieldDemoted:
+		m.ResetDemoted()
+		return nil
+	case modelrouter.FieldReadyAt:
+		m.ResetReadyAt()
 		return nil
 	}
 	return fmt.Errorf("unknown ModelRouter field %s", name)

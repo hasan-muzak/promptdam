@@ -95,6 +95,18 @@ type Router struct {
 	// Classifier is the router's trained classifier, nil before the first
 	// training or when it was trained against another default tier.
 	Classifier *classifier.Model `json:"classifier,omitempty"`
+	// Demoted are the tiers the canary demoted.
+	Demoted []tiers.Demotion `json:"demoted,omitempty"`
+}
+
+// IsDemoted reports whether the canary demoted the tier.
+func (r *Router) IsDemoted(tier string) bool {
+	for _, d := range r.Demoted {
+		if d.Tier == tier {
+			return true
+		}
+	}
+	return false
 }
 
 // Rate is the share of calls the router evaluates.
@@ -262,7 +274,8 @@ func (s *Service) Update(ctx context.Context, project, id uuid.UUID, in Input) (
 			return nil, &InUseError{Routes: routes}
 		}
 	}
-	u := s.ent.ModelRouter.UpdateOne(cur).SetName(in.Name).SetStatus(modelrouter.Status(in.Status)).SetTiers(in.Spec.Tiers).
+	// The evidence of a router that changed says less: announce it anew.
+	u := s.ent.ModelRouter.UpdateOne(cur).ClearReadyAt().SetName(in.Name).SetStatus(modelrouter.Status(in.Status)).SetTiers(in.Spec.Tiers).
 		SetRules(rulesOf(in.Spec)).SetDefaultTier(in.Spec.Default).SetQualityFloor(in.QualityFloor).SetSampleRate(in.SampleRate).
 		SetEvalBudgetMicros(in.EvalBudgetMicros).SetJudge(in.Judge).SetDecisionModel(in.DecisionModel).
 		SetDecisionTimeoutMs(in.DecisionTimeoutMS)
@@ -273,6 +286,29 @@ func (s *Service) Update(ctx context.Context, project, id uuid.UUID, in Input) (
 	if pdent.IsConstraintError(err) {
 		return nil, ErrNameTaken
 	}
+	if err != nil {
+		return nil, err
+	}
+	s.changed(ctx, project)
+	return r, nil
+}
+
+// Restore puts a demoted tier back in a router's placements.
+func (s *Service) Restore(ctx context.Context, project, id uuid.UUID, tier string) (*pdent.ModelRouter, error) {
+	cur, err := s.Get(ctx, project, id)
+	if err != nil {
+		return nil, err
+	}
+	kept := make([]tiers.Demotion, 0, len(cur.Demoted))
+	for _, d := range cur.Demoted {
+		if d.Tier != tier {
+			kept = append(kept, d)
+		}
+	}
+	if len(kept) == len(cur.Demoted) {
+		return nil, &InvalidError{Reason: "tier " + tier + " isn't demoted", Rule: -1}
+	}
+	r, err := s.ent.ModelRouter.UpdateOne(cur).SetDemoted(kept).Save(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +379,7 @@ func Of(r *pdent.ModelRouter) Router {
 		ID: r.ID, Name: r.Name, Status: string(r.Status),
 		Spec:         tiers.Spec{Tiers: r.Tiers, Rules: r.Rules, Default: r.DefaultTier},
 		QualityFloor: r.QualityFloor, SampleRate: r.SampleRate, EvalBudgetMicros: r.EvalBudgetMicros, Judge: r.Judge,
-		DecisionModel: r.DecisionModel, DecisionTimeoutMS: r.DecisionTimeoutMs,
+		DecisionModel: r.DecisionModel, DecisionTimeoutMS: r.DecisionTimeoutMs, Demoted: r.Demoted,
 	}
 }
 

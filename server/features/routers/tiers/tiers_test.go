@@ -146,3 +146,19 @@ func TestChooseLearned(t *testing.T) {
 		}
 	}
 }
+
+// A demoted tier gets none of the router's calls, only those that name it.
+func TestChooseSkipsDemotedTiers(t *testing.T) {
+	s := spec()
+	if err := s.Check(); err != nil {
+		t.Fatal(err)
+	}
+	fastDemoted := func(i int) bool { return i == 0 }
+	ch, _ := s.Choose(Call{Holds: func(w string) bool { return w == "short" }, Demoted: fastDemoted})
+	if ch.Tier != 1 || !ch.Moved || ch.Source != SourceRule {
+		t.Fatalf("a rule's demoted tier: %+v", ch)
+	}
+	if ch, _ = s.Choose(Call{Pin: "fast", Demoted: fastDemoted}); ch.Tier != 0 || ch.Moved {
+		t.Fatalf("the client's demoted tier: %+v", ch)
+	}
+}

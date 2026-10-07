@@ -284,6 +284,10 @@ func init() {
 	modelrouterDescDecisionTimeoutMs := modelrouterFields[10].Descriptor()
 	// modelrouter.DefaultDecisionTimeoutMs holds the default value on creation for the decision_timeout_ms field.
 	modelrouter.DefaultDecisionTimeoutMs = modelrouterDescDecisionTimeoutMs.Default.(int)
+	// modelrouterDescDemoted is the schema descriptor for demoted field.
+	modelrouterDescDemoted := modelrouterFields[12].Descriptor()
+	// modelrouter.DefaultDemoted holds the default value on creation for the demoted field.
+	modelrouter.DefaultDemoted = modelrouterDescDemoted.Default.([]tiers.Demotion)
 	// modelrouterDescID is the schema descriptor for id field.
 	modelrouterDescID := modelrouterMixinFields0[0].Descriptor()
 	// modelrouter.DefaultID holds the default value on creation for the id field.

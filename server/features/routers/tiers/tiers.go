@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Limits of a router.
@@ -69,6 +70,20 @@ type Tier struct {
 type Rule struct {
 	When string `json:"when"`
 	Tier string `json:"tier"`
+}
+
+// Demotion is a tier the canary took out of a router's placements: its
+// measured quality on the calls it served fell below the router's floor.
+// Calls the router would place on it go to the next stronger tier until
+// the project restores it; clients may still name it.
+type Demotion struct {
+	Tier string    `json:"tier"`
+	At   time.Time `json:"at"`
+	// Judged and Right are the calls it was judged on and those it got
+	// right; High is the upper end of their share's 95% interval.
+	Judged int     `json:"judged"`
+	Right  int     `json:"right"`
+	High   float64 `json:"high"`
 }
 
 // Spec is a router's tiers, rules and default tier.
@@ -186,6 +201,9 @@ type Call struct {
 	// Decide asks the decision model for a tier ("" when it didn't
 	// answer in time).
 	Decide func() string
+	// Demoted reports a tier the canary demoted: the router places no
+	// call on it, but a client may name it.
+	Demoted func(i int) bool
 }
 
 // Choice is the tier the cascade picked and why.
@@ -198,8 +216,8 @@ type Choice struct {
 	// client's choice and rules, a probability for the classifier, 0 for
 	// the default.
 	Confidence float64
-	// Moved reports that the tier first chosen couldn't take the call, and
-	// the nearest one that can (stronger first) got it.
+	// Moved reports that the tier first chosen couldn't take the call (or
+	// was demoted), and the nearest one that can (stronger first) got it.
 	Moved bool
 	// Unsure reports a call the classifier was unsure of and no decision
 	// model placed: it got the default tier.
@@ -243,17 +261,21 @@ func (s *Spec) Choose(c Call) (Choice, error) {
 		}
 	}
 	ch.Unsure = !placed && unsure
-	if c.Serves == nil || c.Serves(ch.Tier) {
+	explicit := ch.Source == SourceExplicit
+	ok := func(i int) bool {
+		return (c.Serves == nil || c.Serves(i)) && (explicit || c.Demoted == nil || !c.Demoted(i))
+	}
+	if ok(ch.Tier) {
 		return ch, nil
 	}
 	for i := ch.Tier + 1; i < len(s.Tiers); i++ {
-		if c.Serves(i) {
+		if ok(i) {
 			ch.Tier, ch.Moved = i, true
 			return ch, nil
 		}
 	}
 	for i := ch.Tier - 1; i >= 0; i-- {
-		if c.Serves(i) {
+		if ok(i) {
 			ch.Tier, ch.Moved = i, true
 			return ch, nil
 		}

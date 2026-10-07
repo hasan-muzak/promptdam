@@ -133,6 +133,9 @@ func (r *Resolver) placeCall(ctx context.Context, snap *snapshot.Snapshot, rt *r
 	p := &placer{r: r, snap: snap, rt: rt, c: c, m: m, need: needsOf(c), fits: make([]Fit, len(spec.Tiers))}
 	serves := func(i int) bool { return p.fit(i).Lacks == "" }
 	call := tiers.Call{Pin: pin, Holds: p.holds, Serves: serves}
+	if len(rt.Demoted) > 0 {
+		call.Demoted = func(i int) bool { return rt.IsDemoted(spec.Tiers[i].Name) }
+	}
 	if learned {
 		call.Learned = func() (string, float64, bool) {
 			cm := rt.Classifier

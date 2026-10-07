@@ -95,7 +95,9 @@ type hourly struct {
 	CacheOut uint64 `ch:"cache_write"`
 }
 
-// BuildReport reads a router's report for [from, to).
+// BuildReport reads a router's report for [from, to). Times of judged
+// calls are bound in milliseconds: ClickHouse compares a DateTime64 column
+// with a whole-second DateTime wrongly within that second.
 func BuildReport(ctx context.Context, db *events.DB, project uuid.UUID, r Router, from, to time.Time, price Pricer) (*Report, error) {
 	spec := &r.Spec
 	def := spec.Index(spec.Default)
@@ -166,8 +168,8 @@ func BuildReport(ctx context.Context, db *events.DB, project uuid.UUID, r Router
 		N       uint64 `ch:"n"`
 	}
 	if err := db.Select(ctx, &verdicts, events.Project(project), `SELECT candidate_tier, verdict, count() AS n
-		FROM router_evals WHERE {tenant} AND router = ? AND baseline_tier = ? AND ts >= ? AND ts < ?
-		GROUP BY candidate_tier, verdict`, r.Name, spec.Default, from, to); err != nil {
+		FROM router_evals WHERE {tenant} AND router = ? AND baseline_tier = ? AND ts >= fromUnixTimestamp64Milli(?)
+		AND ts < fromUnixTimestamp64Milli(?) GROUP BY candidate_tier, verdict`, r.Name, spec.Default, from.UnixMilli(), to.UnixMilli()); err != nil {
 		return nil, fmt.Errorf("routers: report verdicts: %w", err)
 	}
 	for _, v := range verdicts {
@@ -212,7 +214,8 @@ func BuildReport(ctx context.Context, db *events.DB, project uuid.UUID, r Router
 		Micros int64 `ch:"micros"`
 	}
 	if err := db.Select(ctx, &spent, events.Project(project), `SELECT sum(candidate_micros + baseline_micros + judge_micros) AS micros
-		FROM router_evals WHERE {tenant} AND router = ? AND ts >= ? AND ts < ?`, r.Name, from, to); err != nil {
+		FROM router_evals WHERE {tenant} AND router = ? AND ts >= fromUnixTimestamp64Milli(?) AND ts < fromUnixTimestamp64Milli(?)`,
+		r.Name, from.UnixMilli(), to.UnixMilli()); err != nil {
 		return nil, fmt.Errorf("routers: report evaluation spend: %w", err)
 	}
 	if len(spent) > 0 {
@@ -228,9 +231,10 @@ func BuildReport(ctx context.Context, db *events.DB, project uuid.UUID, r Router
 	}
 	if err := db.Select(ctx, &fams, events.Project(project), `SELECT family_id, candidate_tier,
 		countIf(verdict != '') AS judged, countIf(verdict IN ('win', 'tie')) AS held, countIf(verdict = 'win') AS wins
-		FROM router_evals WHERE {tenant} AND router = ? AND baseline_tier = ? AND ts >= ? AND ts < ?
+		FROM router_evals WHERE {tenant} AND router = ? AND baseline_tier = ? AND ts >= fromUnixTimestamp64Milli(?)
+		AND ts < fromUnixTimestamp64Milli(?)
 		GROUP BY family_id, candidate_tier HAVING judged > 0 ORDER BY judged DESC, family_id, candidate_tier LIMIT 100`,
-		r.Name, spec.Default, from, to); err != nil {
+		r.Name, spec.Default, from.UnixMilli(), to.UnixMilli()); err != nil {
 		return nil, fmt.Errorf("routers: report families: %w", err)
 	}
 	for _, f := range fams {
