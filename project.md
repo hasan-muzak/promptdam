@@ -1,6 +1,6 @@
 # Promptdam: cut the LLM bill, block the leaks
 
-> **Status:** building (S0 done 2026-10-07; S1 next) · **Owner:** Hasan · **Written:** 2026-10-03
+> **Status:** building (S0 done 2026-10-07; S1 backend done 2026-10-07, exit pending design partners) · **Owner:** Hasan · **Written:** 2026-10-03
 > **MVP build:** Mar 8 – Apr 23, 2027 · **Beta:** Apr 26, 2027 · **Public launch:** Tue May 18, 2027 (moved 5 weeks later to make room for Fixwire for Mobile)
 > **Catalog:** #10 "AI Cost Optimization API" + #17 "AI Firewall". Revenue potential: High.
 > **Location:** `keel/products/promptdam/` inside the root monorepo. Shared Go packages are in `../../pkg/`, shared Nuxt layers in `../../packages/`.
@@ -363,16 +363,62 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
   - `openai-go` (Chat stream and not, Responses stream and not, error codes) and `anthropic-sdk-go` (Messages stream and not, count_tokens) pass through the gateway in `features/gateway/sdk_test.go`.
 
 ### S1: Gateway core (Thu Mar 11 – Mon Mar 22)
-- [ ] S1.1 Provider registry + BYOK credentials in `pkg/vault`, provider key validation call, per-provider settings.
-- [ ] S1.2 Endpoints: chat/completions, responses (passthrough), messages, embeddings, models; request parsing for both formats; error normalisation.
-- [ ] S1.3 Promptdam keys (key_settings: allowed models, tags, developer), attribution headers.
-- [ ] S1.4 Config snapshots in memory (keys, routes, rules, policies, providers) with Valkey pub/sub refresh; no DB on the hot path.
-- [ ] S1.5 Retries, fallback chains, circuit breakers; provider error taxonomy → fallback decisions.
-- [ ] S1.6 Keel K7.2: hybrid local/Valkey limiter + budget counters (micro-USD), budgets CRUD and enforcement, alerts.
+- [x] S1.1 Provider registry + BYOK credentials in `pkg/vault`, provider key validation call, per-provider settings.
+  - **Done 2026-10-07:** `providers` table and API. Kinds: OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Groq, Together, xAI, Fireworks, OpenRouter, or a custom endpoint speaking either API.
+  - Keys are sealed and never returned (hint only). They stay bound to their endpoint: a new base URL needs the key again. Custom URLs must be public https addresses.
+  - The check lists the provider's models. The purge covers the table.
+- [x] S1.2 Endpoints: chat/completions, responses (passthrough), messages, embeddings, models; request parsing for both formats; error normalisation.
+  - **Done 2026-10-07:**
+    - `count_tokens` too.
+    - `GET /v1/models` answers in OpenAI's shape, or Anthropic's when the client sends `anthropic-version`.
+    - The gateway's own errors take the client's API shape, with a stable code in `X-Promptdam-Error-Code`.
+  - Still open: a `/v1/decisions` passthrough (OpenAI's Decisions API) once its usage field is known.
+- [x] S1.3 Promptdam keys (key_settings: allowed models, tags, developer), attribution headers.
+  - **Done 2026-10-07:**
+    - Keys are the platform's API keys with the `gateway` scope (`pd_sk_…`).
+    - `key_settings`: allowed models (`prefix*` wildcards), tags, developer, rpm and default route. A rotated key's replacement keeps them (`apikeys.OnRotated`).
+    - `X-Promptdam-User` and `X-Promptdam-Tags` are recorded with each call.
+- [x] S1.4 Config snapshots in memory (keys, routes, rules, policies, providers) with Valkey pub/sub refresh; no DB on the hot path.
+  - **Done 2026-10-07 (`features/snapshot`, `features/resolver`):**
+    - Lookup order: memory, then Valkey (keys still sealed), then Postgres once.
+    - Changes publish the project ID; gateways drop their copy at once, and every copy expires after 30 s.
+    - API keys are cached in process for 5 s in front of keel's Valkey cache (`pkg/memcache`, shared now).
+    - Rules and policies join the snapshot with S2 and S3.
+- [x] S1.5 Retries, fallback chains, circuit breakers; provider error taxonomy → fallback decisions.
+  - **Done 2026-10-07:**
+    - Routes have up to 5 fallbacks (`model` or `provider/model`) and 0–3 retries with full jitter.
+    - Fallback triggers: 429, 529, 5xx, unreachable or a timeout, while nothing has reached the client.
+    - Each project's provider and model has a breaker: 5 failures open it for 30 s, then one probe. The last target is always tried.
+- [x] S1.6 Keel K7.2: hybrid local/Valkey limiter + budget counters (micro-USD), budgets CRUD and enforcement, alerts.
+  - **Done 2026-10-07:**
+    - `pkg/counter`: in-memory counts, flushed to Valkey every 250 ms; about 0.4 µs per check.
+    - Budgets per project, key, developer or route, per day or month: alert, or block with 429 `budget_exceeded`.
+    - A job checks every minute and alerts once per threshold (webhooks `budget.threshold_reached` and `budget.exceeded`).
+    - Per-key rpm limits.
+    - Budgets need the `budgets` plan feature (Pro and up).
 - [ ] S1.7 Cost calculation via the `pkg/llm` catalog (incl. cache read/write pricing); ClickHouse `requests` writer; metering `requests`.
+  - **Done 2026-10-07:**
+    - Every call is costed (cache reads and writes; Anthropic's 1-hour writes at 2× input) and counted against budgets.
+    - Every call is logged to ClickHouse `requests` (metadata only, plan retention). Rollups by provider/model/key/route (with latency percentiles), developer and tag.
+    - The plan's `requests` meter is counted (hard on Free).
+  - **Still open:** the embedded price catalog holds placeholder prices for a few models. The ±2% exit needs real list prices for every provider's current models: a refresh of `pkg/llm/catalog.json`, or `PROMPTDAM_MODEL_PRICES` in production.
 - [ ] S1.8 Dashboard: providers, keys, requests log (metadata), spend analytics (by model/provider/key/developer/tag), budgets.
+  - **Done 2026-10-07, the backend:**
+    - APIs for providers, key settings, routes and budgets.
+    - Request log: list, filters, cursor, by trace.
+    - Spend by model/provider/key/route/developer/tag with series, and latency percentiles, read from rollups only.
+    - Scan-budget tests: a page reads 2 granules, a lookup 1, spend about 40 rollup rows.
+  - The dashboard itself is the owner's (frontend phase).
 - [ ] S1.9 Quickstarts: OpenAI SDK (Py/TS), Anthropic SDK (Py/TS), Vercel AI SDK, LangChain, Claude Code (`ANTHROPIC_BASE_URL`), curl.
+  - **Done 2026-10-07:**
+    - `examples/`: curl and the official Python SDKs, run end to end on the local stack.
+    - Claude Code's settings are in its README.
+    - The Go SDKs are covered by `sdk_test.go`.
+    - `task promptdam:dev:fake` and `task promptdam:dev:seed` support local runs.
+  - Still open: TypeScript, the Vercel AI SDK and LangChain examples, and the docs pages.
 - **Exit:** design partners route production traffic through Promptdam with fallbacks and budgets; spend analytics match provider invoices within ±2%.
+  - **Status (2026-10-07):** the backend is in place and tested end to end against a fake provider.
+  - **Needs you:** design partners, a VPS, and real price data (S1.7) before the exit can be measured.
 
 ### S2: Cost levers (Tue Mar 23 – Wed Mar 31)
 - [ ] S2.1 Families: normalisation + hashing, stats rollups, families UI (top families by spend).
