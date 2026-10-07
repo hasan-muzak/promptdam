@@ -19,9 +19,20 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 )
 
-// devCommands help local development; they refuse to run elsewhere.
+// devCommands help local development (dev seed refuses to run
+// elsewhere) and operations.
 func devCommands(c *keel.Core, app *core.App) []cli.Command {
 	return []cli.Command{{
+		Name:  "prices sync",
+		Usage: "fetch the model price list from OpenRouter now and make it current (the worker does it daily)",
+		Run: func(ctx context.Context, _ []string, out io.Writer) error {
+			if err := app.Prices.Sync(ctx, true); err != nil {
+				return err
+			}
+			_, err := fmt.Fprintf(out, "%d models priced\n", len(app.Prices.Current().Models))
+			return err
+		},
+	}, {
 		Name: "dev seed",
 		Usage: "development only: create an organization, a project, a gateway key and two providers (OpenAI and " +
 			"Anthropic format) at -upstream (default the fake provider, `task promptdam:dev:fake`), and print how to call them",

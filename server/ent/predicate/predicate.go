@@ -12,6 +12,12 @@ type Budget func(*sql.Selector)
 // KeySetting is the predicate function for keysetting builders.
 type KeySetting func(*sql.Selector)
 
+// PriceList is the predicate function for pricelist builders.
+type PriceList func(*sql.Selector)
+
+// PriceOverride is the predicate function for priceoverride builders.
+type PriceOverride func(*sql.Selector)
+
 // Provider is the predicate function for provider builders.
 type Provider func(*sql.Selector)
 

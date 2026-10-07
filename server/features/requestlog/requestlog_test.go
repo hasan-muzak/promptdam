@@ -12,8 +12,10 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/bench/fakeupstream"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/gatewaytest"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/requestlog"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
 )
 
 func TestCost(t *testing.T) {
@@ -118,5 +120,62 @@ func TestCallsAreLoggedAndCosted(t *testing.T) {
 	}
 	if w.Log.Dropped() != 0 {
 		t.Fatalf("%d rows dropped", w.Log.Dropped())
+	}
+}
+
+// A project's own price wins over the price list's.
+func TestProjectPricesWin(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true, Upstream: fakeupstream.Options{Chunks: 4}})
+	ctx := context.Background()
+	// $1 per million for everything: 100 input tokens and 4 output tokens
+	// cost 104 micro-USD.
+	if _, err := w.App.PriceOverrides.Put(w.Scoped(), w.Org, w.Project, prices.Override{
+		Model: "gpt-5-mini", Provider: "main", Input: 1, CachedInput: 1, CacheWrite: 1, Output: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var trace string
+	w.Eventually(func() bool {
+		status, h, _ := w.Call("/v1/chat/completions", `{"model":"gpt-5-mini","messages":[]}`)
+		trace = h.Get("X-Promptdam-Trace")
+		records := w.Records()
+		if status != 200 || len(records) == 0 {
+			return false
+		}
+		m, _ := records[len(records)-1].Meta.(*resolver.Meta)
+		return m != nil && m.Prices != nil
+	})
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct {
+		Cost int64 `ch:"cost_micros"`
+	}
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project),
+		`SELECT cost_micros FROM requests WHERE {tenant} AND trace = ?`, trace); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Cost != 104 {
+		t.Fatalf("cost %+v, want 104", rows)
+	}
+}
+
+func TestProjectLookup(t *testing.T) {
+	p := prices.ProjectPrices([]prices.Override{
+		{Model: "llama-3.3-70b", Provider: "groq", Input: 0.5, Output: 0.8},
+		{Model: "llama-3.3-70b", Input: 1, Output: 1},
+	})
+	if m, ok := p.Lookup("groq", "llama-3.3-70b"); !ok || m.Input != 0.5 {
+		t.Fatalf("the provider's own price: %+v", m)
+	}
+	if m, ok := p.Lookup("together", "llama-3.3-70b"); !ok || m.Input != 1 {
+		t.Fatalf("the project-wide price: %+v", m)
+	}
+	if _, ok := p.Lookup("groq", "gpt-5"); ok {
+		t.Fatal("a model without a price of its own")
+	}
+	var none prices.Project
+	if _, ok := none.Lookup("groq", "x"); ok {
+		t.Fatal("no prices, no match")
 	}
 }

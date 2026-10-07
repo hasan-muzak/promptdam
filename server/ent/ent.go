@@ -14,6 +14,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/pricelist"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
 )
@@ -76,10 +78,12 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			budget.Table:     budget.ValidColumn,
-			keysetting.Table: keysetting.ValidColumn,
-			provider.Table:   provider.ValidColumn,
-			route.Table:      route.ValidColumn,
+			budget.Table:        budget.ValidColumn,
+			keysetting.Table:    keysetting.ValidColumn,
+			pricelist.Table:     pricelist.ValidColumn,
+			priceoverride.Table: priceoverride.ValidColumn,
+			provider.Table:      provider.ValidColumn,
+			route.Table:         route.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

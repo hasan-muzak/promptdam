@@ -8,6 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/pricelist"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/schema"
@@ -131,6 +133,110 @@ func init() {
 	keysettingDescID := keysettingMixinFields0[0].Descriptor()
 	// keysetting.DefaultID holds the default value on creation for the id field.
 	keysetting.DefaultID = keysettingDescID.Default.(func() uuid.UUID)
+	pricelistMixin := schema.PriceList{}.Mixin()
+	pricelistMixinFields0 := pricelistMixin[0].Fields()
+	_ = pricelistMixinFields0
+	pricelistFields := schema.PriceList{}.Fields()
+	_ = pricelistFields
+	// pricelistDescCreatedAt is the schema descriptor for created_at field.
+	pricelistDescCreatedAt := pricelistMixinFields0[1].Descriptor()
+	// pricelist.DefaultCreatedAt holds the default value on creation for the created_at field.
+	pricelist.DefaultCreatedAt = pricelistDescCreatedAt.Default.(func() time.Time)
+	// pricelistDescUpdatedAt is the schema descriptor for updated_at field.
+	pricelistDescUpdatedAt := pricelistMixinFields0[2].Descriptor()
+	// pricelist.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	pricelist.DefaultUpdatedAt = pricelistDescUpdatedAt.Default.(func() time.Time)
+	// pricelist.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	pricelist.UpdateDefaultUpdatedAt = pricelistDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// pricelistDescSource is the schema descriptor for source field.
+	pricelistDescSource := pricelistFields[0].Descriptor()
+	// pricelist.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	pricelist.SourceValidator = func() func(string) error {
+		validators := pricelistDescSource.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(source string) error {
+			for _, fn := range fns {
+				if err := fn(source); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// pricelistDescHeld is the schema descriptor for held field.
+	pricelistDescHeld := pricelistFields[3].Descriptor()
+	// pricelist.DefaultHeld holds the default value on creation for the held field.
+	pricelist.DefaultHeld = pricelistDescHeld.Default.(int)
+	// pricelistDescID is the schema descriptor for id field.
+	pricelistDescID := pricelistMixinFields0[0].Descriptor()
+	// pricelist.DefaultID holds the default value on creation for the id field.
+	pricelist.DefaultID = pricelistDescID.Default.(func() uuid.UUID)
+	priceoverrideMixin := schema.PriceOverride{}.Mixin()
+	priceoverrideMixinHooks1 := priceoverrideMixin[1].Hooks()
+	priceoverride.Hooks[0] = priceoverrideMixinHooks1[0]
+	priceoverrideMixinInters1 := priceoverrideMixin[1].Interceptors()
+	priceoverride.Interceptors[0] = priceoverrideMixinInters1[0]
+	priceoverrideMixinFields0 := priceoverrideMixin[0].Fields()
+	_ = priceoverrideMixinFields0
+	priceoverrideFields := schema.PriceOverride{}.Fields()
+	_ = priceoverrideFields
+	// priceoverrideDescCreatedAt is the schema descriptor for created_at field.
+	priceoverrideDescCreatedAt := priceoverrideMixinFields0[1].Descriptor()
+	// priceoverride.DefaultCreatedAt holds the default value on creation for the created_at field.
+	priceoverride.DefaultCreatedAt = priceoverrideDescCreatedAt.Default.(func() time.Time)
+	// priceoverrideDescUpdatedAt is the schema descriptor for updated_at field.
+	priceoverrideDescUpdatedAt := priceoverrideMixinFields0[2].Descriptor()
+	// priceoverride.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	priceoverride.DefaultUpdatedAt = priceoverrideDescUpdatedAt.Default.(func() time.Time)
+	// priceoverride.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	priceoverride.UpdateDefaultUpdatedAt = priceoverrideDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// priceoverrideDescModel is the schema descriptor for model field.
+	priceoverrideDescModel := priceoverrideFields[0].Descriptor()
+	// priceoverride.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	priceoverride.ModelValidator = func() func(string) error {
+		validators := priceoverrideDescModel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(model string) error {
+			for _, fn := range fns {
+				if err := fn(model); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// priceoverrideDescProvider is the schema descriptor for provider field.
+	priceoverrideDescProvider := priceoverrideFields[1].Descriptor()
+	// priceoverride.DefaultProvider holds the default value on creation for the provider field.
+	priceoverride.DefaultProvider = priceoverrideDescProvider.Default.(string)
+	// priceoverride.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	priceoverride.ProviderValidator = priceoverrideDescProvider.Validators[0].(func(string) error)
+	// priceoverrideDescInput is the schema descriptor for input field.
+	priceoverrideDescInput := priceoverrideFields[2].Descriptor()
+	// priceoverride.InputValidator is a validator for the "input" field. It is called by the builders before save.
+	priceoverride.InputValidator = priceoverrideDescInput.Validators[0].(func(float64) error)
+	// priceoverrideDescCachedInput is the schema descriptor for cached_input field.
+	priceoverrideDescCachedInput := priceoverrideFields[3].Descriptor()
+	// priceoverride.CachedInputValidator is a validator for the "cached_input" field. It is called by the builders before save.
+	priceoverride.CachedInputValidator = priceoverrideDescCachedInput.Validators[0].(func(float64) error)
+	// priceoverrideDescCacheWrite is the schema descriptor for cache_write field.
+	priceoverrideDescCacheWrite := priceoverrideFields[4].Descriptor()
+	// priceoverride.CacheWriteValidator is a validator for the "cache_write" field. It is called by the builders before save.
+	priceoverride.CacheWriteValidator = priceoverrideDescCacheWrite.Validators[0].(func(float64) error)
+	// priceoverrideDescOutput is the schema descriptor for output field.
+	priceoverrideDescOutput := priceoverrideFields[5].Descriptor()
+	// priceoverride.OutputValidator is a validator for the "output" field. It is called by the builders before save.
+	priceoverride.OutputValidator = priceoverrideDescOutput.Validators[0].(func(float64) error)
+	// priceoverrideDescID is the schema descriptor for id field.
+	priceoverrideDescID := priceoverrideMixinFields0[0].Descriptor()
+	// priceoverride.DefaultID holds the default value on creation for the id field.
+	priceoverride.DefaultID = priceoverrideDescID.Default.(func() uuid.UUID)
 	providerMixin := schema.Provider{}.Mixin()
 	providerMixinHooks1 := providerMixin[1].Hooks()
 	provider.Hooks[0] = providerMixinHooks1[0]

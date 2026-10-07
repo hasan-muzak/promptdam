@@ -16,6 +16,7 @@ import (
 	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/purge"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
@@ -28,8 +29,11 @@ type App struct {
 	*keel.Core
 	// Ent is Promptdam's product graph, on the same database as the core.
 	Ent *pdent.Client
-	// Prices cost model calls.
-	Prices *llm.Catalog
+	// Prices cost model calls: the price list synced daily (the embedded or
+	// configured catalog until the first sync).
+	Prices *prices.Store
+	// PriceOverrides are projects' own prices for models.
+	PriceOverrides *prices.Overrides
 	// GatewayURL is where clients reach the gateway, for setup instructions.
 	GatewayURL string
 	// Providers keeps projects' LLM providers and their keys.
@@ -47,15 +51,17 @@ type App struct {
 	// projects.
 	Purge *purge.Service
 
-	changed []func(ctx context.Context, project uuid.UUID)
+	changed  []func(ctx context.Context, project uuid.UUID)
+	fallback *llm.Catalog
 }
 
 // Option configures the App.
 type Option func(*App)
 
-// WithPrices uses catalog for model prices instead of the embedded one.
+// WithPrices costs calls with catalog until a price list is synced,
+// instead of the embedded catalog.
 func WithPrices(catalog *llm.Catalog) Option {
-	return func(a *App) { a.Prices = catalog }
+	return func(a *App) { a.fallback = catalog }
 }
 
 // WithGatewayURL sets where clients reach the gateway.
@@ -81,9 +87,8 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	for _, o := range opts {
 		o(a)
 	}
-	if a.Prices == nil {
-		a.Prices = llm.Default()
-	}
+	a.Prices = prices.New(prices.Config{Ent: a.Ent, KV: c.KV, Fallback: a.fallback})
+	a.PriceOverrides = prices.NewOverrides(a.Ent, a.configChanged)
 	if a.GatewayURL == "" {
 		a.GatewayURL = "http://localhost:8282"
 	}
@@ -117,5 +122,5 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 
 // Sources are where the gateway's snapshots are built from.
 func (a *App) Sources() snapshot.Sources {
-	return snapshot.Sources{Providers: a.Providers, Keys: a.Keys, Routes: a.Routes, Budgets: a.Budgets}
+	return snapshot.Sources{Providers: a.Providers, Keys: a.Keys, Routes: a.Routes, Budgets: a.Budgets, Prices: a.PriceOverrides}
 }

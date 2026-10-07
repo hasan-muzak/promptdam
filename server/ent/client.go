@@ -17,6 +17,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/pricelist"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
 
@@ -32,6 +34,10 @@ type Client struct {
 	Budget *BudgetClient
 	// KeySetting is the client for interacting with the KeySetting builders.
 	KeySetting *KeySettingClient
+	// PriceList is the client for interacting with the PriceList builders.
+	PriceList *PriceListClient
+	// PriceOverride is the client for interacting with the PriceOverride builders.
+	PriceOverride *PriceOverrideClient
 	// Provider is the client for interacting with the Provider builders.
 	Provider *ProviderClient
 	// Route is the client for interacting with the Route builders.
@@ -49,6 +55,8 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Budget = NewBudgetClient(c.config)
 	c.KeySetting = NewKeySettingClient(c.config)
+	c.PriceList = NewPriceListClient(c.config)
+	c.PriceOverride = NewPriceOverrideClient(c.config)
 	c.Provider = NewProviderClient(c.config)
 	c.Route = NewRouteClient(c.config)
 }
@@ -141,12 +149,14 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:        ctx,
-		config:     cfg,
-		Budget:     NewBudgetClient(cfg),
-		KeySetting: NewKeySettingClient(cfg),
-		Provider:   NewProviderClient(cfg),
-		Route:      NewRouteClient(cfg),
+		ctx:           ctx,
+		config:        cfg,
+		Budget:        NewBudgetClient(cfg),
+		KeySetting:    NewKeySettingClient(cfg),
+		PriceList:     NewPriceListClient(cfg),
+		PriceOverride: NewPriceOverrideClient(cfg),
+		Provider:      NewProviderClient(cfg),
+		Route:         NewRouteClient(cfg),
 	}, nil
 }
 
@@ -164,12 +174,14 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:        ctx,
-		config:     cfg,
-		Budget:     NewBudgetClient(cfg),
-		KeySetting: NewKeySettingClient(cfg),
-		Provider:   NewProviderClient(cfg),
-		Route:      NewRouteClient(cfg),
+		ctx:           ctx,
+		config:        cfg,
+		Budget:        NewBudgetClient(cfg),
+		KeySetting:    NewKeySettingClient(cfg),
+		PriceList:     NewPriceListClient(cfg),
+		PriceOverride: NewPriceOverrideClient(cfg),
+		Provider:      NewProviderClient(cfg),
+		Route:         NewRouteClient(cfg),
 	}, nil
 }
 
@@ -198,19 +210,21 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
-	c.Budget.Use(hooks...)
-	c.KeySetting.Use(hooks...)
-	c.Provider.Use(hooks...)
-	c.Route.Use(hooks...)
+	for _, n := range []interface{ Use(...Hook) }{
+		c.Budget, c.KeySetting, c.PriceList, c.PriceOverride, c.Provider, c.Route,
+	} {
+		n.Use(hooks...)
+	}
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
-	c.Budget.Intercept(interceptors...)
-	c.KeySetting.Intercept(interceptors...)
-	c.Provider.Intercept(interceptors...)
-	c.Route.Intercept(interceptors...)
+	for _, n := range []interface{ Intercept(...Interceptor) }{
+		c.Budget, c.KeySetting, c.PriceList, c.PriceOverride, c.Provider, c.Route,
+	} {
+		n.Intercept(interceptors...)
+	}
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -220,6 +234,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Budget.mutate(ctx, m)
 	case *KeySettingMutation:
 		return c.KeySetting.mutate(ctx, m)
+	case *PriceListMutation:
+		return c.PriceList.mutate(ctx, m)
+	case *PriceOverrideMutation:
+		return c.PriceOverride.mutate(ctx, m)
 	case *ProviderMutation:
 		return c.Provider.mutate(ctx, m)
 	case *RouteMutation:
@@ -499,6 +517,274 @@ func (c *KeySettingClient) mutate(ctx context.Context, m *KeySettingMutation) (V
 	}
 }
 
+// PriceListClient is a client for the PriceList schema.
+type PriceListClient struct {
+	config
+}
+
+// NewPriceListClient returns a client for the PriceList from the given config.
+func NewPriceListClient(c config) *PriceListClient {
+	return &PriceListClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `pricelist.Hooks(f(g(h())))`.
+func (c *PriceListClient) Use(hooks ...Hook) {
+	c.hooks.PriceList = append(c.hooks.PriceList, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `pricelist.Intercept(f(g(h())))`.
+func (c *PriceListClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PriceList = append(c.inters.PriceList, interceptors...)
+}
+
+// Create returns a builder for creating a PriceList entity.
+func (c *PriceListClient) Create() *PriceListCreate {
+	mutation := newPriceListMutation(c.config, OpCreate)
+	return &PriceListCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PriceList entities.
+func (c *PriceListClient) CreateBulk(builders ...*PriceListCreate) *PriceListCreateBulk {
+	return &PriceListCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PriceListClient) MapCreateBulk(slice any, setFunc func(*PriceListCreate, int)) *PriceListCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PriceListCreateBulk{err: fmt.Errorf("calling to PriceListClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PriceListCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PriceListCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PriceList.
+func (c *PriceListClient) Update() *PriceListUpdate {
+	mutation := newPriceListMutation(c.config, OpUpdate)
+	return &PriceListUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PriceListClient) UpdateOne(_m *PriceList) *PriceListUpdateOne {
+	mutation := newPriceListMutation(c.config, OpUpdateOne, withPriceList(_m))
+	return &PriceListUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PriceListClient) UpdateOneID(id uuid.UUID) *PriceListUpdateOne {
+	mutation := newPriceListMutation(c.config, OpUpdateOne, withPriceListID(id))
+	return &PriceListUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PriceList.
+func (c *PriceListClient) Delete() *PriceListDelete {
+	mutation := newPriceListMutation(c.config, OpDelete)
+	return &PriceListDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PriceListClient) DeleteOne(_m *PriceList) *PriceListDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PriceListClient) DeleteOneID(id uuid.UUID) *PriceListDeleteOne {
+	builder := c.Delete().Where(pricelist.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PriceListDeleteOne{builder}
+}
+
+// Query returns a query builder for PriceList.
+func (c *PriceListClient) Query() *PriceListQuery {
+	return &PriceListQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePriceList},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PriceList entity by its id.
+func (c *PriceListClient) Get(ctx context.Context, id uuid.UUID) (*PriceList, error) {
+	return c.Query().Where(pricelist.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PriceListClient) GetX(ctx context.Context, id uuid.UUID) *PriceList {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PriceListClient) Hooks() []Hook {
+	return c.hooks.PriceList
+}
+
+// Interceptors returns the client interceptors.
+func (c *PriceListClient) Interceptors() []Interceptor {
+	return c.inters.PriceList
+}
+
+func (c *PriceListClient) mutate(ctx context.Context, m *PriceListMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PriceListCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PriceListUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PriceListUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PriceListDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PriceList mutation op: %q", m.Op())
+	}
+}
+
+// PriceOverrideClient is a client for the PriceOverride schema.
+type PriceOverrideClient struct {
+	config
+}
+
+// NewPriceOverrideClient returns a client for the PriceOverride from the given config.
+func NewPriceOverrideClient(c config) *PriceOverrideClient {
+	return &PriceOverrideClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `priceoverride.Hooks(f(g(h())))`.
+func (c *PriceOverrideClient) Use(hooks ...Hook) {
+	c.hooks.PriceOverride = append(c.hooks.PriceOverride, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `priceoverride.Intercept(f(g(h())))`.
+func (c *PriceOverrideClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PriceOverride = append(c.inters.PriceOverride, interceptors...)
+}
+
+// Create returns a builder for creating a PriceOverride entity.
+func (c *PriceOverrideClient) Create() *PriceOverrideCreate {
+	mutation := newPriceOverrideMutation(c.config, OpCreate)
+	return &PriceOverrideCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PriceOverride entities.
+func (c *PriceOverrideClient) CreateBulk(builders ...*PriceOverrideCreate) *PriceOverrideCreateBulk {
+	return &PriceOverrideCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PriceOverrideClient) MapCreateBulk(slice any, setFunc func(*PriceOverrideCreate, int)) *PriceOverrideCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PriceOverrideCreateBulk{err: fmt.Errorf("calling to PriceOverrideClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PriceOverrideCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PriceOverrideCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PriceOverride.
+func (c *PriceOverrideClient) Update() *PriceOverrideUpdate {
+	mutation := newPriceOverrideMutation(c.config, OpUpdate)
+	return &PriceOverrideUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PriceOverrideClient) UpdateOne(_m *PriceOverride) *PriceOverrideUpdateOne {
+	mutation := newPriceOverrideMutation(c.config, OpUpdateOne, withPriceOverride(_m))
+	return &PriceOverrideUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PriceOverrideClient) UpdateOneID(id uuid.UUID) *PriceOverrideUpdateOne {
+	mutation := newPriceOverrideMutation(c.config, OpUpdateOne, withPriceOverrideID(id))
+	return &PriceOverrideUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PriceOverride.
+func (c *PriceOverrideClient) Delete() *PriceOverrideDelete {
+	mutation := newPriceOverrideMutation(c.config, OpDelete)
+	return &PriceOverrideDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PriceOverrideClient) DeleteOne(_m *PriceOverride) *PriceOverrideDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PriceOverrideClient) DeleteOneID(id uuid.UUID) *PriceOverrideDeleteOne {
+	builder := c.Delete().Where(priceoverride.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PriceOverrideDeleteOne{builder}
+}
+
+// Query returns a query builder for PriceOverride.
+func (c *PriceOverrideClient) Query() *PriceOverrideQuery {
+	return &PriceOverrideQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePriceOverride},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PriceOverride entity by its id.
+func (c *PriceOverrideClient) Get(ctx context.Context, id uuid.UUID) (*PriceOverride, error) {
+	return c.Query().Where(priceoverride.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PriceOverrideClient) GetX(ctx context.Context, id uuid.UUID) *PriceOverride {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PriceOverrideClient) Hooks() []Hook {
+	hooks := c.hooks.PriceOverride
+	return append(hooks[:len(hooks):len(hooks)], priceoverride.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *PriceOverrideClient) Interceptors() []Interceptor {
+	inters := c.inters.PriceOverride
+	return append(inters[:len(inters):len(inters)], priceoverride.Interceptors[:]...)
+}
+
+func (c *PriceOverrideClient) mutate(ctx context.Context, m *PriceOverrideMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PriceOverrideCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PriceOverrideUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PriceOverrideUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PriceOverrideDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PriceOverride mutation op: %q", m.Op())
+	}
+}
+
 // ProviderClient is a client for the Provider schema.
 type ProviderClient struct {
 	config
@@ -772,10 +1058,10 @@ func (c *RouteClient) mutate(ctx context.Context, m *RouteMutation) (Value, erro
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Budget, KeySetting, Provider, Route []ent.Hook
+		Budget, KeySetting, PriceList, PriceOverride, Provider, Route []ent.Hook
 	}
 	inters struct {
-		Budget, KeySetting, Provider, Route []ent.Interceptor
+		Budget, KeySetting, PriceList, PriceOverride, Provider, Route []ent.Interceptor
 	}
 )
 

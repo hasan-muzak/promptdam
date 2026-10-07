@@ -22,10 +22,23 @@ func Cost(prices *llm.Catalog, kind, model string, u wire.Usage) (micros int64, 
 	if !ok {
 		return 0, false
 	}
+	return CostAt(m, u), true
+}
+
+// CostAt is what a call cost at a model's prices, in micro-USD.
+func CostAt(m llm.Model, u wire.Usage) int64 {
 	cost := float64(m.CostMicros(u.Usage))
-	// CostMicros prices every cache write at the five-minute rate.
-	if extra := 2*m.Input - m.CacheWrite; u.CacheWrite1h > 0 && extra > 0 {
-		cost += float64(min(u.CacheWrite1h, u.CacheWrite)) * extra
+	// CostMicros prices every cache write at the five-minute rate; one-hour
+	// writes cost the listed one-hour price, else twice the input price.
+	if u.CacheWrite1h > 0 {
+		at := m.At(u.Input)
+		hour := at.CacheWrite1h
+		if hour == 0 {
+			hour = 2 * at.Input
+		}
+		if extra := hour - at.CacheWrite; extra > 0 {
+			cost += float64(min(u.CacheWrite1h, u.CacheWrite)) * extra
+		}
 	}
-	return int64(math.Round(cost)), true
+	return int64(math.Round(cost))
 }

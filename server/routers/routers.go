@@ -22,7 +22,7 @@ func Mount(a *muzak.App, app *core.App) {
 	c := app.Core
 	h := &handlers.Handlers{
 		Tenancy: c.Tenancy, Providers: app.Providers, Keys: app.Keys, Routes: app.Routes, Budgets: app.Budgets, Notifier: c.Notifier,
-		Analytics: analytics.New(c.Events),
+		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides,
 	}
 	r := muzak.NewRouter(
 		muzak.WithTags(brand.Key),
@@ -113,6 +113,21 @@ func Mount(a *muzak.App, app *core.App) {
 			"Covers at most 31 days per query (default the last 24 hours) and what the plan keeps."))
 	r.Get(lb+"/{request}", h.GetRequest, log, muzak.Title("Get Request"), project(tenancy.PermProjectsRead),
 		muzak.Summary("Get one gateway call by its trace (X-Promptdam-Trace)"))
+
+	pcat := muzak.WithCategory("Prices")
+	pr := "/v1/orgs/{org}/projects/{project}/prices"
+	r.Get(pr, h.ListPrices, pcat, muzak.Title("List Prices"), project(tenancy.PermProjectsRead),
+		muzak.Summary("List the project's own prices for models"),
+		muzak.Description("Costs use the project's own price for a model when it has one (for one provider first, "+
+			"then for any), else the price list synced daily from OpenRouter's public models API. Prices only show "+
+			"spend and enforce budgets: providers bill their customers directly."))
+	r.Put(pr, h.PutPrice, pcat, muzak.Title("Set Price"), project(tenancy.PermProjectsManage),
+		muzak.Summary("Set the project's own price for a model"),
+		muzak.Description("For negotiated discounts and models the price list doesn't know (self-hosted ones, a "+
+			"host's own model names). USD per million tokens; replaces the project's price for the same model and "+
+			"provider. Applies to calls from a few seconds later."))
+	r.Delete(pr+"/{price}", h.DeletePrice, pcat, muzak.Title("Delete Price"), project(tenancy.PermProjectsManage),
+		muzak.Status(http.StatusNoContent), muzak.Summary("Remove the project's own price: the price list's applies again"))
 
 	ana := muzak.WithCategory("Analytics")
 	r.Get("/v1/orgs/{org}/projects/{project}/analytics/spend", h.GetSpend, ana, muzak.Title("Get Spend"),

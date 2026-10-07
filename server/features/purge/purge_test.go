@@ -19,6 +19,7 @@ import (
 	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/purge"
@@ -92,6 +93,10 @@ func seeds(c *pdent.Client) []seed {
 		{"Route", route.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.Route.Create().SetOrgID(org).SetProjectID(p).SetName("default").Exec(ctx)
 		}},
+		{"PriceOverride", priceoverride.Table, func(ctx context.Context, org, p uuid.UUID) error {
+			return c.PriceOverride.Create().SetOrgID(org).SetProjectID(p).SetModel("llama-3.3-70b").SetInput(0.5).
+				SetCachedInput(0.5).SetCacheWrite(0.5).SetOutput(1).Exec(ctx)
+		}},
 		{"Provider", provider.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.Provider.Create().SetOrgID(org).SetProjectID(p).SetName("openai").SetKind("openai").
 				SetAPIFormat(provider.APIFormatOpenai).SetBaseURL("https://api.openai.com/v1").Exec(ctx)
@@ -99,8 +104,11 @@ func seeds(c *pdent.Client) []seed {
 	}
 }
 
+// global entities are reference data, no organization's: nothing to purge.
+var global = map[string]bool{"PriceList": true}
+
 // Every entity of the graph is seeded, so a new one fails here until the
-// purge (deleteRows) and this list cover it.
+// purge (deleteRows) and this list cover it, or it is global.
 func TestSeedsCoverTheGraph(t *testing.T) {
 	byName := map[string]bool{}
 	for _, s := range seeds(nil) {
@@ -109,7 +117,8 @@ func TestSeedsCoverTheGraph(t *testing.T) {
 	client := reflect.TypeFor[pdent.Client]()
 	for i := range client.NumField() {
 		f := client.Field(i)
-		if f.Type.Kind() == reflect.Pointer && strings.HasSuffix(f.Type.Elem().Name(), "Client") && !byName[f.Name] {
+		if f.Type.Kind() == reflect.Pointer && strings.HasSuffix(f.Type.Elem().Name(), "Client") && !byName[f.Name] &&
+			!global[f.Name] {
 			t.Errorf("%s is not seeded: add it here and to the purge (deleteRows)", f.Name)
 		}
 	}

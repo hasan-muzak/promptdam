@@ -11,6 +11,8 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/pricelist"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
 )
@@ -125,6 +127,60 @@ func (f TraverseKeySetting) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.KeySettingQuery", q)
 }
 
+// The PriceListFunc type is an adapter to allow the use of ordinary function as a Querier.
+type PriceListFunc func(context.Context, *ent.PriceListQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f PriceListFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.PriceListQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.PriceListQuery", q)
+}
+
+// The TraversePriceList type is an adapter to allow the use of ordinary function as Traverser.
+type TraversePriceList func(context.Context, *ent.PriceListQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraversePriceList) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraversePriceList) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PriceListQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.PriceListQuery", q)
+}
+
+// The PriceOverrideFunc type is an adapter to allow the use of ordinary function as a Querier.
+type PriceOverrideFunc func(context.Context, *ent.PriceOverrideQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f PriceOverrideFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.PriceOverrideQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.PriceOverrideQuery", q)
+}
+
+// The TraversePriceOverride type is an adapter to allow the use of ordinary function as Traverser.
+type TraversePriceOverride func(context.Context, *ent.PriceOverrideQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraversePriceOverride) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraversePriceOverride) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PriceOverrideQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.PriceOverrideQuery", q)
+}
+
 // The ProviderFunc type is an adapter to allow the use of ordinary function as a Querier.
 type ProviderFunc func(context.Context, *ent.ProviderQuery) (ent.Value, error)
 
@@ -186,6 +242,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.BudgetQuery, predicate.Budget, budget.OrderOption]{typ: ent.TypeBudget, tq: q}, nil
 	case *ent.KeySettingQuery:
 		return &query[*ent.KeySettingQuery, predicate.KeySetting, keysetting.OrderOption]{typ: ent.TypeKeySetting, tq: q}, nil
+	case *ent.PriceListQuery:
+		return &query[*ent.PriceListQuery, predicate.PriceList, pricelist.OrderOption]{typ: ent.TypePriceList, tq: q}, nil
+	case *ent.PriceOverrideQuery:
+		return &query[*ent.PriceOverrideQuery, predicate.PriceOverride, priceoverride.OrderOption]{typ: ent.TypePriceOverride, tq: q}, nil
 	case *ent.ProviderQuery:
 		return &query[*ent.ProviderQuery, predicate.Provider, provider.OrderOption]{typ: ent.TypeProvider, tq: q}, nil
 	case *ent.RouteQuery:

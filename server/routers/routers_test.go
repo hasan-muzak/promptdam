@@ -355,6 +355,35 @@ func TestBudgets(t *testing.T) {
 	e.client.Get(path+"/"+block.ID, alice).AssertStatus(http.StatusNotFound)
 }
 
+func TestPrices(t *testing.T) {
+	e := setup(t)
+	alice := e.as("alice")
+	_, _, base := e.project("alice")
+	path := base + "/prices"
+	p := testclient.Decoded[handlers.PriceOut](e.client.Put(path, alice, testclient.JSON(map[string]any{
+		"model": "llama-3.3-70b-versatile", "provider": "groq", "input": 0.59, "output": 0.79,
+	})).AssertStatus(http.StatusOK))
+	if p.CachedInput != 0.59 || p.CacheWrite != 0.59 || p.Provider != "groq" {
+		t.Fatalf("set %+v", p)
+	}
+	again := testclient.Decoded[handlers.PriceOut](e.client.Put(path, alice, testclient.JSON(map[string]any{
+		"model": "llama-3.3-70b-versatile", "provider": "groq", "input": 0.5, "output": 0.7,
+	})).AssertStatus(http.StatusOK))
+	if again.ID != p.ID || again.Input != 0.5 {
+		t.Fatalf("replaced %+v", again)
+	}
+	list := testclient.Decoded[httpx.List[handlers.PriceOut]](e.client.Get(path, alice).AssertStatus(http.StatusOK))
+	if len(list.Data) != 1 {
+		t.Fatalf("list %+v", list)
+	}
+	if res := e.client.Put(path, alice, testclient.JSON(map[string]any{"model": "x", "input": -1, "output": 1})); res.Status !=
+		http.StatusUnprocessableEntity || res.Error().Error.Code != handlers.CodeInvalidPrice {
+		t.Fatalf("a negative price: %d %s", res.Status, res.String())
+	}
+	e.client.Delete(path+"/"+p.ID, alice).AssertStatus(http.StatusNoContent)
+	e.client.Delete(path+"/"+p.ID, alice).AssertStatus(http.StatusNotFound)
+}
+
 // TestEveryRouteIsDocumented holds every route to a category and a title
 // in the API reference.
 func TestEveryRouteIsDocumented(t *testing.T) {
@@ -418,11 +447,15 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 		"name": "All", "scope": "project", "window": "month", "limit_micros": 1_000_000, "channels": []string{ch.ID},
 	})).AssertStatus(http.StatusCreated))
 
+	prc := testclient.Decoded[handlers.PriceOut](e.client.Put(base+"/prices", alice, testclient.JSON(map[string]any{
+		"model": "llama-3.3-70b", "input": 1, "output": 1,
+	})).AssertStatus(http.StatusOK))
+
 	victim := map[string]string{
 		"org": org.ID, "project": prj.ID, "user": me.User.ID, "invitation": inv.ID, "key": key.ID, "channel": ch.ID,
 		"webhook": ids.Encode(ids.WebhookEndpoint, ep.ID), "delivery": ids.Encode(ids.WebhookDelivery, del.ID),
 		"meter": "requests", "provider": p.ID, "route": rte.ID, "budget": bdg.ID,
-		"request": ids.Encode("req", ids.New()),
+		"request": ids.Encode("req", ids.New()), "price": prc.ID,
 	}
 	e.client.Put(base+"/keys/"+key.ID+"/gateway", alice, testclient.JSON(map[string]any{"rpm": 10})).AssertStatus(http.StatusOK)
 	mallory := e.as("mallory")

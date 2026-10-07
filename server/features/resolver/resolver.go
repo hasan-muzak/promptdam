@@ -18,7 +18,6 @@ import (
 
 	"github.com/hasan-muzak/keel/pkg/apikeys"
 	"github.com/hasan-muzak/keel/pkg/counter"
-	"github.com/hasan-muzak/keel/pkg/llm"
 	"github.com/hasan-muzak/keel/pkg/llm/wire"
 	"github.com/hasan-muzak/keel/pkg/memcache"
 	"github.com/hasan-muzak/keel/pkg/metering"
@@ -27,6 +26,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/snapshot"
@@ -44,6 +44,8 @@ type Meta struct {
 	User  string
 	Tags  []string
 	Route string
+	// Prices are the project's own prices, over the price list.
+	Prices prices.Project
 }
 
 // Who is what the call's spend counts against.
@@ -69,7 +71,7 @@ type Config struct {
 	Spend     *budgets.Spend
 	// Rates counts requests per key and minute (counter "rpm").
 	Rates  *counter.Counters
-	Prices *llm.Catalog
+	Prices prices.Prices
 	// Scope is the scope a key needs.
 	Scope string
 }
@@ -148,7 +150,7 @@ func (r *Resolver) caller(ctx context.Context, c *gateway.Call) (*Meta, *snapsho
 			"the gateway can't read the project's configuration right now")
 	}
 	settings := snap.Keys[p.KeyID]
-	m := &Meta{Org: p.OrgID, Project: *p.ProjectID, Key: p.KeyID, Developer: settings.Developer}
+	m := &Meta{Org: p.OrgID, Project: *p.ProjectID, Key: p.KeyID, Developer: settings.Developer, Prices: snap.Prices}
 	if u := strings.TrimSpace(c.Header.Get(brand.HeaderUser)); len(u) <= 200 {
 		m.User = u
 	}
@@ -299,7 +301,7 @@ func (r *Resolver) serves(p snapshot.Provider, model string) bool {
 	if !ok {
 		return false
 	}
-	if m, ok := r.cfg.Prices.Lookup(kind.Catalog, model); ok && m.Provider == kind.Catalog {
+	if m, ok := r.cfg.Prices.Current().Lookup(kind.Catalog, model); ok && m.Provider == kind.Catalog {
 		return true
 	}
 	for _, pre := range kind.Prefixes {
@@ -342,7 +344,7 @@ func (r *Resolver) Models(ctx context.Context, c *gateway.Call) ([]gateway.Model
 			continue
 		}
 		if kind, ok := providers.LookupKind(p.Kind); ok && kind.Catalog != "" {
-			for _, cm := range r.cfg.Prices.Models {
+			for _, cm := range r.cfg.Prices.Current().Models {
 				if cm.Provider == kind.Catalog {
 					add(cm.ID, p.Name)
 				}

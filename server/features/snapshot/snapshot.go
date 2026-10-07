@@ -29,6 +29,7 @@ import (
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
 )
@@ -66,6 +67,7 @@ type Data struct {
 	Keys      map[string]keysettings.Settings `json:"keys"`
 	Routes    []Route                         `json:"routes"`
 	Budgets   []budgets.Blocking              `json:"budgets"`
+	Prices    []prices.Override               `json:"prices"`
 }
 
 // Snapshot is a project's configuration as a gateway holds it in memory.
@@ -76,6 +78,8 @@ type Snapshot struct {
 	Keys      map[uuid.UUID]keysettings.Settings
 	Routes    map[string]Route
 	Budgets   []budgets.Blocking
+	// Prices are the project's own prices, over the price list.
+	Prices prices.Project
 }
 
 // Opened is a provider with its key's headers.
@@ -90,6 +94,7 @@ type Sources struct {
 	Keys      *keysettings.Service
 	Routes    *routes.Service
 	Budgets   *budgets.Service
+	Prices    *prices.Overrides
 }
 
 // Build reads a project's configuration from Postgres.
@@ -124,6 +129,9 @@ func (s Sources) Build(ctx context.Context, org, project uuid.UUID) (Data, error
 	}
 	if d.Budgets, err = s.Budgets.Blockings(ctx, project); err != nil {
 		return Data{}, fmt.Errorf("snapshot: budgets: %w", err)
+	}
+	if d.Prices, err = s.Prices.All(ctx, project); err != nil {
+		return Data{}, fmt.Errorf("snapshot: prices: %w", err)
 	}
 	return d, nil
 }
@@ -204,7 +212,7 @@ func (s *Store) Get(ctx context.Context, org, project uuid.UUID) (*Snapshot, err
 func (s *Store) open(project uuid.UUID, d Data) (*Snapshot, error) {
 	snap := &Snapshot{
 		Org: d.Org, Project: project, Keys: make(map[uuid.UUID]keysettings.Settings, len(d.Keys)),
-		Routes: make(map[string]Route, len(d.Routes)), Budgets: d.Budgets,
+		Routes: make(map[string]Route, len(d.Routes)), Budgets: d.Budgets, Prices: prices.ProjectPrices(d.Prices),
 	}
 	for _, p := range d.Providers {
 		h, err := s.sources.Providers.HeaderFor(d.Org, p.Format, p.Sealed)

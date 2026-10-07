@@ -33,6 +33,30 @@ func (f KeySettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.KeySettingMutation", m)
 }
 
+// The PriceListFunc type is an adapter to allow the use of ordinary
+// function as PriceList mutator.
+type PriceListFunc func(context.Context, *ent.PriceListMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PriceListFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PriceListMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PriceListMutation", m)
+}
+
+// The PriceOverrideFunc type is an adapter to allow the use of ordinary
+// function as PriceOverride mutator.
+type PriceOverrideFunc func(context.Context, *ent.PriceOverrideMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PriceOverrideFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PriceOverrideMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PriceOverrideMutation", m)
+}
+
 // The ProviderFunc type is an adapter to allow the use of ordinary
 // function as Provider mutator.
 type ProviderFunc func(context.Context, *ent.ProviderMutation) (ent.Value, error)

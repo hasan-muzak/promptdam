@@ -79,10 +79,10 @@ func run() error {
 		ClientKey: c.ClientIP.Key,
 	})
 
-	// Usage, spend and rate counters are flushed in the background, key
-	// last-used times and log rows batched, and configuration changes
-	// listened for.
-	for _, l := range []lifecycle{c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, snapshots, log} {
+	// Prices are loaded and kept current, usage, spend and rate counters
+	// flushed in the background, key last-used times and log rows batched,
+	// and configuration changes listened for.
+	for _, l := range []lifecycle{app.Prices, c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, snapshots, log} {
 		if err := l.Start(ctx); err != nil {
 			return err
 		}

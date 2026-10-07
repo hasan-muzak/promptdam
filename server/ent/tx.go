@@ -18,6 +18,10 @@ type Tx struct {
 	Budget *BudgetClient
 	// KeySetting is the client for interacting with the KeySetting builders.
 	KeySetting *KeySettingClient
+	// PriceList is the client for interacting with the PriceList builders.
+	PriceList *PriceListClient
+	// PriceOverride is the client for interacting with the PriceOverride builders.
+	PriceOverride *PriceOverrideClient
 	// Provider is the client for interacting with the Provider builders.
 	Provider *ProviderClient
 	// Route is the client for interacting with the Route builders.
@@ -155,6 +159,8 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.Budget = NewBudgetClient(tx.config)
 	tx.KeySetting = NewKeySettingClient(tx.config)
+	tx.PriceList = NewPriceListClient(tx.config)
+	tx.PriceOverride = NewPriceOverrideClient(tx.config)
 	tx.Provider = NewProviderClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 }

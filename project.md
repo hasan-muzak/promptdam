@@ -400,7 +400,15 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
     - Every call is costed (cache reads and writes; Anthropic's 1-hour writes at 2× input) and counted against budgets.
     - Every call is logged to ClickHouse `requests` (metadata only, plan retention). Rollups by provider/model/key/route (with latency percentiles), developer and tag.
     - The plan's `requests` meter is counted (hard on Free).
-  - **Still open:** the embedded price catalog holds placeholder prices for a few models. The ±2% exit needs real list prices for every provider's current models: a refresh of `pkg/llm/catalog.json`, or `PROMPTDAM_MODEL_PRICES` in production.
+  - **Done 2026-10-07, prices (decided with the owner):** prices are reference data for spend and dollar budgets, never a bill; customers pay their providers.
+    - The worker syncs OpenRouter's public models API daily (`api prices sync` does it now): 519 entries today. Each model is listed under OpenRouter's ID, and under its vendor's own name for OpenAI, Anthropic, Google, Mistral, DeepSeek and xAI.
+    - The list includes cache prices, Anthropic's one-hour writes and long-prompt tiers.
+    - Guards: a much shorter list is refused; a price moving more than tenfold, or to or from free, keeps its old value until checked.
+    - Projects can set their own prices (`PUT …/prices`) for discounts and models the list lacks. The order is the project's price for that provider, then for any provider, then the list.
+  - **Known gaps:**
+    - Groq, Together and Fireworks name and price open models their own way: tokens only, unless a project sets prices.
+    - DeepSeek shows OpenRouter's resold price.
+    - Embedding models aren't in the list.
 - [ ] S1.8 Dashboard: providers, keys, requests log (metadata), spend analytics (by model/provider/key/developer/tag), budgets.
   - **Done 2026-10-07, the backend:**
     - APIs for providers, key settings, routes and budgets.

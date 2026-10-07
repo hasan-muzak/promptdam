@@ -14,11 +14,11 @@ import (
 
 	"github.com/hasan-muzak/keel/pkg/billing"
 	"github.com/hasan-muzak/keel/pkg/events"
-	"github.com/hasan-muzak/keel/pkg/llm"
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/catalog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/prices"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
 )
 
@@ -69,7 +69,7 @@ type Config struct {
 	// Events is ClickHouse; without it calls are costed and counted but
 	// not logged.
 	Events *events.DB
-	Prices *llm.Catalog
+	Prices prices.Prices
 	Spend  *budgets.Spend
 	// Entitlements says how long the organization's plan keeps logs
 	// (metering.Service.Entitlements, cached in process).
@@ -127,7 +127,12 @@ func (l *Log) Record(r *gateway.Record) {
 	}
 	var cost int64
 	if r.UsageKnown {
-		cost, _ = Cost(l.cfg.Prices, r.Kind, r.ServedModel, r.Usage)
+		// The project's own price first, else the price list's.
+		if m, ok := m.Prices.Lookup(r.Provider, r.ServedModel); ok {
+			cost = CostAt(m, r.Usage)
+		} else {
+			cost, _ = Cost(l.cfg.Prices.Current(), r.Kind, r.ServedModel, r.Usage)
+		}
 		l.cfg.Spend.Add(m.Who(), cost)
 	}
 	if l.w == nil {
