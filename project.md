@@ -133,7 +133,7 @@ Basic routing and logging are free elsewhere, so Promptdam charges for **outcome
 ### 4.2 Post-launch (May – Jul 2027)
 - **Batch deferral:** `x-promptdam-defer: batch` sends requests to Anthropic Message Batches or the OpenAI Batch API (about 50% cheaper). Results arrive by webhook or polling.
 - **Semantic cache:** embeddings, opt-in per route, similarity threshold, and an eval-guarded hit policy.
-- **Learned router:** a per-family classifier (embedding + outcome features) that decides the model per request, not just per family.
+- **Learned router:** decides the model per request, not just per family: a classifier in the gateway first, the OpenAI Decisions API only for the requests it is unsure of (§6.2, step 8).
 - **Cross-format translation** (OpenAI ⇄ Anthropic, including tools and streaming), so any request can use any model.
 - **Fixwire integration:** every gateway request appears as an LLM span in the customer's Fixwire project.
 - **Coding-agent pack:**
@@ -226,6 +226,19 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
    - The customer approves, or Team+ can enable auto-apply for low-risk families.
 6. **Canary:** after activation, 1% of routed requests also run on the baseline model and are judged. When quality drops below the threshold over a rolling window, the rule **auto-reverts** and fires `rule.reverted`.
 7. **Ledger:** per request, `counterfactual_cost = list price(requested model, tokens, no cache)` and `actual = provider-reported usage × list price` (cache read and write pricing included). Savings are attributed to their reason. Experiment and judge costs are recorded as negative savings.
+8. **Per-request routing, a cascade (decided 2026-10-07; built in S6.4).** Never an LLM call per message by default:
+   1. **Classifier in the gateway.** A small model per family (logistic regression or gradient-boosted trees) predicts whether the cheaper model's answer will be acceptable.
+      - Its features cost nothing to compute: input tokens, message count, tools, `max_tokens`, code or JSON in the last message, tags, hashed n-grams of the last user message.
+      - It is trained in the worker on the judged shadow samples (step 4) and shipped to gateways with the config snapshot. Inference takes microseconds.
+   2. **OpenAI Decisions API, only when the classifier is unsure.** When the classifier's confidence is below the route's threshold, or the family has no trained model yet, a route may opt in to asking `gpt-6-luna` (`POST /v1/decisions`, a `score` question on difficulty).
+      - It costs $0.10 per 1M input tokens, nothing for output.
+      - It has a hard timeout (about 150 ms) and fails open to the family's default model.
+      - It runs on the customer's own OpenAI key when they have one.
+      - Target: under 10% of a family's requests get here. Measure it in beta.
+   3. **Otherwise the family's default:** the model its experiment proved, else the requested one.
+   - A bandit (Thompson sampling) keeps trying the cheaper model on a few percent of traffic, with the canary's judgments as its reward; auto-revert still applies.
+   - Not chosen: a hosted decision model on every request (70–500 ms added, a per-request bill, every prompt sent to one more vendor).
+   - Recommendation, not yet decided: use the Decisions API as the first-tier judge in step 4, escalating low-confidence verdicts to the strong judge, with a calibration sample judged by both.
 
 ### 6.3 Prompt-caching doctor (`features/cachedoctor`)
 - For Anthropic-format families:
@@ -383,7 +396,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - [ ] S6.1 Batch deferral (Anthropic Message Batches, OpenAI Batch).
 - [ ] S6.2 Semantic cache with eval guard.
 - [ ] S6.3 Cross-format translation (OpenAI ⇄ Anthropic incl. tools + streaming), unlocking cross-provider routing.
-- [ ] S6.4 Learned per-request router.
+- [ ] S6.4 Learned per-request router: the cascade of §6.2 step 8 (classifier in the gateway, the Decisions API only for its unsure cases, bandit exploration).
 - [ ] S6.5 Fixwire span export; coding-agent pack (per-developer SSO keys); employee-chat guides (Open WebUI, LibreChat).
 - [ ] S6.6 SSO/SCIM; Azure OpenAI, Bedrock and Vertex providers.
 
