@@ -18,6 +18,8 @@ type Tx struct {
 	KeySetting *KeySettingClient
 	// Provider is the client for interacting with the Provider builders.
 	Provider *ProviderClient
+	// Route is the client for interacting with the Route builders.
+	Route *RouteClient
 
 	// lazily loaded.
 	client     *Client
@@ -151,6 +153,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.KeySetting = NewKeySettingClient(tx.config)
 	tx.Provider = NewProviderClient(tx.config)
+	tx.Route = NewRouteClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

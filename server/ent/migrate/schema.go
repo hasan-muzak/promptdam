@@ -77,10 +77,40 @@ var (
 			},
 		},
 	}
+	// RoutesColumns holds the columns for the "routes" table.
+	RoutesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "fallbacks", Type: field.TypeJSON},
+		{Name: "retries", Type: field.TypeInt, Default: 1},
+	}
+	// RoutesTable holds the schema information for the "routes" table.
+	RoutesTable = &schema.Table{
+		Name:       "routes",
+		Columns:    RoutesColumns,
+		PrimaryKey: []*schema.Column{RoutesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "route_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{RoutesColumns[3], RoutesColumns[4]},
+			},
+			{
+				Name:    "route_project_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{RoutesColumns[4], RoutesColumns[5]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		KeySettingsTable,
 		ProvidersTable,
+		RoutesTable,
 	}
 )
 

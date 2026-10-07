@@ -33,6 +33,18 @@ func (f ProviderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ProviderMutation", m)
 }
 
+// The RouteFunc type is an adapter to allow the use of ordinary
+// function as Route mutator.
+type RouteFunc func(context.Context, *ent.RouteMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RouteFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RouteMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RouteMutation", m)
+}
+
 // Condition is a hook condition function.
 type Condition func(context.Context, ent.Mutation) bool
 

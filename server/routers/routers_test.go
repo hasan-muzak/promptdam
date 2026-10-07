@@ -239,6 +239,39 @@ func mustID(t *testing.T, prefix, s string) uuid.UUID {
 	return id
 }
 
+func TestRoutes(t *testing.T) {
+	e := setup(t)
+	alice := e.as("alice")
+	_, _, base := e.project("alice")
+	path := base + "/routes"
+	r := testclient.Decoded[handlers.RouteOut](e.client.Post(path, alice, testclient.JSON(map[string]any{
+		"name": "default", "fallbacks": []string{"gpt-5-mini", "openrouter/anthropic/claude-haiku-4-5"},
+	})).AssertStatus(http.StatusCreated))
+	if r.Retries != 1 || len(r.Fallbacks) != 2 {
+		t.Fatalf("created %+v", r)
+	}
+	for _, body := range []map[string]any{
+		{"name": "default", "fallbacks": []string{}},
+		{"name": "x", "fallbacks": []string{"/gpt"}},
+		{"name": "x", "retries": 9},
+		{"name": "Bad", "fallbacks": []string{}},
+	} {
+		if res := e.client.Post(path, alice, testclient.JSON(body)); res.Status != http.StatusConflict &&
+			res.Status != http.StatusUnprocessableEntity {
+			t.Errorf("%v: %d %s", body, res.Status, res.String())
+		}
+	}
+	zero := 0
+	up := testclient.Decoded[handlers.RouteOut](e.client.Put(path+"/"+r.ID, alice, testclient.JSON(map[string]any{
+		"name": "default", "fallbacks": []string{"gpt-5-nano"}, "retries": zero,
+	})).AssertStatus(http.StatusOK))
+	if up.Retries != 0 || up.Fallbacks[0] != "gpt-5-nano" {
+		t.Fatalf("updated %+v", up)
+	}
+	e.client.Delete(path+"/"+r.ID, alice).AssertStatus(http.StatusNoContent)
+	e.client.Get(path+"/"+r.ID, alice).AssertStatus(http.StatusNotFound)
+}
+
 // TestEveryRouteIsDocumented holds every route to a category and a title
 // in the API reference.
 func TestEveryRouteIsDocumented(t *testing.T) {
@@ -292,10 +325,14 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 		"name": "openai", "kind": "openai", "api_key": "sk-test-secret-abcd",
 	})).AssertStatus(http.StatusCreated))
 
+	rte := testclient.Decoded[handlers.RouteOut](e.client.Post(base+"/routes", alice, testclient.JSON(map[string]any{
+		"name": "default", "fallbacks": []string{"gpt-5-mini"},
+	})).AssertStatus(http.StatusCreated))
+
 	victim := map[string]string{
 		"org": org.ID, "project": prj.ID, "user": me.User.ID, "invitation": inv.ID, "key": key.ID, "channel": ch.ID,
 		"webhook": ids.Encode(ids.WebhookEndpoint, ep.ID), "delivery": ids.Encode(ids.WebhookDelivery, del.ID),
-		"meter": "requests", "provider": p.ID,
+		"meter": "requests", "provider": p.ID, "route": rte.ID,
 	}
 	e.client.Put(base+"/keys/"+key.ID+"/gateway", alice, testclient.JSON(map[string]any{"rpm": 10})).AssertStatus(http.StatusOK)
 	mallory := e.as("mallory")
@@ -308,5 +345,6 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 			"PATCH /v1/orgs/{org}/members/{user}":                        `{"role":"viewer"}`,
 			"PUT /v1/orgs/{org}/projects/{project}/providers/{provider}": `{"name":"x","kind":"openai","api_key":"sk-x-0000000000"}`,
 			"PUT /v1/orgs/{org}/projects/{project}/keys/{key}/gateway":   `{"rpm":1}`,
+			"PUT /v1/orgs/{org}/projects/{project}/routes/{route}":       `{"name":"x","fallbacks":[]}`,
 		}, mallory)
 }

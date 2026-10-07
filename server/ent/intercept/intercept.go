@@ -11,6 +11,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/predicate"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
 )
 
 // The Query interface represents an operation that queries a graph.
@@ -123,6 +124,33 @@ func (f TraverseProvider) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.ProviderQuery", q)
 }
 
+// The RouteFunc type is an adapter to allow the use of ordinary function as a Querier.
+type RouteFunc func(context.Context, *ent.RouteQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f RouteFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.RouteQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.RouteQuery", q)
+}
+
+// The TraverseRoute type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseRoute func(context.Context, *ent.RouteQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseRoute) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseRoute) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.RouteQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.RouteQuery", q)
+}
+
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
@@ -130,6 +158,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.KeySettingQuery, predicate.KeySetting, keysetting.OrderOption]{typ: ent.TypeKeySetting, tq: q}, nil
 	case *ent.ProviderQuery:
 		return &query[*ent.ProviderQuery, predicate.Provider, provider.OrderOption]{typ: ent.TypeProvider, tq: q}, nil
+	case *ent.RouteQuery:
+		return &query[*ent.RouteQuery, predicate.Route, route.OrderOption]{typ: ent.TypeRoute, tq: q}, nil
 	default:
 		return nil, fmt.Errorf("unknown query type %T", q)
 	}

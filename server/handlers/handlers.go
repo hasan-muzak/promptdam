@@ -7,6 +7,7 @@ import (
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
 )
 
 // Handlers hold Promptdam's services.
@@ -14,4 +15,5 @@ type Handlers struct {
 	Tenancy   *tenancy.Service
 	Providers *providers.Service
 	Keys      *keysettings.Service
+	Routes    *routes.Service
 }

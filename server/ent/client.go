@@ -17,6 +17,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
 
 	stdsql "database/sql"
 )
@@ -30,6 +31,8 @@ type Client struct {
 	KeySetting *KeySettingClient
 	// Provider is the client for interacting with the Provider builders.
 	Provider *ProviderClient
+	// Route is the client for interacting with the Route builders.
+	Route *RouteClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -43,6 +46,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.KeySetting = NewKeySettingClient(c.config)
 	c.Provider = NewProviderClient(c.config)
+	c.Route = NewRouteClient(c.config)
 }
 
 type (
@@ -137,6 +141,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:     cfg,
 		KeySetting: NewKeySettingClient(cfg),
 		Provider:   NewProviderClient(cfg),
+		Route:      NewRouteClient(cfg),
 	}, nil
 }
 
@@ -158,6 +163,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:     cfg,
 		KeySetting: NewKeySettingClient(cfg),
 		Provider:   NewProviderClient(cfg),
+		Route:      NewRouteClient(cfg),
 	}, nil
 }
 
@@ -188,6 +194,7 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	c.KeySetting.Use(hooks...)
 	c.Provider.Use(hooks...)
+	c.Route.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
@@ -195,6 +202,7 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	c.KeySetting.Intercept(interceptors...)
 	c.Provider.Intercept(interceptors...)
+	c.Route.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -204,6 +212,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.KeySetting.mutate(ctx, m)
 	case *ProviderMutation:
 		return c.Provider.mutate(ctx, m)
+	case *RouteMutation:
+		return c.Route.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -479,13 +489,148 @@ func (c *ProviderClient) mutate(ctx context.Context, m *ProviderMutation) (Value
 	}
 }
 
+// RouteClient is a client for the Route schema.
+type RouteClient struct {
+	config
+}
+
+// NewRouteClient returns a client for the Route from the given config.
+func NewRouteClient(c config) *RouteClient {
+	return &RouteClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `route.Hooks(f(g(h())))`.
+func (c *RouteClient) Use(hooks ...Hook) {
+	c.hooks.Route = append(c.hooks.Route, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `route.Intercept(f(g(h())))`.
+func (c *RouteClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Route = append(c.inters.Route, interceptors...)
+}
+
+// Create returns a builder for creating a Route entity.
+func (c *RouteClient) Create() *RouteCreate {
+	mutation := newRouteMutation(c.config, OpCreate)
+	return &RouteCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Route entities.
+func (c *RouteClient) CreateBulk(builders ...*RouteCreate) *RouteCreateBulk {
+	return &RouteCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RouteClient) MapCreateBulk(slice any, setFunc func(*RouteCreate, int)) *RouteCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RouteCreateBulk{err: fmt.Errorf("calling to RouteClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RouteCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RouteCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Route.
+func (c *RouteClient) Update() *RouteUpdate {
+	mutation := newRouteMutation(c.config, OpUpdate)
+	return &RouteUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RouteClient) UpdateOne(_m *Route) *RouteUpdateOne {
+	mutation := newRouteMutation(c.config, OpUpdateOne, withRoute(_m))
+	return &RouteUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RouteClient) UpdateOneID(id uuid.UUID) *RouteUpdateOne {
+	mutation := newRouteMutation(c.config, OpUpdateOne, withRouteID(id))
+	return &RouteUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Route.
+func (c *RouteClient) Delete() *RouteDelete {
+	mutation := newRouteMutation(c.config, OpDelete)
+	return &RouteDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RouteClient) DeleteOne(_m *Route) *RouteDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RouteClient) DeleteOneID(id uuid.UUID) *RouteDeleteOne {
+	builder := c.Delete().Where(route.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RouteDeleteOne{builder}
+}
+
+// Query returns a query builder for Route.
+func (c *RouteClient) Query() *RouteQuery {
+	return &RouteQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRoute},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Route entity by its id.
+func (c *RouteClient) Get(ctx context.Context, id uuid.UUID) (*Route, error) {
+	return c.Query().Where(route.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RouteClient) GetX(ctx context.Context, id uuid.UUID) *Route {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RouteClient) Hooks() []Hook {
+	hooks := c.hooks.Route
+	return append(hooks[:len(hooks):len(hooks)], route.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *RouteClient) Interceptors() []Interceptor {
+	inters := c.inters.Route
+	return append(inters[:len(inters):len(inters)], route.Interceptors[:]...)
+}
+
+func (c *RouteClient) mutate(ctx context.Context, m *RouteMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RouteCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RouteUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RouteUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RouteDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Route mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		KeySetting, Provider []ent.Hook
+		KeySetting, Provider, Route []ent.Hook
 	}
 	inters struct {
-		KeySetting, Provider []ent.Interceptor
+		KeySetting, Provider, Route []ent.Interceptor
 	}
 )
 

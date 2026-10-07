@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -76,6 +77,7 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			keysetting.Table: keysetting.ValidColumn,
 			provider.Table:   provider.ValidColumn,
+			route.Table:      route.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

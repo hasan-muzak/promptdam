@@ -17,7 +17,7 @@ import (
 // Mount registers Promptdam's routes on the API application.
 func Mount(a *muzak.App, app *core.App) {
 	c := app.Core
-	h := &handlers.Handlers{Tenancy: c.Tenancy, Providers: app.Providers, Keys: app.Keys}
+	h := &handlers.Handlers{Tenancy: c.Tenancy, Providers: app.Providers, Keys: app.Keys, Routes: app.Routes}
 	r := muzak.NewRouter(
 		muzak.WithTags(brand.Key),
 		muzak.Needs(identity.Authenticate(c.Verifier)),
@@ -64,5 +64,22 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Summary("Replace what the gateway applies to an API key"),
 		muzak.Description("Allowed models, the developer and tags for attribution, a rate limit and a default route. "+
 			"The gateway applies them within seconds; a rotated key's replacement keeps them."))
+
+	rcat := muzak.WithCategory("Routes")
+	rb := "/v1/orgs/{org}/projects/{project}/routes"
+	r.Get(rb, h.ListRoutes, rcat, muzak.Title("List Routes"), project(tenancy.PermProjectsRead),
+		muzak.Summary("List a project's routes"),
+		muzak.Description("Requests take the route they name in X-Promptdam-Route, else their key's, else the "+
+			"route named default. A route says what to try when the model asked for fails."))
+	r.Post(rb, h.CreateRoute, rcat, muzak.Title("Create Route"), project(tenancy.PermProjectsManage),
+		muzak.Status(http.StatusCreated), muzak.Summary("Add a route"),
+		muzak.Description("Fallbacks are tried in order on rate limits, overload, server errors and timeouts, while "+
+			"nothing has reached the client; same API format only (OpenAI or Anthropic)."))
+	r.Get(rb+"/{route}", h.GetRoute, rcat, muzak.Title("Get Route"), project(tenancy.PermProjectsRead),
+		muzak.Summary("Get a route"))
+	r.Put(rb+"/{route}", h.UpdateRoute, rcat, muzak.Title("Update Route"), project(tenancy.PermProjectsManage),
+		muzak.Summary("Replace a route"))
+	r.Delete(rb+"/{route}", h.DeleteRoute, rcat, muzak.Title("Delete Route"), project(tenancy.PermProjectsManage),
+		muzak.Status(http.StatusNoContent), muzak.Summary("Remove a route"))
 	a.Include(r)
 }

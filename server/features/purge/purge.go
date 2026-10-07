@@ -35,6 +35,7 @@ import (
 	pdent "github.com/hasan-muzak/keel/products/promptdam/server/ent"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
 )
 
 // LateWrites is how long after a deletion its data can still be written,
@@ -159,6 +160,7 @@ func deleteRows(ctx context.Context, c *pdent.Client, org uuid.UUID, projects []
 	for _, d := range []deleter{
 		c.KeySetting.Delete().Where(keysetting.OrgID(org), only(scoped, keysetting.ProjectIDIn(projects...))),
 		c.Provider.Delete().Where(provider.OrgID(org), only(scoped, provider.ProjectIDIn(projects...))),
+		c.Route.Delete().Where(route.OrgID(org), only(scoped, route.ProjectIDIn(projects...))),
 	} {
 		if _, err := d.Exec(ctx); err != nil {
 			return err

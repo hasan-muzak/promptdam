@@ -11,3 +11,6 @@ type KeySetting func(*sql.Selector)
 
 // Provider is the predicate function for provider builders.
 type Provider func(*sql.Selector)
+
+// Route is the predicate function for route builders.
+type Route func(*sql.Selector)

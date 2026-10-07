@@ -16,6 +16,7 @@ import (
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/providers"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/purge"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/routes"
 )
 
 // App is Promptdam on top of keel: the shared services plus Promptdam's own
@@ -32,6 +33,8 @@ type App struct {
 	Providers *providers.Service
 	// Keys keeps what the gateway applies to each API key.
 	Keys *keysettings.Service
+	// Routes keeps the paths requests take: fallbacks and retries.
+	Routes *routes.Service
 	// Purge deletes what Promptdam keeps of deleted organizations and
 	// projects.
 	Purge *purge.Service
@@ -86,6 +89,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 				"key", replacement, "err", err)
 		}
 	})
+	a.Routes = routes.New(a.Ent, a.configChanged)
 	// No foreign keys cross the graphs (ADR 0004): deleting an organization
 	// or a project deletes Promptdam's rows in the deletion's transaction,
 	// and enqueues the purge of its ClickHouse rows and Valkey keys with it.

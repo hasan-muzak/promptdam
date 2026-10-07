@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/provider"
+	"github.com/hasan-muzak/keel/products/promptdam/server/ent/route"
 	"github.com/hasan-muzak/keel/products/promptdam/server/ent/schema"
 )
 
@@ -167,6 +168,55 @@ func init() {
 	providerDescID := providerMixinFields0[0].Descriptor()
 	// provider.DefaultID holds the default value on creation for the id field.
 	provider.DefaultID = providerDescID.Default.(func() uuid.UUID)
+	routeMixin := schema.Route{}.Mixin()
+	routeMixinHooks1 := routeMixin[1].Hooks()
+	route.Hooks[0] = routeMixinHooks1[0]
+	routeMixinInters1 := routeMixin[1].Interceptors()
+	route.Interceptors[0] = routeMixinInters1[0]
+	routeMixinFields0 := routeMixin[0].Fields()
+	_ = routeMixinFields0
+	routeFields := schema.Route{}.Fields()
+	_ = routeFields
+	// routeDescCreatedAt is the schema descriptor for created_at field.
+	routeDescCreatedAt := routeMixinFields0[1].Descriptor()
+	// route.DefaultCreatedAt holds the default value on creation for the created_at field.
+	route.DefaultCreatedAt = routeDescCreatedAt.Default.(func() time.Time)
+	// routeDescUpdatedAt is the schema descriptor for updated_at field.
+	routeDescUpdatedAt := routeMixinFields0[2].Descriptor()
+	// route.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	route.DefaultUpdatedAt = routeDescUpdatedAt.Default.(func() time.Time)
+	// route.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	route.UpdateDefaultUpdatedAt = routeDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// routeDescName is the schema descriptor for name field.
+	routeDescName := routeFields[0].Descriptor()
+	// route.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	route.NameValidator = func() func(string) error {
+		validators := routeDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// routeDescFallbacks is the schema descriptor for fallbacks field.
+	routeDescFallbacks := routeFields[1].Descriptor()
+	// route.DefaultFallbacks holds the default value on creation for the fallbacks field.
+	route.DefaultFallbacks = routeDescFallbacks.Default.([]string)
+	// routeDescRetries is the schema descriptor for retries field.
+	routeDescRetries := routeFields[2].Descriptor()
+	// route.DefaultRetries holds the default value on creation for the retries field.
+	route.DefaultRetries = routeDescRetries.Default.(int)
+	// routeDescID is the schema descriptor for id field.
+	routeDescID := routeMixinFields0[0].Descriptor()
+	// route.DefaultID holds the default value on creation for the id field.
+	route.DefaultID = routeDescID.Default.(func() uuid.UUID)
 }
 
 const (
