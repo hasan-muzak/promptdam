@@ -20,6 +20,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/safehttp"
 
 	"github.com/hasan-muzak/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/features/evaluate"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/requestlog"
 	"github.com/hasan-muzak/promptdam/server/features/resolver"
@@ -70,21 +71,31 @@ func run() error {
 	log := requestlog.New(requestlog.Config{
 		Events: c.Events, Prices: app.Prices, Spend: app.Spend, Entitlements: c.Metering.Entitlements,
 	})
+	// Providers' base URLs are public addresses; a local stack's fake
+	// provider runs on this machine.
+	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: cfg.Env == config.Development})
+	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})
+	eval := evaluate.New(evaluate.Config{
+		Resolver: res, Transport: transport, Events: c.Events, Prices: app.Prices, Spend: app.Spend, Counters: evalSpend,
+		Entitlements: c.Metering.Entitlements,
+	})
 	h := gateway.New(gateway.Config{
 		Resolver: res,
-		// Every call is costed, counted against budgets and logged.
-		Done: log.Record,
-		// Providers' base URLs are public addresses; a local stack's fake
-		// provider runs on this machine.
-		Transport: safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: cfg.Env == config.Development}),
+		// Every call is costed, counted against budgets and logged; a
+		// router's sampled calls are evaluated in the background.
+		Done: func(r *gateway.Record) {
+			log.Record(r)
+			eval.Offer(r)
+		},
+		Transport: transport,
 		ClientKey: c.ClientIP.Key,
 		Cache:     responsecache.New(c.KV),
 	})
 
 	// Prices are loaded and kept current, usage, spend and rate counters
 	// flushed in the background, key last-used times and log rows batched,
-	// and configuration changes listened for.
-	for _, l := range []lifecycle{app.Prices, c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, snapshots, log} {
+	// sampled calls evaluated, and configuration changes listened for.
+	for _, l := range []lifecycle{app.Prices, c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, evalSpend, snapshots, log, eval} {
 		if err := l.Start(ctx); err != nil {
 			return err
 		}

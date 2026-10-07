@@ -211,24 +211,9 @@ func TestRoutingRules(t *testing.T) {
 
 // A call for a model only a provider of the other API serves is sent to
 // it, translated; so is a fallback naming one.
-// mainServes makes the World's "main" provider, which serves every model
-// unless it lists its own, list models.
-func mainServes(t *testing.T, w *gatewaytest.World, models ...string) {
-	t.Helper()
-	ps, err := w.App.Providers.List(w.Scoped(), w.Project)
-	if err != nil {
-		t.Fatal(err)
-	}
-	main := ps[0]
-	if _, err := w.App.Providers.Update(w.Scoped(), w.Org, w.Project, main.ID, providers.Input{Name: main.Name, Kind: main.Kind,
-		Format: string(main.APIFormat), BaseURL: main.BaseURL, Models: models, Enabled: true}); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestCallsCrossFormats(t *testing.T) {
 	w := gatewaytest.New(t, gatewaytest.Options{})
-	mainServes(t, w, "gpt-5-mini")
+	w.Serves("main", "gpt-5-mini")
 	w.Provider("claude", providers.FormatAnthropic, []string{"claude-haiku-4-5"})
 	w.Eventually(func() bool {
 		status, h, body := w.Call("/v1/chat/completions", `{"model":"claude-haiku-4-5","messages":[{"role":"user","content":"hi"}]}`)
@@ -259,7 +244,7 @@ func TestCallsCrossFormats(t *testing.T) {
 // stronger ones. In shadow mode it decides but serves its default tier.
 func TestRouters(t *testing.T) {
 	w := gatewaytest.New(t, gatewaytest.Options{})
-	mainServes(t, w, "gpt-5-nano", "gpt-5-mini")
+	w.Serves("main", "gpt-5-nano", "gpt-5-mini")
 	w.Provider("claude", providers.FormatAnthropic, []string{"claude-opus-5-5"})
 	rt, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
 		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-nano"}, {Name: "smart", Model: "claude-opus-5-5"}},

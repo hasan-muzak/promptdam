@@ -182,14 +182,20 @@ func (l *Log) Record(r *gateway.Record) {
 // price is a model's price for the project: its own (for that provider,
 // then for any), else the price list's.
 func (l *Log) price(m *resolver.Meta, provider, kind, model string) (llm.Model, bool) {
-	if p, ok := m.Prices.Lookup(provider, model); ok {
+	return Price(l.cfg.Prices, m.Prices, provider, kind, model)
+}
+
+// Price is a model's price for a project: its own (for that provider, then
+// for any), else the price list's.
+func Price(list prices.Prices, own prices.Project, provider, kind, model string) (llm.Model, bool) {
+	if p, ok := own.Lookup(provider, model); ok {
 		return p, true
 	}
 	catalogName := ""
 	if k, ok := providers.LookupKind(kind); ok {
 		catalogName = k.Catalog
 	}
-	return l.cfg.Prices.Current().Lookup(catalogName, model)
+	return list.Current().Lookup(catalogName, model)
 }
 
 // ledger weighs a call against the model asked for at list price, without

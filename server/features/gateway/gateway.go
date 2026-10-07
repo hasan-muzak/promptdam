@@ -61,6 +61,9 @@ type Route struct {
 	PromptCache bool
 	// Header is set on the response (e.g. the router's tier).
 	Header http.Header
+	// Sample keeps the call's request and answer in its Record (Body,
+	// Answer), in memory, for a router's evaluation.
+	Sample bool
 	// Meta is the resolver's own data about the call (the caller, its
 	// project…), handed back in the Record.
 	Meta any
@@ -118,6 +121,9 @@ var endpoints = map[string]endpoint{
 	"/v1/messages/count_tokens": {wire.AnthropicCountTokens, "/messages/count_tokens"},
 }
 
+// MaxSampledAnswer bounds the answer a sampled call keeps.
+const MaxSampledAnswer = 1 << 20
+
 // paths are the provider paths of the formats calls are translated to.
 var paths = map[wire.Format]string{wire.OpenAIChat: "/chat/completions", wire.AnthropicMessages: "/messages"}
 
@@ -152,6 +158,11 @@ type Record struct {
 	// format, translated; Dropped lists the parameters it left out.
 	Translated bool
 	Dropped    []string
+	// Body and Answer are a sampled call's request and the answer the
+	// client got (a whole response or its stream, in the client's
+	// format), held in memory for evaluation; Answer is nil when it was
+	// larger than MaxSampledAnswer or the call failed.
+	Body, Answer []byte
 	// Status is the HTTP status the client got; ErrorCode says why a call
 	// failed ("" when it didn't).
 	Status    int

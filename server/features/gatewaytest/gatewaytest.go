@@ -28,6 +28,7 @@ import (
 
 	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
 	"github.com/hasan-muzak/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/features/evaluate"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/requestlog"
@@ -43,6 +44,9 @@ type Options struct {
 	ClickHouse bool
 	// Upstream shapes the fake provider.
 	Upstream fakeupstream.Options
+	// Sample draws whether a router call is evaluated (the resolver's;
+	// default random).
+	Sample func() float64
 }
 
 // World is the gateway serving one project, with one provider ("main", a
@@ -60,6 +64,8 @@ type World struct {
 	Upstream *httptest.Server
 	Gateway  *httptest.Server
 	Log      *requestlog.Log
+	// Eval evaluates routers' sampled calls (with ClickHouse).
+	Eval *evaluate.Evaluator
 
 	mu      sync.Mutex
 	records []gateway.Record
@@ -112,24 +118,29 @@ func New(t *testing.T, opts Options) *World {
 	w.Log = requestlog.New(requestlog.Config{
 		Events: c.Events, Prices: w.App.Prices, Spend: w.App.Spend, Entitlements: c.Metering.Entitlements,
 	})
+	res := resolver.New(resolver.Config{
+		Keys: c.APIKeys, Snapshots: snaps, Quota: c.Metering, Spend: w.App.Spend, Rates: rates, Prices: w.App.Prices,
+		Scope: core.ScopeGateway, Rules: w.App.RuleEnv, Sample: opts.Sample,
+	})
+	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true})
+	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})
+	w.Eval = evaluate.New(evaluate.Config{Resolver: res, Transport: transport, Events: c.Events, Prices: w.App.Prices,
+		Spend: w.App.Spend, Counters: evalSpend, Entitlements: c.Metering.Entitlements})
 	for _, l := range []interface {
 		Start(context.Context) error
 		Stop(context.Context) error
-	}{snaps, rates, w.App.SpendCounters, w.Log} {
+	}{snaps, rates, w.App.SpendCounters, evalSpend, w.Log, w.Eval} {
 		if err := l.Start(ctx); err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = l.Stop(context.Background()) })
 	}
-	res := resolver.New(resolver.Config{
-		Keys: c.APIKeys, Snapshots: snaps, Quota: c.Metering, Spend: w.App.Spend, Rates: rates, Prices: w.App.Prices,
-		Scope: core.ScopeGateway, Rules: w.App.RuleEnv,
-	})
 	w.Gateway = httptest.NewServer(gateway.New(gateway.Config{
-		Resolver: res, Transport: safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true}),
+		Resolver: res, Transport: transport,
 		Cache: responsecache.New(c.KV),
 		Done: func(r *gateway.Record) {
 			w.Log.Record(r)
+			w.Eval.Offer(r)
 			w.mu.Lock()
 			defer w.mu.Unlock()
 			w.records = append(w.records, *r)
@@ -153,6 +164,27 @@ func (w *World) Provider(name, format string, models []string) {
 	if err != nil {
 		w.T.Fatal(err)
 	}
+}
+
+// Serves makes a provider of the World serve only models: "main" serves
+// every model until it lists its own.
+func (w *World) Serves(name string, models ...string) {
+	w.T.Helper()
+	ps, err := w.App.Providers.List(w.Scoped(), w.Project)
+	if err != nil {
+		w.T.Fatal(err)
+	}
+	for _, p := range ps {
+		if p.Name != name {
+			continue
+		}
+		if _, err := w.App.Providers.Update(w.Scoped(), w.Org, w.Project, p.ID, providers.Input{Name: p.Name, Kind: p.Kind,
+			Format: string(p.APIFormat), BaseURL: p.BaseURL, Models: models, Priority: p.Priority, Enabled: p.Enabled}); err != nil {
+			w.T.Fatal(err)
+		}
+		return
+	}
+	w.T.Fatalf("no provider %s", name)
 }
 
 // Call sends a request with the World's key (GET for /v1/models, else

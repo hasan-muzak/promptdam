@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"math/rand/v2"
 	"net/http"
 	"slices"
 	"strconv"
@@ -30,6 +31,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 	"github.com/hasan-muzak/promptdam/server/features/rules"
@@ -63,6 +65,11 @@ type Meta struct {
 	// named a router: its default tier's model ("" for the model asked
 	// for).
 	Baseline gateway.Target
+	// Sampled marks a call its router evaluates: the router and the
+	// project's configuration the call was placed with go with it.
+	Sampled bool
+	Placed  *routers.Router
+	Snap    *snapshot.Snapshot
 }
 
 // Who is what the call's spend counts against.
@@ -93,6 +100,9 @@ type Config struct {
 	Scope string
 	// Rules is the environment routing rules are compiled in.
 	Rules *policy.Env
+	// Sample draws a number in [0, 1) for each router call: below the
+	// router's sample rate, the call is evaluated (default rand.Float64).
+	Sample func() float64
 }
 
 // Resolver implements gateway.Resolver and gateway.ModelLister.
@@ -103,6 +113,9 @@ type Resolver struct {
 
 // New returns a Resolver.
 func New(cfg Config) *Resolver {
+	if cfg.Sample == nil {
+		cfg.Sample = rand.Float64
+	}
 	return &Resolver{cfg: cfg, keys: memcache.New[[32]byte, apikeys.Principal](KeyTTL, KeyTTL, 100_000)}
 }
 
@@ -285,7 +298,8 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		e.RetryAfter = time.Hour
 		return nil, e
 	}
-	out := &gateway.Route{Targets: targets, Retries: route.Retries, PromptCache: route.PromptCache, Header: header, Meta: m}
+	out := &gateway.Route{Targets: targets, Retries: route.Retries, PromptCache: route.PromptCache, Header: header, Meta: m,
+		Sample: m.Sampled}
 	if route.CacheTTL > 0 {
 		out.CacheTTL = time.Duration(route.CacheTTL) * time.Second
 		out.CacheScope = m.Project.String() + ":" + route.Name

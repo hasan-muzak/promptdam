@@ -6,6 +6,7 @@ import (
 
 	"github.com/hasan-muzak/keel-core/pkg/llm"
 
+	"github.com/hasan-muzak/promptdam/server/features/classifier"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 )
 
@@ -23,8 +24,8 @@ func needsOf(c *gateway.Call) Needs {
 	n := Needs{
 		Tools:      c.Request.Tools,
 		JSONSchema: strings.HasPrefix(c.Request.Prefix.Format, "json_schema"),
-		Images:     bytes.Contains(c.Body, []byte(`"image_url"`)) || hasType(c.Body, "image"),
-		Files:      hasType(c.Body, "file") || hasType(c.Body, "document"),
+		Images:     bytes.Contains(c.Body, []byte(`"image_url"`)) || classifier.HasType(c.Body, "image"),
+		Files:      classifier.HasType(c.Body, "file") || classifier.HasType(c.Body, "document"),
 	}
 	if !n.Images {
 		n.Tokens = c.BodyBytes/4 + c.Request.MaxTokens
@@ -50,32 +51,3 @@ func (n Needs) lack(m llm.Model) string {
 	}
 	return ""
 }
-
-// hasType reports a JSON member "type" whose value is the string name,
-// whatever the spacing: a content part of that type. It reads the body
-// once.
-func hasType(body []byte, name string) bool {
-	key := []byte(`"type"`)
-	for i := 0; ; {
-		j := bytes.Index(body[i:], key)
-		if j < 0 {
-			return false
-		}
-		k := i + j + len(key)
-		for k < len(body) && isSpace(body[k]) {
-			k++
-		}
-		if k < len(body) && body[k] == ':' {
-			k++
-			for k < len(body) && isSpace(body[k]) {
-				k++
-			}
-			if k+len(name)+2 <= len(body) && body[k] == '"' && string(body[k+1:k+1+len(name)]) == name && body[k+1+len(name)] == '"' {
-				return true
-			}
-		}
-		i = i + j + len(key)
-	}
-}
-
-func isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }

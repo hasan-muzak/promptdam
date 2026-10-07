@@ -48,6 +48,22 @@ type call struct {
 	// promptCache adds Anthropic cache breakpoints, to calls translated to
 	// the Messages API too.
 	promptCache bool
+	// sample keeps the answer the client gets in answer (for a router's
+	// evaluation) until it grows past MaxSampledAnswer.
+	sample, overflow bool
+	answer           []byte
+}
+
+// keep adds bytes the client got to a sampled call's answer.
+func (c *call) keep(p []byte) {
+	if !c.sample || c.overflow {
+		return
+	}
+	if len(c.answer)+len(p) > MaxSampledAnswer {
+		c.overflow, c.answer = true, nil
+		return
+	}
+	c.answer = append(c.answer, p...)
 }
 
 func (c *call) serve() {
@@ -92,6 +108,10 @@ func (c *call) serve() {
 	c.rec.Meta = route.Meta
 	for k, v := range route.Header {
 		c.w.Header()[k] = v
+	}
+	if route.Sample {
+		// The request as the client sent it; buf goes back to its pool.
+		c.sample, c.rec.Body = true, bytes.Clone(body)
 	}
 	if len(route.Targets) == 0 {
 		c.fail(&Error{Status: http.StatusNotFound, Type: TypeNotFound, Code: "no_provider",
@@ -360,6 +380,9 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	if c.rec.ErrorCode != "" {
 		return // the gateway answered with its own error
 	}
+	if c.sample && !c.overflow && res.StatusCode == http.StatusOK && readErr == nil {
+		c.rec.Answer = c.answer
+	}
 	switch {
 	case c.r.Context().Err() != nil:
 		c.rec.Status, c.rec.ErrorCode = statusClientClosed, "client_closed"
@@ -449,6 +472,7 @@ func (c *call) write(p []byte) bool {
 	}
 	n, err := c.w.Write(p)
 	c.rec.ResponseBytes += int64(n)
+	c.keep(p[:n])
 	return err == nil
 }
 

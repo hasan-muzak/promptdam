@@ -33,6 +33,9 @@ type Options struct {
 	// Chunks is the content chunks of an answer, and its output tokens
 	// (default 10).
 	Chunks int
+	// Reply, when set, writes the text of whole (not streamed) Chat
+	// Completions and Messages answers, from the model and the request.
+	Reply func(model string, body []byte) string
 }
 
 // Request is a call the server received.
@@ -111,7 +114,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if req.Stream {
 			s.chatStream(w, r, req.Model, req.StreamOptions != nil && req.StreamOptions.IncludeUsage)
 		} else {
-			writeJSON(w, chatCompletion(req.Model, s.opts.Chunks))
+			c := chatCompletion(req.Model, s.opts.Chunks)
+			if s.opts.Reply != nil {
+				c["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)["content"] = s.opts.Reply(req.Model, body)
+			}
+			writeJSON(w, c)
 		}
 	case "/responses":
 		if req.Stream {
@@ -129,7 +136,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if req.Stream {
 			s.messagesStream(w, r, req.Model)
 		} else {
-			writeJSON(w, message(req.Model, s.opts.Chunks))
+			m := message(req.Model, s.opts.Chunks)
+			if s.opts.Reply != nil {
+				m["content"].([]any)[0].(map[string]any)["text"] = s.opts.Reply(req.Model, body)
+			}
+			writeJSON(w, m)
 		}
 	case "/messages/count_tokens":
 		writeJSON(w, map[string]int{"input_tokens": PromptTokens})

@@ -400,3 +400,28 @@ func TestOpenCircuitsAreSkipped(t *testing.T) {
 		t.Fatalf("the failing provider got %d calls, want 5", n)
 	}
 }
+
+// A sampled call keeps its request and the answer the client got, streamed
+// or not, for its router's evaluation; others keep neither.
+func TestSampledCallsKeepTheirAnswer(t *testing.T) {
+	e := setup(t, fakeupstream.Options{}, func(base string) gateway.Resolver {
+		return routeResolver{gateway.Route{Sample: true, Targets: []gateway.Target{{Provider: "openai", BaseURL: base + "/v1"}}}}
+	})
+	req := `{"model":"gpt-5-mini","messages":[{"role":"user","content":"hi"}]}`
+	_, body := e.post(t, "/v1/chat/completions", req)
+	rec := e.record(t)
+	if string(rec.Body) != req || string(rec.Answer) != body {
+		t.Fatalf("kept %q and %q", rec.Body, rec.Answer)
+	}
+	stream := `{"model":"gpt-5-mini","stream":true,"messages":[{"role":"user","content":"hi"}]}`
+	_, body = e.post(t, "/v1/chat/completions", stream)
+	if rec := e.record(t); string(rec.Body) != stream || string(rec.Answer) != body || !strings.Contains(body, "[DONE]") {
+		t.Fatalf("kept %q and %q", rec.Body, rec.Answer)
+	}
+
+	e = setup(t, fakeupstream.Options{}, nil)
+	e.post(t, "/v1/chat/completions", req)
+	if rec := e.record(t); rec.Body != nil || rec.Answer != nil {
+		t.Fatalf("an unsampled call kept %q and %q", rec.Body, rec.Answer)
+	}
+}

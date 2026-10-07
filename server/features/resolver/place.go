@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/hasan-muzak/keel-core/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
+
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
@@ -174,6 +177,11 @@ func (r *Resolver) place(snap *snapshot.Snapshot, rt *routers.Router, pin string
 			m.Baseline = base[0]
 		}
 	}
+	// A share of the router's calls is evaluated, while it has a budget
+	// for it.
+	if rt.EvalBudgetMicros > 0 && len(spec.Tiers) > 1 && r.cfg.Sample() < rt.Rate() {
+		m.Sampled, m.Placed, m.Snap = true, rt, snap
+	}
 	source := pl.Choice.Source
 	if pl.Shadow {
 		source = "shadow:" + source
@@ -183,6 +191,16 @@ func (r *Resolver) place(snap *snapshot.Snapshot, rt *routers.Router, pin string
 	h.Set(brand.HeaderTier, m.Tier)
 	h.Set(brand.HeaderTierSource, source)
 	return pl.Targets, h, nil
+}
+
+// Model is what the price list knows of a provider kind's model: its
+// features and limits.
+func (r *Resolver) Model(kind, model string) (llm.Model, bool) { return r.model(kind, model) }
+
+// Targets are where a model ("model" or "provider/model") is served for a
+// call of format f, by the project's providers.
+func (r *Resolver) Targets(snap *snapshot.Snapshot, f wire.Format, model string) []gateway.Target {
+	return r.fallback(snap, f, model, nil)
 }
 
 // Explain places a call as the gateway would, checking every tier, for
