@@ -46,4 +46,7 @@ const (
 	HeaderCache = HeaderPrefix + "Cache"
 	// HeaderSavingsMicros is what the request saved, in micro-USD.
 	HeaderSavingsMicros = HeaderPrefix + "Savings-Micros"
+	// HeaderErrorCode is the stable code of an error the gateway itself
+	// answered with (not the provider).
+	HeaderErrorCode = HeaderPrefix + "Error-Code"
 )

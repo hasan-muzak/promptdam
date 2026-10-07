@@ -71,4 +71,10 @@ tasks:
       KEEL_TEST_MAILPIT_URL: http://localhost:28025
       KEEL_TEST_STRIPE_MOCK_URL: http://localhost:22111
     cmds:
-      - go test -race ./server/...
+      - go test -race ./server/... ./bench/...
+
+  bench:
+    desc: Measure the gateway's overhead against a fake provider (S0 exit: p99 within 40 ms), then its own cost per call
+    cmds:
+      - PROMPTDAM_BENCH=1 go test ./bench/ -run TestOverheadBudget -v -count=1
+      - go test ./bench/ ./server/features/gateway/ -run '^$' -bench . -benchmem
