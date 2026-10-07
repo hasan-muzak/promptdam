@@ -11,15 +11,15 @@
 FROM golang:1.27-alpine AS build
 ARG CMD
 ARG VERSION=dev
-WORKDIR /src
-COPY core/go.mod core/go.sum ./core/
-COPY products/promptdam/promptdam/go.mod products/promptdam/promptdam/go.sum ./promptdam/
-RUN go work init ./core ./promptdam
-RUN --mount=type=cache,target=/go/pkg/mod cd promptdam && go mod download
-COPY core/pkg ./core/pkg
-COPY products/promptdam/promptdam/server ./promptdam/server
+# The workspace's paths, so the product's go.mod finds the core (../../../core).
+COPY core/go.mod core/go.sum /src/core/
+COPY products/promptdam/promptdam/go.mod products/promptdam/promptdam/go.sum /src/products/promptdam/promptdam/
+WORKDIR /src/products/promptdam/promptdam
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY core/pkg /src/core/pkg
+COPY products/promptdam/promptdam/server ./server
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    test -n "$CMD" && cd promptdam && \
+    test -n "$CMD" && \
     CGO_ENABLED=0 go build -trimpath \
       -ldflags "-s -w -X github.com/hasan-muzak/promptdam/server/core.Version=${VERSION}" \
       -o /out/app ./server/cmd/${CMD}

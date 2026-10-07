@@ -9,7 +9,7 @@ require (
 	entgo.io/ent v0.14.6
 	github.com/anthropics/anthropic-sdk-go v1.78.0
 	github.com/google/uuid v1.6.0
-	github.com/hasan-muzak/keel-core v0.0.0-20261007160640-2eec66f4d82c
+	github.com/hasan-muzak/keel-core v0.0.0
 	github.com/openai/openai-go/v3 v3.71.1
 	github.com/riverqueue/river v0.48.0
 	github.com/valkey-io/valkey-go v1.0.78
@@ -134,3 +134,7 @@ require (
 )
 
 tool entgo.io/ent/cmd/ent
+
+// The core is the keel workspace's core/ checkout, next to this repository:
+// keel's submodule pointers record which core commit each product builds with.
+replace github.com/hasan-muzak/keel-core => ../../../core
