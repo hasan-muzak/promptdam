@@ -18,6 +18,7 @@ import (
 
 	"github.com/hasan-muzak/keel-core/pkg/apikeys"
 	"github.com/hasan-muzak/keel-core/pkg/counter"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 	"github.com/hasan-muzak/keel-core/pkg/memcache"
 	"github.com/hasan-muzak/keel-core/pkg/metering"
@@ -304,7 +305,30 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 		return t, true
 	}
 	t.Format = crossFormat(f)
-	return t, t.Format != 0
+	if t.Format == 0 {
+		return t, false
+	}
+	// Translation passes a reasoning effort on to models that take one,
+	// and lets Messages answers run as long as the model writes.
+	if m, ok := r.model(p.Kind, model); ok {
+		t.Reasoning, _ = m.Has(llm.FeatureReasoning)
+		t.MaxTokens = int(min(m.MaxOutput, maxTranslatedTokens))
+	}
+	return t, true
+}
+
+// maxTranslatedTokens caps the answer of a Chat call that set no limit,
+// sent to a Messages model: the model's own limit, at most this.
+const maxTranslatedTokens = 32_768
+
+// model is what the price list knows of a provider's model: its features
+// and limits.
+func (r *Resolver) model(kind, model string) (llm.Model, bool) {
+	catalogName := ""
+	if k, ok := providers.LookupKind(kind); ok {
+		catalogName = k.Catalog
+	}
+	return r.cfg.Prices.Current().Lookup(catalogName, model)
 }
 
 // targets are the providers serving model for a call of format f, by
