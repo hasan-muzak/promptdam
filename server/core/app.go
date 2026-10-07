@@ -20,6 +20,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/purge"
+	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 	"github.com/hasan-muzak/promptdam/server/features/rules"
 	"github.com/hasan-muzak/promptdam/server/features/snapshot"
@@ -36,9 +37,12 @@ type App struct {
 	Prices *prices.Store
 	// PriceOverrides are projects' own prices for models.
 	PriceOverrides *prices.Overrides
-	// Rules keeps routing rules; RuleEnv compiles them.
+	// Rules keeps routing rules; RuleEnv compiles them, and model routers'
+	// rules too.
 	Rules   *rules.Service
 	RuleEnv *policy.Env
+	// Routers keeps model routers: tiers of models a call is placed in.
+	Routers *routers.Service
 	// GatewayURL is where clients reach the gateway, for setup instructions.
 	GatewayURL string
 	// Providers keeps projects' LLM providers and their keys.
@@ -100,6 +104,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	}
 	a.RuleEnv = env
 	a.Rules = rules.New(a.Ent, env, a.configChanged)
+	a.Routers = routers.New(a.Ent, env, a.Prices, a.configChanged)
 	if a.GatewayURL == "" {
 		a.GatewayURL = "http://localhost:8282"
 	}
@@ -134,5 +139,5 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 // Sources are where the gateway's snapshots are built from.
 func (a *App) Sources() snapshot.Sources {
 	return snapshot.Sources{Providers: a.Providers, Keys: a.Keys, Routes: a.Routes, Budgets: a.Budgets, Prices: a.PriceOverrides,
-		Rules: a.Rules}
+		Rules: a.Rules, Routers: a.Routers}
 }

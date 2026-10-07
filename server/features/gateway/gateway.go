@@ -40,6 +40,9 @@ type Call struct {
 	Shape families.Shape
 	// BodyBytes is the request body's size.
 	BodyBytes int
+	// Body is the request body, to read only: it must not be changed or
+	// kept after Resolve returns.
+	Body []byte
 }
 
 // Route is where a call goes.
@@ -56,6 +59,8 @@ type Route struct {
 	CacheScope string
 	// PromptCache adds Anthropic cache breakpoints to calls without any.
 	PromptCache bool
+	// Header is set on the response (e.g. the router's tier).
+	Header http.Header
 	// Meta is the resolver's own data about the call (the caller, its
 	// project…), handed back in the Record.
 	Meta any

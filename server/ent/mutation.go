@@ -15,12 +15,14 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/predicate"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
+	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 )
 
 const (
@@ -35,6 +37,7 @@ const (
 	TypeBudget        = "Budget"
 	TypeFamilyLabel   = "FamilyLabel"
 	TypeKeySetting    = "KeySetting"
+	TypeModelRouter   = "ModelRouter"
 	TypePriceList     = "PriceList"
 	TypePriceOverride = "PriceOverride"
 	TypeProvider      = "Provider"
@@ -2739,6 +2742,1337 @@ func (m *KeySettingMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *KeySettingMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown KeySetting edge %s", name)
+}
+
+// ModelRouterMutation represents an operation that mutates the ModelRouter nodes in the graph.
+type ModelRouterMutation struct {
+	config
+	op                     Op
+	typ                    string
+	id                     *uuid.UUID
+	created_at             *time.Time
+	updated_at             *time.Time
+	org_id                 *uuid.UUID
+	project_id             *uuid.UUID
+	name                   *string
+	status                 *modelrouter.Status
+	tiers                  *[]tiers.Tier
+	appendtiers            []tiers.Tier
+	rules                  *[]tiers.Rule
+	appendrules            []tiers.Rule
+	default_tier           *string
+	quality_floor          *float64
+	addquality_floor       *float64
+	sample_rate            *float64
+	addsample_rate         *float64
+	eval_budget_micros     *int64
+	addeval_budget_micros  *int64
+	judge                  *string
+	decision_model         *string
+	decision_timeout_ms    *int
+	adddecision_timeout_ms *int
+	activated_at           *time.Time
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*ModelRouter, error)
+	predicates             []predicate.ModelRouter
+}
+
+var _ ent.Mutation = (*ModelRouterMutation)(nil)
+
+// modelrouterOption allows management of the mutation configuration using functional options.
+type modelrouterOption func(*ModelRouterMutation)
+
+// newModelRouterMutation creates new mutation for the ModelRouter entity.
+func newModelRouterMutation(c config, op Op, opts ...modelrouterOption) *ModelRouterMutation {
+	m := &ModelRouterMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeModelRouter,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withModelRouterID sets the ID field of the mutation.
+func withModelRouterID(id uuid.UUID) modelrouterOption {
+	return func(m *ModelRouterMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ModelRouter
+		)
+		m.oldValue = func(ctx context.Context) (*ModelRouter, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ModelRouter.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withModelRouter sets the old ModelRouter of the mutation.
+func withModelRouter(node *ModelRouter) modelrouterOption {
+	return func(m *ModelRouterMutation) {
+		m.oldValue = func(context.Context) (*ModelRouter, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ModelRouterMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ModelRouterMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ModelRouter entities.
+func (m *ModelRouterMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ModelRouterMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ModelRouterMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ModelRouter.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ModelRouterMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ModelRouterMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ModelRouterMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ModelRouterMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ModelRouterMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ModelRouterMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *ModelRouterMutation) SetOrgID(u uuid.UUID) {
+	m.org_id = &u
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *ModelRouterMutation) OrgID() (r uuid.UUID, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldOrgID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *ModelRouterMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetProjectID sets the "project_id" field.
+func (m *ModelRouterMutation) SetProjectID(u uuid.UUID) {
+	m.project_id = &u
+}
+
+// ProjectID returns the value of the "project_id" field in the mutation.
+func (m *ModelRouterMutation) ProjectID() (r uuid.UUID, exists bool) {
+	v := m.project_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProjectID returns the old "project_id" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldProjectID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProjectID: %w", err)
+	}
+	return oldValue.ProjectID, nil
+}
+
+// ResetProjectID resets all changes to the "project_id" field.
+func (m *ModelRouterMutation) ResetProjectID() {
+	m.project_id = nil
+}
+
+// SetName sets the "name" field.
+func (m *ModelRouterMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *ModelRouterMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *ModelRouterMutation) ResetName() {
+	m.name = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *ModelRouterMutation) SetStatus(value modelrouter.Status) {
+	m.status = &value
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ModelRouterMutation) Status() (r modelrouter.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldStatus(ctx context.Context) (v modelrouter.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ModelRouterMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetTiers sets the "tiers" field.
+func (m *ModelRouterMutation) SetTiers(t []tiers.Tier) {
+	m.tiers = &t
+	m.appendtiers = nil
+}
+
+// Tiers returns the value of the "tiers" field in the mutation.
+func (m *ModelRouterMutation) Tiers() (r []tiers.Tier, exists bool) {
+	v := m.tiers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTiers returns the old "tiers" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldTiers(ctx context.Context) (v []tiers.Tier, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTiers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTiers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTiers: %w", err)
+	}
+	return oldValue.Tiers, nil
+}
+
+// AppendTiers adds t to the "tiers" field.
+func (m *ModelRouterMutation) AppendTiers(t []tiers.Tier) {
+	m.appendtiers = append(m.appendtiers, t...)
+}
+
+// AppendedTiers returns the list of values that were appended to the "tiers" field in this mutation.
+func (m *ModelRouterMutation) AppendedTiers() ([]tiers.Tier, bool) {
+	if len(m.appendtiers) == 0 {
+		return nil, false
+	}
+	return m.appendtiers, true
+}
+
+// ResetTiers resets all changes to the "tiers" field.
+func (m *ModelRouterMutation) ResetTiers() {
+	m.tiers = nil
+	m.appendtiers = nil
+}
+
+// SetRules sets the "rules" field.
+func (m *ModelRouterMutation) SetRules(t []tiers.Rule) {
+	m.rules = &t
+	m.appendrules = nil
+}
+
+// Rules returns the value of the "rules" field in the mutation.
+func (m *ModelRouterMutation) Rules() (r []tiers.Rule, exists bool) {
+	v := m.rules
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRules returns the old "rules" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldRules(ctx context.Context) (v []tiers.Rule, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRules is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRules requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRules: %w", err)
+	}
+	return oldValue.Rules, nil
+}
+
+// AppendRules adds t to the "rules" field.
+func (m *ModelRouterMutation) AppendRules(t []tiers.Rule) {
+	m.appendrules = append(m.appendrules, t...)
+}
+
+// AppendedRules returns the list of values that were appended to the "rules" field in this mutation.
+func (m *ModelRouterMutation) AppendedRules() ([]tiers.Rule, bool) {
+	if len(m.appendrules) == 0 {
+		return nil, false
+	}
+	return m.appendrules, true
+}
+
+// ResetRules resets all changes to the "rules" field.
+func (m *ModelRouterMutation) ResetRules() {
+	m.rules = nil
+	m.appendrules = nil
+}
+
+// SetDefaultTier sets the "default_tier" field.
+func (m *ModelRouterMutation) SetDefaultTier(s string) {
+	m.default_tier = &s
+}
+
+// DefaultTier returns the value of the "default_tier" field in the mutation.
+func (m *ModelRouterMutation) DefaultTier() (r string, exists bool) {
+	v := m.default_tier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDefaultTier returns the old "default_tier" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldDefaultTier(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDefaultTier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDefaultTier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDefaultTier: %w", err)
+	}
+	return oldValue.DefaultTier, nil
+}
+
+// ResetDefaultTier resets all changes to the "default_tier" field.
+func (m *ModelRouterMutation) ResetDefaultTier() {
+	m.default_tier = nil
+}
+
+// SetQualityFloor sets the "quality_floor" field.
+func (m *ModelRouterMutation) SetQualityFloor(f float64) {
+	m.quality_floor = &f
+	m.addquality_floor = nil
+}
+
+// QualityFloor returns the value of the "quality_floor" field in the mutation.
+func (m *ModelRouterMutation) QualityFloor() (r float64, exists bool) {
+	v := m.quality_floor
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQualityFloor returns the old "quality_floor" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldQualityFloor(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQualityFloor is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQualityFloor requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQualityFloor: %w", err)
+	}
+	return oldValue.QualityFloor, nil
+}
+
+// AddQualityFloor adds f to the "quality_floor" field.
+func (m *ModelRouterMutation) AddQualityFloor(f float64) {
+	if m.addquality_floor != nil {
+		*m.addquality_floor += f
+	} else {
+		m.addquality_floor = &f
+	}
+}
+
+// AddedQualityFloor returns the value that was added to the "quality_floor" field in this mutation.
+func (m *ModelRouterMutation) AddedQualityFloor() (r float64, exists bool) {
+	v := m.addquality_floor
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetQualityFloor resets all changes to the "quality_floor" field.
+func (m *ModelRouterMutation) ResetQualityFloor() {
+	m.quality_floor = nil
+	m.addquality_floor = nil
+}
+
+// SetSampleRate sets the "sample_rate" field.
+func (m *ModelRouterMutation) SetSampleRate(f float64) {
+	m.sample_rate = &f
+	m.addsample_rate = nil
+}
+
+// SampleRate returns the value of the "sample_rate" field in the mutation.
+func (m *ModelRouterMutation) SampleRate() (r float64, exists bool) {
+	v := m.sample_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSampleRate returns the old "sample_rate" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldSampleRate(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSampleRate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSampleRate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSampleRate: %w", err)
+	}
+	return oldValue.SampleRate, nil
+}
+
+// AddSampleRate adds f to the "sample_rate" field.
+func (m *ModelRouterMutation) AddSampleRate(f float64) {
+	if m.addsample_rate != nil {
+		*m.addsample_rate += f
+	} else {
+		m.addsample_rate = &f
+	}
+}
+
+// AddedSampleRate returns the value that was added to the "sample_rate" field in this mutation.
+func (m *ModelRouterMutation) AddedSampleRate() (r float64, exists bool) {
+	v := m.addsample_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSampleRate resets all changes to the "sample_rate" field.
+func (m *ModelRouterMutation) ResetSampleRate() {
+	m.sample_rate = nil
+	m.addsample_rate = nil
+}
+
+// SetEvalBudgetMicros sets the "eval_budget_micros" field.
+func (m *ModelRouterMutation) SetEvalBudgetMicros(i int64) {
+	m.eval_budget_micros = &i
+	m.addeval_budget_micros = nil
+}
+
+// EvalBudgetMicros returns the value of the "eval_budget_micros" field in the mutation.
+func (m *ModelRouterMutation) EvalBudgetMicros() (r int64, exists bool) {
+	v := m.eval_budget_micros
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEvalBudgetMicros returns the old "eval_budget_micros" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldEvalBudgetMicros(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEvalBudgetMicros is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEvalBudgetMicros requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEvalBudgetMicros: %w", err)
+	}
+	return oldValue.EvalBudgetMicros, nil
+}
+
+// AddEvalBudgetMicros adds i to the "eval_budget_micros" field.
+func (m *ModelRouterMutation) AddEvalBudgetMicros(i int64) {
+	if m.addeval_budget_micros != nil {
+		*m.addeval_budget_micros += i
+	} else {
+		m.addeval_budget_micros = &i
+	}
+}
+
+// AddedEvalBudgetMicros returns the value that was added to the "eval_budget_micros" field in this mutation.
+func (m *ModelRouterMutation) AddedEvalBudgetMicros() (r int64, exists bool) {
+	v := m.addeval_budget_micros
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetEvalBudgetMicros resets all changes to the "eval_budget_micros" field.
+func (m *ModelRouterMutation) ResetEvalBudgetMicros() {
+	m.eval_budget_micros = nil
+	m.addeval_budget_micros = nil
+}
+
+// SetJudge sets the "judge" field.
+func (m *ModelRouterMutation) SetJudge(s string) {
+	m.judge = &s
+}
+
+// Judge returns the value of the "judge" field in the mutation.
+func (m *ModelRouterMutation) Judge() (r string, exists bool) {
+	v := m.judge
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldJudge returns the old "judge" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldJudge(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldJudge is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldJudge requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldJudge: %w", err)
+	}
+	return oldValue.Judge, nil
+}
+
+// ResetJudge resets all changes to the "judge" field.
+func (m *ModelRouterMutation) ResetJudge() {
+	m.judge = nil
+}
+
+// SetDecisionModel sets the "decision_model" field.
+func (m *ModelRouterMutation) SetDecisionModel(s string) {
+	m.decision_model = &s
+}
+
+// DecisionModel returns the value of the "decision_model" field in the mutation.
+func (m *ModelRouterMutation) DecisionModel() (r string, exists bool) {
+	v := m.decision_model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDecisionModel returns the old "decision_model" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldDecisionModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDecisionModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDecisionModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDecisionModel: %w", err)
+	}
+	return oldValue.DecisionModel, nil
+}
+
+// ResetDecisionModel resets all changes to the "decision_model" field.
+func (m *ModelRouterMutation) ResetDecisionModel() {
+	m.decision_model = nil
+}
+
+// SetDecisionTimeoutMs sets the "decision_timeout_ms" field.
+func (m *ModelRouterMutation) SetDecisionTimeoutMs(i int) {
+	m.decision_timeout_ms = &i
+	m.adddecision_timeout_ms = nil
+}
+
+// DecisionTimeoutMs returns the value of the "decision_timeout_ms" field in the mutation.
+func (m *ModelRouterMutation) DecisionTimeoutMs() (r int, exists bool) {
+	v := m.decision_timeout_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDecisionTimeoutMs returns the old "decision_timeout_ms" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldDecisionTimeoutMs(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDecisionTimeoutMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDecisionTimeoutMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDecisionTimeoutMs: %w", err)
+	}
+	return oldValue.DecisionTimeoutMs, nil
+}
+
+// AddDecisionTimeoutMs adds i to the "decision_timeout_ms" field.
+func (m *ModelRouterMutation) AddDecisionTimeoutMs(i int) {
+	if m.adddecision_timeout_ms != nil {
+		*m.adddecision_timeout_ms += i
+	} else {
+		m.adddecision_timeout_ms = &i
+	}
+}
+
+// AddedDecisionTimeoutMs returns the value that was added to the "decision_timeout_ms" field in this mutation.
+func (m *ModelRouterMutation) AddedDecisionTimeoutMs() (r int, exists bool) {
+	v := m.adddecision_timeout_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDecisionTimeoutMs resets all changes to the "decision_timeout_ms" field.
+func (m *ModelRouterMutation) ResetDecisionTimeoutMs() {
+	m.decision_timeout_ms = nil
+	m.adddecision_timeout_ms = nil
+}
+
+// SetActivatedAt sets the "activated_at" field.
+func (m *ModelRouterMutation) SetActivatedAt(t time.Time) {
+	m.activated_at = &t
+}
+
+// ActivatedAt returns the value of the "activated_at" field in the mutation.
+func (m *ModelRouterMutation) ActivatedAt() (r time.Time, exists bool) {
+	v := m.activated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActivatedAt returns the old "activated_at" field's value of the ModelRouter entity.
+// If the ModelRouter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ModelRouterMutation) OldActivatedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActivatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActivatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActivatedAt: %w", err)
+	}
+	return oldValue.ActivatedAt, nil
+}
+
+// ClearActivatedAt clears the value of the "activated_at" field.
+func (m *ModelRouterMutation) ClearActivatedAt() {
+	m.activated_at = nil
+	m.clearedFields[modelrouter.FieldActivatedAt] = struct{}{}
+}
+
+// ActivatedAtCleared returns if the "activated_at" field was cleared in this mutation.
+func (m *ModelRouterMutation) ActivatedAtCleared() bool {
+	_, ok := m.clearedFields[modelrouter.FieldActivatedAt]
+	return ok
+}
+
+// ResetActivatedAt resets all changes to the "activated_at" field.
+func (m *ModelRouterMutation) ResetActivatedAt() {
+	m.activated_at = nil
+	delete(m.clearedFields, modelrouter.FieldActivatedAt)
+}
+
+// Where appends a list predicates to the ModelRouterMutation builder.
+func (m *ModelRouterMutation) Where(ps ...predicate.ModelRouter) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ModelRouterMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ModelRouterMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ModelRouter, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ModelRouterMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ModelRouterMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ModelRouter).
+func (m *ModelRouterMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ModelRouterMutation) Fields() []string {
+	fields := make([]string, 0, 16)
+	if m.created_at != nil {
+		fields = append(fields, modelrouter.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, modelrouter.FieldUpdatedAt)
+	}
+	if m.org_id != nil {
+		fields = append(fields, modelrouter.FieldOrgID)
+	}
+	if m.project_id != nil {
+		fields = append(fields, modelrouter.FieldProjectID)
+	}
+	if m.name != nil {
+		fields = append(fields, modelrouter.FieldName)
+	}
+	if m.status != nil {
+		fields = append(fields, modelrouter.FieldStatus)
+	}
+	if m.tiers != nil {
+		fields = append(fields, modelrouter.FieldTiers)
+	}
+	if m.rules != nil {
+		fields = append(fields, modelrouter.FieldRules)
+	}
+	if m.default_tier != nil {
+		fields = append(fields, modelrouter.FieldDefaultTier)
+	}
+	if m.quality_floor != nil {
+		fields = append(fields, modelrouter.FieldQualityFloor)
+	}
+	if m.sample_rate != nil {
+		fields = append(fields, modelrouter.FieldSampleRate)
+	}
+	if m.eval_budget_micros != nil {
+		fields = append(fields, modelrouter.FieldEvalBudgetMicros)
+	}
+	if m.judge != nil {
+		fields = append(fields, modelrouter.FieldJudge)
+	}
+	if m.decision_model != nil {
+		fields = append(fields, modelrouter.FieldDecisionModel)
+	}
+	if m.decision_timeout_ms != nil {
+		fields = append(fields, modelrouter.FieldDecisionTimeoutMs)
+	}
+	if m.activated_at != nil {
+		fields = append(fields, modelrouter.FieldActivatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ModelRouterMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case modelrouter.FieldCreatedAt:
+		return m.CreatedAt()
+	case modelrouter.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case modelrouter.FieldOrgID:
+		return m.OrgID()
+	case modelrouter.FieldProjectID:
+		return m.ProjectID()
+	case modelrouter.FieldName:
+		return m.Name()
+	case modelrouter.FieldStatus:
+		return m.Status()
+	case modelrouter.FieldTiers:
+		return m.Tiers()
+	case modelrouter.FieldRules:
+		return m.Rules()
+	case modelrouter.FieldDefaultTier:
+		return m.DefaultTier()
+	case modelrouter.FieldQualityFloor:
+		return m.QualityFloor()
+	case modelrouter.FieldSampleRate:
+		return m.SampleRate()
+	case modelrouter.FieldEvalBudgetMicros:
+		return m.EvalBudgetMicros()
+	case modelrouter.FieldJudge:
+		return m.Judge()
+	case modelrouter.FieldDecisionModel:
+		return m.DecisionModel()
+	case modelrouter.FieldDecisionTimeoutMs:
+		return m.DecisionTimeoutMs()
+	case modelrouter.FieldActivatedAt:
+		return m.ActivatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ModelRouterMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case modelrouter.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case modelrouter.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case modelrouter.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case modelrouter.FieldProjectID:
+		return m.OldProjectID(ctx)
+	case modelrouter.FieldName:
+		return m.OldName(ctx)
+	case modelrouter.FieldStatus:
+		return m.OldStatus(ctx)
+	case modelrouter.FieldTiers:
+		return m.OldTiers(ctx)
+	case modelrouter.FieldRules:
+		return m.OldRules(ctx)
+	case modelrouter.FieldDefaultTier:
+		return m.OldDefaultTier(ctx)
+	case modelrouter.FieldQualityFloor:
+		return m.OldQualityFloor(ctx)
+	case modelrouter.FieldSampleRate:
+		return m.OldSampleRate(ctx)
+	case modelrouter.FieldEvalBudgetMicros:
+		return m.OldEvalBudgetMicros(ctx)
+	case modelrouter.FieldJudge:
+		return m.OldJudge(ctx)
+	case modelrouter.FieldDecisionModel:
+		return m.OldDecisionModel(ctx)
+	case modelrouter.FieldDecisionTimeoutMs:
+		return m.OldDecisionTimeoutMs(ctx)
+	case modelrouter.FieldActivatedAt:
+		return m.OldActivatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ModelRouter field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ModelRouterMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case modelrouter.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case modelrouter.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case modelrouter.FieldOrgID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case modelrouter.FieldProjectID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProjectID(v)
+		return nil
+	case modelrouter.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case modelrouter.FieldStatus:
+		v, ok := value.(modelrouter.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case modelrouter.FieldTiers:
+		v, ok := value.([]tiers.Tier)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTiers(v)
+		return nil
+	case modelrouter.FieldRules:
+		v, ok := value.([]tiers.Rule)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRules(v)
+		return nil
+	case modelrouter.FieldDefaultTier:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDefaultTier(v)
+		return nil
+	case modelrouter.FieldQualityFloor:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQualityFloor(v)
+		return nil
+	case modelrouter.FieldSampleRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSampleRate(v)
+		return nil
+	case modelrouter.FieldEvalBudgetMicros:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEvalBudgetMicros(v)
+		return nil
+	case modelrouter.FieldJudge:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetJudge(v)
+		return nil
+	case modelrouter.FieldDecisionModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDecisionModel(v)
+		return nil
+	case modelrouter.FieldDecisionTimeoutMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDecisionTimeoutMs(v)
+		return nil
+	case modelrouter.FieldActivatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActivatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ModelRouter field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ModelRouterMutation) AddedFields() []string {
+	var fields []string
+	if m.addquality_floor != nil {
+		fields = append(fields, modelrouter.FieldQualityFloor)
+	}
+	if m.addsample_rate != nil {
+		fields = append(fields, modelrouter.FieldSampleRate)
+	}
+	if m.addeval_budget_micros != nil {
+		fields = append(fields, modelrouter.FieldEvalBudgetMicros)
+	}
+	if m.adddecision_timeout_ms != nil {
+		fields = append(fields, modelrouter.FieldDecisionTimeoutMs)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ModelRouterMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case modelrouter.FieldQualityFloor:
+		return m.AddedQualityFloor()
+	case modelrouter.FieldSampleRate:
+		return m.AddedSampleRate()
+	case modelrouter.FieldEvalBudgetMicros:
+		return m.AddedEvalBudgetMicros()
+	case modelrouter.FieldDecisionTimeoutMs:
+		return m.AddedDecisionTimeoutMs()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ModelRouterMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case modelrouter.FieldQualityFloor:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddQualityFloor(v)
+		return nil
+	case modelrouter.FieldSampleRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSampleRate(v)
+		return nil
+	case modelrouter.FieldEvalBudgetMicros:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEvalBudgetMicros(v)
+		return nil
+	case modelrouter.FieldDecisionTimeoutMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDecisionTimeoutMs(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ModelRouter numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ModelRouterMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(modelrouter.FieldActivatedAt) {
+		fields = append(fields, modelrouter.FieldActivatedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ModelRouterMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ModelRouterMutation) ClearField(name string) error {
+	switch name {
+	case modelrouter.FieldActivatedAt:
+		m.ClearActivatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ModelRouter nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ModelRouterMutation) ResetField(name string) error {
+	switch name {
+	case modelrouter.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case modelrouter.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case modelrouter.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case modelrouter.FieldProjectID:
+		m.ResetProjectID()
+		return nil
+	case modelrouter.FieldName:
+		m.ResetName()
+		return nil
+	case modelrouter.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case modelrouter.FieldTiers:
+		m.ResetTiers()
+		return nil
+	case modelrouter.FieldRules:
+		m.ResetRules()
+		return nil
+	case modelrouter.FieldDefaultTier:
+		m.ResetDefaultTier()
+		return nil
+	case modelrouter.FieldQualityFloor:
+		m.ResetQualityFloor()
+		return nil
+	case modelrouter.FieldSampleRate:
+		m.ResetSampleRate()
+		return nil
+	case modelrouter.FieldEvalBudgetMicros:
+		m.ResetEvalBudgetMicros()
+		return nil
+	case modelrouter.FieldJudge:
+		m.ResetJudge()
+		return nil
+	case modelrouter.FieldDecisionModel:
+		m.ResetDecisionModel()
+		return nil
+	case modelrouter.FieldDecisionTimeoutMs:
+		m.ResetDecisionTimeoutMs()
+		return nil
+	case modelrouter.FieldActivatedAt:
+		m.ResetActivatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ModelRouter field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ModelRouterMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ModelRouterMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ModelRouterMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ModelRouterMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ModelRouterMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ModelRouterMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ModelRouterMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ModelRouter unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ModelRouterMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ModelRouter edge %s", name)
 }
 
 // PriceListMutation represents an operation that mutates the PriceList nodes in the graph.
@@ -5545,6 +6879,7 @@ type RouteMutation struct {
 	cache_ttl_seconds    *int
 	addcache_ttl_seconds *int
 	prompt_cache         *bool
+	router               *string
 	clearedFields        map[string]struct{}
 	done                 bool
 	oldValue             func(context.Context) (*Route, error)
@@ -6034,6 +7369,42 @@ func (m *RouteMutation) ResetPromptCache() {
 	m.prompt_cache = nil
 }
 
+// SetRouter sets the "router" field.
+func (m *RouteMutation) SetRouter(s string) {
+	m.router = &s
+}
+
+// Router returns the value of the "router" field in the mutation.
+func (m *RouteMutation) Router() (r string, exists bool) {
+	v := m.router
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRouter returns the old "router" field's value of the Route entity.
+// If the Route object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RouteMutation) OldRouter(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRouter is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRouter requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRouter: %w", err)
+	}
+	return oldValue.Router, nil
+}
+
+// ResetRouter resets all changes to the "router" field.
+func (m *RouteMutation) ResetRouter() {
+	m.router = nil
+}
+
 // Where appends a list predicates to the RouteMutation builder.
 func (m *RouteMutation) Where(ps ...predicate.Route) {
 	m.predicates = append(m.predicates, ps...)
@@ -6068,7 +7439,7 @@ func (m *RouteMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RouteMutation) Fields() []string {
-	fields := make([]string, 0, 9)
+	fields := make([]string, 0, 10)
 	if m.created_at != nil {
 		fields = append(fields, route.FieldCreatedAt)
 	}
@@ -6096,6 +7467,9 @@ func (m *RouteMutation) Fields() []string {
 	if m.prompt_cache != nil {
 		fields = append(fields, route.FieldPromptCache)
 	}
+	if m.router != nil {
+		fields = append(fields, route.FieldRouter)
+	}
 	return fields
 }
 
@@ -6122,6 +7496,8 @@ func (m *RouteMutation) Field(name string) (ent.Value, bool) {
 		return m.CacheTTLSeconds()
 	case route.FieldPromptCache:
 		return m.PromptCache()
+	case route.FieldRouter:
+		return m.Router()
 	}
 	return nil, false
 }
@@ -6149,6 +7525,8 @@ func (m *RouteMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldCacheTTLSeconds(ctx)
 	case route.FieldPromptCache:
 		return m.OldPromptCache(ctx)
+	case route.FieldRouter:
+		return m.OldRouter(ctx)
 	}
 	return nil, fmt.Errorf("unknown Route field %s", name)
 }
@@ -6220,6 +7598,13 @@ func (m *RouteMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPromptCache(v)
+		return nil
+	case route.FieldRouter:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRouter(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Route field %s", name)
@@ -6323,6 +7708,9 @@ func (m *RouteMutation) ResetField(name string) error {
 		return nil
 	case route.FieldPromptCache:
 		m.ResetPromptCache()
+		return nil
+	case route.FieldRouter:
+		m.ResetRouter()
 		return nil
 	}
 	return fmt.Errorf("unknown Route field %s", name)

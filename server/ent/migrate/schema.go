@@ -105,6 +105,44 @@ var (
 			},
 		},
 	}
+	// ModelRoutersColumns holds the columns for the "model_routers" table.
+	ModelRoutersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Size: 64},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"shadow", "active", "disabled"}, Default: "shadow"},
+		{Name: "tiers", Type: field.TypeJSON},
+		{Name: "rules", Type: field.TypeJSON},
+		{Name: "default_tier", Type: field.TypeString, Size: 32},
+		{Name: "quality_floor", Type: field.TypeFloat64, Default: 0.95},
+		{Name: "sample_rate", Type: field.TypeFloat64, Default: 0},
+		{Name: "eval_budget_micros", Type: field.TypeInt64, Default: 100000000},
+		{Name: "judge", Type: field.TypeString, Size: 300, Default: ""},
+		{Name: "decision_model", Type: field.TypeString, Size: 300, Default: ""},
+		{Name: "decision_timeout_ms", Type: field.TypeInt, Default: 150},
+		{Name: "activated_at", Type: field.TypeTime, Nullable: true},
+	}
+	// ModelRoutersTable holds the schema information for the "model_routers" table.
+	ModelRoutersTable = &schema.Table{
+		Name:       "model_routers",
+		Columns:    ModelRoutersColumns,
+		PrimaryKey: []*schema.Column{ModelRoutersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "modelrouter_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{ModelRoutersColumns[3], ModelRoutersColumns[4]},
+			},
+			{
+				Name:    "modelrouter_project_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{ModelRoutersColumns[4], ModelRoutersColumns[5]},
+			},
+		},
+	}
 	// PriceListsColumns holds the columns for the "price_lists" table.
 	PriceListsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -209,6 +247,7 @@ var (
 		{Name: "retries", Type: field.TypeInt, Default: 1},
 		{Name: "cache_ttl_seconds", Type: field.TypeInt, Default: 0},
 		{Name: "prompt_cache", Type: field.TypeBool, Default: false},
+		{Name: "router", Type: field.TypeString, Size: 64, Default: ""},
 	}
 	// RoutesTable holds the schema information for the "routes" table.
 	RoutesTable = &schema.Table{
@@ -271,6 +310,7 @@ var (
 		BudgetsTable,
 		FamilyLabelsTable,
 		KeySettingsTable,
+		ModelRoutersTable,
 		PriceListsTable,
 		PriceOverridesTable,
 		ProvidersTable,

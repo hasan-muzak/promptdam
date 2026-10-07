@@ -51,6 +51,12 @@ type RequestOut struct {
 	User             string    `json:"user" doc:"The end user the client named (X-Promptdam-User)"`
 	Tags             []string  `json:"tags"`
 	Route            string    `json:"route"`
+	Router           string    `json:"router" doc:"The model router that placed the call, if any"`
+	Tier             string    `json:"tier" doc:"The router's tier that served the call"`
+	DecidedTier      string    `json:"decided_tier" doc:"The tier the router chose: the served one, unless the router is in shadow mode"`
+	TierSource       string    `json:"tier_source" doc:"The step that chose the tier: explicit, rule, classifier, decision or default"`
+	TierConfidence   float32   `json:"tier_confidence" doc:"How sure that step was, 0 to 1"`
+	Shadow           bool      `json:"shadow" doc:"The router only watched: it served its default tier"`
 	APIFormat        string    `json:"api_format" doc:"openai.chat, openai.responses, openai.embeddings, anthropic.messages…"`
 	Provider         string    `json:"provider"`
 	RequestedModel   string    `json:"requested_model"`
@@ -79,7 +85,8 @@ type RequestOut struct {
 func requestOut(r analytics.Request) RequestOut {
 	return RequestOut{
 		ID: r.Trace, Time: r.TS.UTC(), Key: ids.Encode(ids.APIKey, r.KeyID), Developer: r.Developer, User: r.User,
-		Tags: r.Tags, Route: r.Route, APIFormat: r.APIFormat, Provider: r.Provider, RequestedModel: r.RequestedModel,
+		Tags: r.Tags, Route: r.Route, Router: r.Router, Tier: r.Tier, DecidedTier: r.DecidedTier, TierSource: r.TierSource,
+		TierConfidence: r.TierConfidence, Shadow: r.Shadow, APIFormat: r.APIFormat, Provider: r.Provider, RequestedModel: r.RequestedModel,
 		ServedModel: r.ServedModel, Stream: r.Stream, Translated: r.Translated, Status: int(r.Status), ErrorCode: r.ErrorCode, Attempts: int(r.Attempts),
 		TTFBms: int(r.TTFBms), LatencyMs: int(r.LatencyMs), UpstreamMs: int(r.UpstreamMs), UsageKnown: r.UsageKnown,
 		InputTokens: int(r.InputTokens), OutputTokens: int(r.OutputTokens), CacheReadTokens: int(r.CacheReadTokens),

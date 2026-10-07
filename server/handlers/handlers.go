@@ -13,6 +13,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 	"github.com/hasan-muzak/promptdam/server/features/rules"
 )
@@ -31,4 +32,6 @@ type Handlers struct {
 	CacheDoctor *cachedoctor.Service
 	Rules       *rules.Service
 	RuleDeps    RuleDeps
+	Routers     *routers.Service
+	RouterDeps  RouterDeps
 }

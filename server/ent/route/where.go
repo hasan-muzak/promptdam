@@ -95,6 +95,11 @@ func PromptCache(v bool) predicate.Route {
 	return predicate.Route(sql.FieldEQ(FieldPromptCache, v))
 }
 
+// Router applies equality check predicate on the "router" field. It's identical to RouterEQ.
+func Router(v string) predicate.Route {
+	return predicate.Route(sql.FieldEQ(FieldRouter, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Route {
 	return predicate.Route(sql.FieldEQ(FieldCreatedAt, v))
@@ -408,6 +413,71 @@ func PromptCacheEQ(v bool) predicate.Route {
 // PromptCacheNEQ applies the NEQ predicate on the "prompt_cache" field.
 func PromptCacheNEQ(v bool) predicate.Route {
 	return predicate.Route(sql.FieldNEQ(FieldPromptCache, v))
+}
+
+// RouterEQ applies the EQ predicate on the "router" field.
+func RouterEQ(v string) predicate.Route {
+	return predicate.Route(sql.FieldEQ(FieldRouter, v))
+}
+
+// RouterNEQ applies the NEQ predicate on the "router" field.
+func RouterNEQ(v string) predicate.Route {
+	return predicate.Route(sql.FieldNEQ(FieldRouter, v))
+}
+
+// RouterIn applies the In predicate on the "router" field.
+func RouterIn(vs ...string) predicate.Route {
+	return predicate.Route(sql.FieldIn(FieldRouter, vs...))
+}
+
+// RouterNotIn applies the NotIn predicate on the "router" field.
+func RouterNotIn(vs ...string) predicate.Route {
+	return predicate.Route(sql.FieldNotIn(FieldRouter, vs...))
+}
+
+// RouterGT applies the GT predicate on the "router" field.
+func RouterGT(v string) predicate.Route {
+	return predicate.Route(sql.FieldGT(FieldRouter, v))
+}
+
+// RouterGTE applies the GTE predicate on the "router" field.
+func RouterGTE(v string) predicate.Route {
+	return predicate.Route(sql.FieldGTE(FieldRouter, v))
+}
+
+// RouterLT applies the LT predicate on the "router" field.
+func RouterLT(v string) predicate.Route {
+	return predicate.Route(sql.FieldLT(FieldRouter, v))
+}
+
+// RouterLTE applies the LTE predicate on the "router" field.
+func RouterLTE(v string) predicate.Route {
+	return predicate.Route(sql.FieldLTE(FieldRouter, v))
+}
+
+// RouterContains applies the Contains predicate on the "router" field.
+func RouterContains(v string) predicate.Route {
+	return predicate.Route(sql.FieldContains(FieldRouter, v))
+}
+
+// RouterHasPrefix applies the HasPrefix predicate on the "router" field.
+func RouterHasPrefix(v string) predicate.Route {
+	return predicate.Route(sql.FieldHasPrefix(FieldRouter, v))
+}
+
+// RouterHasSuffix applies the HasSuffix predicate on the "router" field.
+func RouterHasSuffix(v string) predicate.Route {
+	return predicate.Route(sql.FieldHasSuffix(FieldRouter, v))
+}
+
+// RouterEqualFold applies the EqualFold predicate on the "router" field.
+func RouterEqualFold(v string) predicate.Route {
+	return predicate.Route(sql.FieldEqualFold(FieldRouter, v))
+}
+
+// RouterContainsFold applies the ContainsFold predicate on the "router" field.
+func RouterContainsFold(v string) predicate.Route {
+	return predicate.Route(sql.FieldContainsFold(FieldRouter, v))
 }
 
 // And groups predicates with the AND operator between them.

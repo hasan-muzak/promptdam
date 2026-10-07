@@ -20,6 +20,8 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/requestlog"
 	"github.com/hasan-muzak/promptdam/server/features/resolver"
+	"github.com/hasan-muzak/promptdam/server/features/routers"
+	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 )
 
@@ -265,5 +267,46 @@ func TestSavingsLedger(t *testing.T) {
 	}
 	if reasons["response_cache"] != 70 || reasons["fallback"] != -158 || report.Total.Requests != uint64(len(rows)) {
 		t.Fatalf("report %+v", report)
+	}
+}
+
+// A call that names a model router is logged with its tier and the step
+// that chose it, and its savings count against the router's default tier.
+func TestRouterCalls(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true})
+	ctx := context.Background()
+	if _, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
+		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-mini"}, {Name: "smart", Model: "gpt-5"}},
+			Rules: []tiers.Rule{{When: "request.messages == 1", Tier: "fast"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	w.Eventually(func() bool {
+		_, h, _ := w.Call("/v1/chat/completions", `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`)
+		return h.Get(brand.HeaderTier) == "fast"
+	})
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct {
+		Router         string  `ch:"router"`
+		Tier           string  `ch:"tier"`
+		Decided        string  `ch:"decided_tier"`
+		Source         string  `ch:"tier_source"`
+		Confidence     float32 `ch:"tier_confidence"`
+		Shadow         bool    `ch:"shadow"`
+		Cost           int64   `ch:"cost_micros"`
+		Counterfactual int64   `ch:"counterfactual_micros"`
+		Savings        int64   `ch:"savings_micros"`
+		Reason         string  `ch:"savings_reason"`
+	}
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT router, tier, decided_tier, tier_source,
+		tier_confidence, shadow, cost_micros, counterfactual_micros, savings_micros, savings_reason
+		FROM requests WHERE {tenant} AND tier = 'fast' ORDER BY ts DESC LIMIT 1`); err != nil || len(rows) != 1 {
+		t.Fatalf("%d rows, %v", len(rows), err)
+	}
+	r := rows[0]
+	if r.Router != "auto" || r.Decided != "fast" || r.Source != "rule" || r.Confidence != 1 || r.Shadow ||
+		r.Cost != 52 || r.Counterfactual <= r.Cost || r.Savings != r.Counterfactual-r.Cost || r.Reason != "routing" {
+		t.Fatalf("row %+v", r)
 	}
 }

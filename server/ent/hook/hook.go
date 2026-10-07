@@ -45,6 +45,18 @@ func (f KeySettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.KeySettingMutation", m)
 }
 
+// The ModelRouterFunc type is an adapter to allow the use of ordinary
+// function as ModelRouter mutator.
+type ModelRouterFunc func(context.Context, *ent.ModelRouterMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ModelRouterFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ModelRouterMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ModelRouterMutation", m)
+}
+
 // The PriceListFunc type is an adapter to allow the use of ordinary
 // function as PriceList mutator.
 type PriceListFunc func(context.Context, *ent.PriceListMutation) (ent.Value, error)

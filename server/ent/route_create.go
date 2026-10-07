@@ -118,6 +118,20 @@ func (_c *RouteCreate) SetNillablePromptCache(v *bool) *RouteCreate {
 	return _c
 }
 
+// SetRouter sets the "router" field.
+func (_c *RouteCreate) SetRouter(v string) *RouteCreate {
+	_c.mutation.SetRouter(v)
+	return _c
+}
+
+// SetNillableRouter sets the "router" field if the given value is not nil.
+func (_c *RouteCreate) SetNillableRouter(v *string) *RouteCreate {
+	if v != nil {
+		_c.SetRouter(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *RouteCreate) SetID(v uuid.UUID) *RouteCreate {
 	_c.mutation.SetID(v)
@@ -199,6 +213,10 @@ func (_c *RouteCreate) defaults() error {
 		v := route.DefaultPromptCache
 		_c.mutation.SetPromptCache(v)
 	}
+	if _, ok := _c.mutation.Router(); !ok {
+		v := route.DefaultRouter
+		_c.mutation.SetRouter(v)
+	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if route.DefaultID == nil {
 			return fmt.Errorf("ent: uninitialized route.DefaultID (forgotten import ent/runtime?)")
@@ -242,6 +260,14 @@ func (_c *RouteCreate) check() error {
 	}
 	if _, ok := _c.mutation.PromptCache(); !ok {
 		return &ValidationError{Name: "prompt_cache", err: errors.New(`ent: missing required field "Route.prompt_cache"`)}
+	}
+	if _, ok := _c.mutation.Router(); !ok {
+		return &ValidationError{Name: "router", err: errors.New(`ent: missing required field "Route.router"`)}
+	}
+	if v, ok := _c.mutation.Router(); ok {
+		if err := route.RouterValidator(v); err != nil {
+			return &ValidationError{Name: "router", err: fmt.Errorf(`ent: validator failed for field "Route.router": %w`, err)}
+		}
 	}
 	return nil
 }
@@ -314,6 +340,10 @@ func (_c *RouteCreate) createSpec() (*Route, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.PromptCache(); ok {
 		_spec.SetField(route.FieldPromptCache, field.TypeBool, value)
 		_node.PromptCache = value
+	}
+	if value, ok := _c.mutation.Router(); ok {
+		_spec.SetField(route.FieldRouter, field.TypeString, value)
+		_node.Router = value
 	}
 	return _node, _spec
 }
@@ -448,6 +478,18 @@ func (u *RouteUpsert) SetPromptCache(v bool) *RouteUpsert {
 // UpdatePromptCache sets the "prompt_cache" field to the value that was provided on create.
 func (u *RouteUpsert) UpdatePromptCache() *RouteUpsert {
 	u.SetExcluded(route.FieldPromptCache)
+	return u
+}
+
+// SetRouter sets the "router" field.
+func (u *RouteUpsert) SetRouter(v string) *RouteUpsert {
+	u.Set(route.FieldRouter, v)
+	return u
+}
+
+// UpdateRouter sets the "router" field to the value that was provided on create.
+func (u *RouteUpsert) UpdateRouter() *RouteUpsert {
+	u.SetExcluded(route.FieldRouter)
 	return u
 }
 
@@ -603,6 +645,20 @@ func (u *RouteUpsertOne) SetPromptCache(v bool) *RouteUpsertOne {
 func (u *RouteUpsertOne) UpdatePromptCache() *RouteUpsertOne {
 	return u.Update(func(s *RouteUpsert) {
 		s.UpdatePromptCache()
+	})
+}
+
+// SetRouter sets the "router" field.
+func (u *RouteUpsertOne) SetRouter(v string) *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetRouter(v)
+	})
+}
+
+// UpdateRouter sets the "router" field to the value that was provided on create.
+func (u *RouteUpsertOne) UpdateRouter() *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateRouter()
 	})
 }
 
@@ -925,6 +981,20 @@ func (u *RouteUpsertBulk) SetPromptCache(v bool) *RouteUpsertBulk {
 func (u *RouteUpsertBulk) UpdatePromptCache() *RouteUpsertBulk {
 	return u.Update(func(s *RouteUpsert) {
 		s.UpdatePromptCache()
+	})
+}
+
+// SetRouter sets the "router" field.
+func (u *RouteUpsertBulk) SetRouter(v string) *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetRouter(v)
+	})
+}
+
+// UpdateRouter sets the "router" field to the value that was provided on create.
+func (u *RouteUpsertBulk) UpdateRouter() *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateRouter()
 	})
 }
 

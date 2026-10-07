@@ -16,6 +16,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/analytics"
 	"github.com/hasan-muzak/promptdam/server/features/cachedoctor"
 	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/resolver"
 	"github.com/hasan-muzak/promptdam/server/handlers"
 )
 
@@ -27,6 +28,9 @@ func Mount(a *muzak.App, app *core.App) {
 		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides, Families: families.NewService(app.Ent, c.Events),
 		CacheDoctor: cachedoctor.New(c.Events, app.Prices), Rules: app.Rules,
 		RuleDeps: handlers.RuleDeps{Env: app.RuleEnv, Events: c.Events, Prices: app.Prices},
+		Routers:  app.Routers,
+		RouterDeps: handlers.RouterDeps{Explainer: resolver.New(resolver.Config{Prices: app.Prices, Rules: app.RuleEnv}),
+			Sources: app.Sources(), Billing: c.Billing, AppURL: c.Config.AppURL},
 	}
 	r := muzak.NewRouter(
 		muzak.WithTags(brand.Key),
@@ -141,6 +145,31 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Status(http.StatusNoContent), muzak.Summary("Remove a routing rule"))
 	r.Post(rb2+"/{rule}/dry-run", h.DryRunSavedRule, rucat, muzak.Title("Dry-Run Saved Rule"),
 		project(tenancy.PermProjectsRead), muzak.Summary("Try a saved rule on recent calls"))
+
+	mrcat := muzak.WithCategory("Model Routers")
+	mr := "/v1/orgs/{org}/projects/{project}/routers"
+	r.Get(mr, h.ListRouters, mrcat, muzak.Title("List Routers"), project(tenancy.PermProjectsRead),
+		muzak.Summary("A project's model routers"),
+		muzak.Description("A router places each call in one of its tiers of models, from cheapest to strongest: the tier "+
+			"the client names, else the first rule that holds, else (with evaluation) the classifier learned from the "+
+			"project's judged calls or the decision model, else the default tier. Clients call it like a model."))
+	r.Post(mr, h.CreateRouter, mrcat, muzak.Title("Create Router"), project(tenancy.PermProjectsManage),
+		muzak.Status(http.StatusCreated), muzak.Summary("Add a model router"),
+		muzak.Description("Routers start in shadow mode: they decide every call and log their choice, but serve the default "+
+			"tier, until made active (a plan with model routers). Tiers may name models of either API format: calls are "+
+			"translated. Rule compile errors come back with their line and column."))
+	r.Get(mr+"/{router}", h.GetRouter, mrcat, muzak.Title("Get Router"), project(tenancy.PermProjectsRead),
+		muzak.Summary("Get a model router"))
+	r.Put(mr+"/{router}", h.UpdateRouter, mrcat, muzak.Title("Update Router"), project(tenancy.PermProjectsManage),
+		muzak.Summary("Replace a model router"), muzak.Description("Gateways apply the change within seconds."))
+	r.Delete(mr+"/{router}", h.DeleteRouter, mrcat, muzak.Title("Delete Router"), project(tenancy.PermProjectsManage),
+		muzak.Status(http.StatusNoContent), muzak.Summary("Remove a model router"),
+		muzak.Description("Refused (409 router_in_use) while a route sends its calls through it."))
+	r.Post(mr+"/{router}/explain", h.ExplainRouter, mrcat, muzak.Title("Explain Router"), project(tenancy.PermProjectsRead),
+		muzak.Summary("How the router would place a request, without calling any provider"),
+		muzak.Description("The tier it would serve and why (the step that chose it, the rule that held), what the request "+
+			"needs of a model (tools, images, files, a JSON schema, context), which tiers' models can take it, and the "+
+			"providers and models the gateway would try, in order."))
 
 	pcat := muzak.WithCategory("Prices")
 	pr := "/v1/orgs/{org}/projects/{project}/prices"

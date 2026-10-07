@@ -55,6 +55,12 @@ type Request struct {
 	User             string    `ch:"end_user"`
 	Tags             []string  `ch:"tags"`
 	Route            string    `ch:"route"`
+	Router           string    `ch:"router"`
+	Tier             string    `ch:"tier"`
+	DecidedTier      string    `ch:"decided_tier"`
+	TierSource       string    `ch:"tier_source"`
+	TierConfidence   float32   `ch:"tier_confidence"`
+	Shadow           bool      `ch:"shadow"`
 	APIFormat        string    `ch:"api_format"`
 	Provider         string    `ch:"provider"`
 	RequestedModel   string    `ch:"requested_model"`
@@ -80,7 +86,8 @@ type Request struct {
 	Family           string    `ch:"family_id"`
 }
 
-const requestColumns = `ts, trace, key_id, developer, end_user, tags, route, api_format, provider, requested_model,
+const requestColumns = `ts, trace, key_id, developer, end_user, tags, route, router, tier, decided_tier, tier_source,
+	tier_confidence, shadow, api_format, provider, requested_model,
 	served_model, stream, translated, status, error_code, attempts, ttfb_ms, latency_ms, upstream_ms, usage_known, input_tokens,
 	output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_micros, savings_micros,
 	savings_reason, cache, family_id`

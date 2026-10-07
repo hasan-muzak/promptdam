@@ -83,13 +83,16 @@ func (c *call) serve() {
 
 	route, err := c.h.cfg.Resolver.Resolve(c.r.Context(), &Call{
 		Format: c.ep.format, Request: req, Header: c.r.Header, Trace: c.rec.Trace, Client: c.h.clientKey(c.r),
-		Shape: c.rec.Shape, BodyBytes: len(body),
+		Shape: c.rec.Shape, BodyBytes: len(body), Body: body,
 	})
 	if err != nil {
 		c.fail(err)
 		return
 	}
 	c.rec.Meta = route.Meta
+	for k, v := range route.Header {
+		c.w.Header()[k] = v
+	}
 	if len(route.Targets) == 0 {
 		c.fail(&Error{Status: http.StatusNotFound, Type: TypeNotFound, Code: "no_provider",
 			Message: "no provider is set up for model " + req.Model})

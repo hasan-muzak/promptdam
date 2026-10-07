@@ -20,11 +20,13 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
 	"github.com/hasan-muzak/promptdam/server/features/purge"
+	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 	"github.com/hasan-muzak/promptdam/server/migrations"
 )
 
@@ -105,6 +107,10 @@ func seeds(c *pdent.Client) []seed {
 		{"RoutingRule", routingrule.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.RoutingRule.Create().SetOrgID(org).SetProjectID(p).SetName("small").SetWhen("true").
 				SetToModel("gpt-5-mini").Exec(ctx)
+		}},
+		{"ModelRouter", modelrouter.Table, func(ctx context.Context, org, p uuid.UUID) error {
+			return c.ModelRouter.Create().SetOrgID(org).SetProjectID(p).SetName("auto").
+				SetTiers([]tiers.Tier{{Name: "fast", Model: "gpt-5-nano"}}).SetDefaultTier("fast").Exec(ctx)
 		}},
 		{"Provider", provider.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.Provider.Create().SetOrgID(org).SetProjectID(p).SetName("openai").SetKind("openai").

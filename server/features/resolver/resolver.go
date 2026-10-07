@@ -30,6 +30,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 	"github.com/hasan-muzak/promptdam/server/features/rules"
 	"github.com/hasan-muzak/promptdam/server/features/snapshot"
@@ -51,6 +52,17 @@ type Meta struct {
 	Prices prices.Project
 	// Rule is the routing rule that sent the call to another model.
 	Rule string
+	// Router is the model router that placed the call, Tier the tier that
+	// served it and Decided the one the router chose, with the step that
+	// chose it and how sure it was. A shadow router decides without
+	// serving: Shadow, and Tier is its default.
+	Router, Tier, Decided, TierSource string
+	TierConfidence                    float64
+	Shadow                            bool
+	// Baseline is the target savings are counted against when the call
+	// named a router: its default tier's model ("" for the model asked
+	// for).
+	Baseline gateway.Target
 }
 
 // Who is what the call's spend counts against.
@@ -185,16 +197,36 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	}
 	settings := snap.Keys[m.Key]
 	model := c.Request.Model
-	if !settings.Allows(model) {
-		return nil, refuse(http.StatusForbidden, gateway.TypePermission, "model_not_allowed",
-			"the API key may not call model "+model)
-	}
-
 	route, err := pickRoute(c.Header.Get(brand.HeaderRoute), settings.Route, snap)
 	if err != nil {
 		return nil, err
 	}
 	m.Route = route.Name
+
+	// A model router places the call: the one it names as its model
+	// ("auto", "auto:fast"), else its route's.
+	rt, pin, named := tiers.ParseModel(model, snap.Routers)
+	if !named {
+		rt, pin = snap.Routers[route.Router], ""
+	}
+	allowed := model
+	if named {
+		allowed = rt.Name
+	}
+	if !settings.Allows(allowed) {
+		return nil, refuse(http.StatusForbidden, gateway.TypePermission, "model_not_allowed",
+			"the API key may not call model "+model)
+	}
+	if rt != nil && crossFormat(c.Format) == 0 {
+		if named {
+			return nil, refuse(http.StatusBadRequest, gateway.TypeInvalidRequest, "router_format",
+				"model routers serve Chat Completions and Messages calls, not "+c.Format.String())
+		}
+		rt = nil // a route's router places chat and messages calls only
+	}
+	if rt != nil && pin == "" {
+		pin = strings.TrimSpace(c.Header.Get(brand.HeaderTier))
+	}
 
 	if settings.RPM > 0 {
 		ok, err := r.cfg.Rates.Allow(ctx, m.Project.String()+":"+m.Key.String(), counter.Minute, 1, int64(settings.RPM))
@@ -212,15 +244,21 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		return nil, e
 	}
 	format := c.Format
-	targets := r.targets(snap, format, model, nil)
+	var targets []gateway.Target
+	var header http.Header
+	switch {
+	case rt != nil:
+		if targets, header, err = r.place(snap, rt, pin, named, c, m); err != nil {
+			return nil, err
+		}
+	default:
+		targets = r.targets(snap, format, model, nil)
+	}
 	// An active rule that holds sends the call to its model first; the
-	// model asked for stays the first fallback.
-	if len(snap.Rules) > 0 && r.cfg.Rules != nil {
-		req := rules.Request{Model: model, Format: c.Format.String(), Family: c.Shape.Family, User: m.User,
-			Developer: m.Developer, Route: m.Route, InputTokens: c.BodyBytes / 4, Messages: c.Request.Messages,
-			MaxTokens: c.Request.MaxTokens, HasTools: c.Request.Tools, JSON: c.Request.Prefix.Format != "",
-			Stream: c.Request.Stream, Tags: m.Tags}
-		if rule, ok := rules.Match(r.cfg.Rules, snap.Rules, m.Route, req); ok {
+	// model asked for stays the first fallback. Calls a router placed
+	// follow its own rules.
+	if rt == nil && len(snap.Rules) > 0 && r.cfg.Rules != nil {
+		if rule, ok := rules.Match(r.cfg.Rules, snap.Rules, m.Route, ruleRequest(c, m)); ok {
 			if routed := r.fallback(snap, format, rule.ToModel, nil); len(routed) > 0 {
 				m.Rule = rule.Name
 				for _, t := range targets {
@@ -247,7 +285,7 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		e.RetryAfter = time.Hour
 		return nil, e
 	}
-	out := &gateway.Route{Targets: targets, Retries: route.Retries, PromptCache: route.PromptCache, Meta: m}
+	out := &gateway.Route{Targets: targets, Retries: route.Retries, PromptCache: route.PromptCache, Header: header, Meta: m}
 	if route.CacheTTL > 0 {
 		out.CacheTTL = time.Duration(route.CacheTTL) * time.Second
 		out.CacheScope = m.Project.String() + ":" + route.Name

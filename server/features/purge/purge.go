@@ -36,6 +36,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
@@ -165,6 +166,7 @@ func deleteRows(ctx context.Context, c *pdent.Client, org uuid.UUID, projects []
 		c.Budget.Delete().Where(budget.OrgID(org), only(scoped, budget.ProjectIDIn(projects...))),
 		c.FamilyLabel.Delete().Where(familylabel.OrgID(org), only(scoped, familylabel.ProjectIDIn(projects...))),
 		c.KeySetting.Delete().Where(keysetting.OrgID(org), only(scoped, keysetting.ProjectIDIn(projects...))),
+		c.ModelRouter.Delete().Where(modelrouter.OrgID(org), only(scoped, modelrouter.ProjectIDIn(projects...))),
 		c.PriceOverride.Delete().Where(priceoverride.OrgID(org), only(scoped, priceoverride.ProjectIDIn(projects...))),
 		c.Provider.Delete().Where(provider.OrgID(org), only(scoped, provider.ProjectIDIn(projects...))),
 		c.Route.Delete().Where(route.OrgID(org), only(scoped, route.ProjectIDIn(projects...))),

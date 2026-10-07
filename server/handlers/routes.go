@@ -34,13 +34,14 @@ type RouteOut struct {
 	Retries     int       `json:"retries" doc:"Retries of a target, with jitter, before the next one"`
 	CacheTTL    int       `json:"cache_ttl_seconds" doc:"Identical non-streamed requests are answered from the response cache for this long; 0: off"`
 	PromptCache bool      `json:"prompt_cache" doc:"Anthropic requests without cache breakpoints get them at the end of their stable prefix (tools, system prompt)"`
+	Router      string    `json:"router" doc:"A model router every Chat Completions and Messages call of the route goes through, whatever model it names; empty: none"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 func routeOut(r *pdent.Route) RouteOut {
 	return RouteOut{ID: ids.Encode(RoutePrefix, r.ID), Name: r.Name, Fallbacks: r.Fallbacks, Retries: r.Retries,
-		CacheTTL: r.CacheTTLSeconds, PromptCache: r.PromptCache, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
+		CacheTTL: r.CacheTTLSeconds, PromptCache: r.PromptCache, Router: r.Router, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 }
 
 // RouteIn is a route's fields.
@@ -50,6 +51,7 @@ type RouteIn struct {
 	Retries     *int     `json:"retries,omitempty" doc:"0 to 3 (default 1)"`
 	CacheTTL    int      `json:"cache_ttl_seconds,omitempty" doc:"0 (off, default) to 604800"`
 	PromptCache bool     `json:"prompt_cache,omitempty" doc:"Default false"`
+	Router      string   `json:"router,omitempty" doc:"The name of one of the project's model routers; empty (default): none"`
 }
 
 func (in *RouteIn) validate(v *muzak.Validation) {
@@ -62,7 +64,23 @@ func (in RouteIn) input() routes.Input {
 	if in.Retries != nil {
 		retries = *in.Retries
 	}
-	return routes.Input{Name: in.Name, Fallbacks: in.Fallbacks, Retries: retries, CacheTTL: in.CacheTTL, PromptCache: in.PromptCache}
+	return routes.Input{Name: in.Name, Fallbacks: in.Fallbacks, Retries: retries, CacheTTL: in.CacheTTL, PromptCache: in.PromptCache,
+		Router: in.Router}
+}
+
+// checkRouter refuses a route naming a router the project hasn't.
+func (h *Handlers) checkRouter(ctx *muzak.Context, project uuid.UUID, name string) error {
+	if name == "" {
+		return nil
+	}
+	ok, err := h.Routers.Exists(ctx.Context(), project, name)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return muzak.UnprocessableEntity("the project has no model router named " + name).WithCode(CodeInvalidRoute)
+	}
+	return nil
 }
 
 // CreateRouteIn adds a route.
@@ -106,6 +124,9 @@ func (h *Handlers) ListRoutes(ctx *muzak.Context, _ platform.ProjectPath) (httpx
 // CreateRoute adds a route.
 func (h *Handlers) CreateRoute(ctx *muzak.Context, in CreateRouteIn) (RouteOut, error) {
 	pa := muzak.From[tenancy.ProjectAccess](ctx)
+	if err := h.checkRouter(ctx, pa.Project.ID, in.Router); err != nil {
+		return RouteOut{}, err
+	}
 	r, err := h.Routes.Create(ctx.Context(), pa.OrgID(), pa.Project.ID, in.input())
 	if err != nil {
 		return RouteOut{}, routeFail(err)
@@ -132,6 +153,9 @@ func (h *Handlers) UpdateRoute(ctx *muzak.Context, in UpdateRouteIn) (RouteOut, 
 	pa := muzak.From[tenancy.ProjectAccess](ctx)
 	id, err := routeID(in.Route)
 	if err != nil {
+		return RouteOut{}, err
+	}
+	if err := h.checkRouter(ctx, pa.Project.ID, in.Router); err != nil {
 		return RouteOut{}, err
 	}
 	r, err := h.Routes.Update(ctx.Context(), pa.Project.ID, id, in.input())

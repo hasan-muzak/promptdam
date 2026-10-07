@@ -31,6 +31,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 	"github.com/hasan-muzak/promptdam/server/features/rules"
 )
@@ -61,6 +62,7 @@ type Route struct {
 	Retries     int      `json:"retries"`
 	CacheTTL    int      `json:"cache_ttl"`
 	PromptCache bool     `json:"prompt_cache"`
+	Router      string   `json:"router,omitempty"`
 }
 
 // Data is a project's configuration as cached in Valkey.
@@ -72,6 +74,7 @@ type Data struct {
 	Budgets   []budgets.Blocking              `json:"budgets"`
 	Prices    []prices.Override               `json:"prices"`
 	Rules     []rules.Rule                    `json:"rules"`
+	Routers   []routers.Router                `json:"routers"`
 }
 
 // Snapshot is a project's configuration as a gateway holds it in memory.
@@ -86,6 +89,8 @@ type Snapshot struct {
 	Prices prices.Project
 	// Rules are the active routing rules, in evaluation order.
 	Rules []rules.Rule
+	// Routers are the model routers that aren't disabled, by name.
+	Routers map[string]*routers.Router
 }
 
 // Opened is a provider with its key's headers.
@@ -102,6 +107,7 @@ type Sources struct {
 	Budgets   *budgets.Service
 	Prices    *prices.Overrides
 	Rules     *rules.Service
+	Routers   *routers.Service
 }
 
 // Build reads a project's configuration from Postgres.
@@ -133,7 +139,7 @@ func (s Sources) Build(ctx context.Context, org, project uuid.UUID) (Data, error
 	}
 	for _, r := range rs {
 		d.Routes = append(d.Routes, Route{Name: r.Name, Fallbacks: r.Fallbacks, Retries: r.Retries, CacheTTL: r.CacheTTLSeconds,
-			PromptCache: r.PromptCache})
+			PromptCache: r.PromptCache, Router: r.Router})
 	}
 	if d.Budgets, err = s.Budgets.Blockings(ctx, project); err != nil {
 		return Data{}, fmt.Errorf("snapshot: budgets: %w", err)
@@ -143,6 +149,11 @@ func (s Sources) Build(ctx context.Context, org, project uuid.UUID) (Data, error
 	}
 	if d.Rules, err = s.Rules.Actives(ctx, project); err != nil {
 		return Data{}, fmt.Errorf("snapshot: rules: %w", err)
+	}
+	if s.Routers != nil {
+		if d.Routers, err = s.Routers.Serving(ctx, project); err != nil {
+			return Data{}, fmt.Errorf("snapshot: routers: %w", err)
+		}
 	}
 	return d, nil
 }
@@ -221,13 +232,29 @@ func (s *Store) Get(ctx context.Context, org, project uuid.UUID) (*Snapshot, err
 
 // open opens the providers' keys of a cached snapshot.
 func (s *Store) open(project uuid.UUID, d Data) (*Snapshot, error) {
+	return assemble(project, d, func(p Provider) (http.Header, error) {
+		return s.sources.Providers.HeaderFor(d.Org, p.Format, p.Sealed)
+	}), nil
+}
+
+// Plain is a project's snapshot with its providers' keys left sealed: to
+// explain what the gateway would do with a call, never to call providers.
+func Plain(project uuid.UUID, d Data) *Snapshot {
+	return assemble(project, d, func(Provider) (http.Header, error) { return http.Header{}, nil })
+}
+
+// assemble builds a snapshot, opening each provider's key with header.
+func assemble(project uuid.UUID, d Data, header func(Provider) (http.Header, error)) *Snapshot {
 	snap := &Snapshot{
 		Org: d.Org, Project: project, Keys: make(map[uuid.UUID]keysettings.Settings, len(d.Keys)),
 		Routes: make(map[string]Route, len(d.Routes)), Budgets: d.Budgets, Prices: prices.ProjectPrices(d.Prices),
-		Rules: d.Rules,
+		Rules: d.Rules, Routers: make(map[string]*routers.Router, len(d.Routers)),
+	}
+	for i := range d.Routers {
+		snap.Routers[d.Routers[i].Name] = &d.Routers[i]
 	}
 	for _, p := range d.Providers {
-		h, err := s.sources.Providers.HeaderFor(d.Org, p.Format, p.Sealed)
+		h, err := header(p)
 		if err != nil {
 			// One provider's key not opening (a rotated master key gone)
 			// leaves the others serving.
@@ -245,7 +272,7 @@ func (s *Store) open(project uuid.UUID, d Data) (*Snapshot, error) {
 	for _, r := range d.Routes {
 		snap.Routes[r.Name] = r
 	}
-	return snap, nil
+	return snap
 }
 
 // Forget drops a project's snapshot from memory.

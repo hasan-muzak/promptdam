@@ -15,6 +15,9 @@ type FamilyLabel func(*sql.Selector)
 // KeySetting is the predicate function for keysetting builders.
 type KeySetting func(*sql.Selector)
 
+// ModelRouter is the predicate function for modelrouter builders.
+type ModelRouter func(*sql.Selector)
+
 // PriceList is the predicate function for pricelist builders.
 type PriceList func(*sql.Selector)
 

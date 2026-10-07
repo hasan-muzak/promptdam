@@ -33,6 +33,8 @@ const (
 	FieldCacheTTLSeconds = "cache_ttl_seconds"
 	// FieldPromptCache holds the string denoting the prompt_cache field in the database.
 	FieldPromptCache = "prompt_cache"
+	// FieldRouter holds the string denoting the router field in the database.
+	FieldRouter = "router"
 	// Table holds the table name of the route in the database.
 	Table = "routes"
 )
@@ -49,6 +51,7 @@ var Columns = []string{
 	FieldRetries,
 	FieldCacheTTLSeconds,
 	FieldPromptCache,
+	FieldRouter,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -85,6 +88,10 @@ var (
 	DefaultCacheTTLSeconds int
 	// DefaultPromptCache holds the default value on creation for the "prompt_cache" field.
 	DefaultPromptCache bool
+	// DefaultRouter holds the default value on creation for the "router" field.
+	DefaultRouter string
+	// RouterValidator is a validator for the "router" field. It is called by the builders before save.
+	RouterValidator func(string) error
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() uuid.UUID
 )
@@ -135,4 +142,9 @@ func ByCacheTTLSeconds(opts ...sql.OrderTermOption) OrderOption {
 // ByPromptCache orders the results by the prompt_cache field.
 func ByPromptCache(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPromptCache, opts...).ToFunc()
+}
+
+// ByRouter orders the results by the router field.
+func ByRouter(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRouter, opts...).ToFunc()
 }

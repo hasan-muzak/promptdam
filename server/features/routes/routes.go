@@ -45,6 +45,9 @@ type Input struct {
 	CacheTTL int
 	// PromptCache adds Anthropic cache breakpoints to requests without any.
 	PromptCache bool
+	// Router names a model router every call of the route goes through,
+	// whatever model it names ("" for none).
+	Router string
 }
 
 var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,99}$`)
@@ -57,6 +60,10 @@ func check(in *Input) error {
 	}
 	if in.Retries < 0 || in.Retries > 3 {
 		return bad("retries are 0 to 3")
+	}
+	in.Router = strings.TrimSpace(in.Router)
+	if len(in.Router) > 64 || strings.ContainsAny(in.Router, ":/ ") {
+		return bad("router names one of the project's model routers")
 	}
 	if in.CacheTTL < 0 || in.CacheTTL > 7*24*3600 {
 		return bad("the cache TTL is 0 (off) to 604800 seconds (a week)")
@@ -118,7 +125,7 @@ func (s *Service) Create(ctx context.Context, org, project uuid.UUID, in Input) 
 	}
 	r, err := s.ent.Route.Create().SetOrgID(org).SetProjectID(project).
 		SetName(in.Name).SetFallbacks(in.Fallbacks).SetRetries(in.Retries).SetCacheTTLSeconds(in.CacheTTL).
-		SetPromptCache(in.PromptCache).Save(ctx)
+		SetPromptCache(in.PromptCache).SetRouter(in.Router).Save(ctx)
 	if pdent.IsConstraintError(err) {
 		return nil, ErrNameTaken
 	}
@@ -139,7 +146,7 @@ func (s *Service) Update(ctx context.Context, project, id uuid.UUID, in Input) (
 		return nil, err
 	}
 	r, err := s.ent.Route.UpdateOne(cur).SetName(in.Name).SetFallbacks(in.Fallbacks).SetRetries(in.Retries).
-		SetCacheTTLSeconds(in.CacheTTL).SetPromptCache(in.PromptCache).Save(ctx)
+		SetCacheTTLSeconds(in.CacheTTL).SetPromptCache(in.PromptCache).SetRouter(in.Router).Save(ctx)
 	if pdent.IsConstraintError(err) {
 		return nil, ErrNameTaken
 	}

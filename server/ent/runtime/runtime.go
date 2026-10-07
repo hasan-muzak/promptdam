@@ -9,12 +9,14 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
 	"github.com/hasan-muzak/promptdam/server/ent/schema"
+	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -194,6 +196,97 @@ func init() {
 	keysettingDescID := keysettingMixinFields0[0].Descriptor()
 	// keysetting.DefaultID holds the default value on creation for the id field.
 	keysetting.DefaultID = keysettingDescID.Default.(func() uuid.UUID)
+	modelrouterMixin := schema.ModelRouter{}.Mixin()
+	modelrouterMixinHooks1 := modelrouterMixin[1].Hooks()
+	modelrouter.Hooks[0] = modelrouterMixinHooks1[0]
+	modelrouterMixinInters1 := modelrouterMixin[1].Interceptors()
+	modelrouter.Interceptors[0] = modelrouterMixinInters1[0]
+	modelrouterMixinFields0 := modelrouterMixin[0].Fields()
+	_ = modelrouterMixinFields0
+	modelrouterFields := schema.ModelRouter{}.Fields()
+	_ = modelrouterFields
+	// modelrouterDescCreatedAt is the schema descriptor for created_at field.
+	modelrouterDescCreatedAt := modelrouterMixinFields0[1].Descriptor()
+	// modelrouter.DefaultCreatedAt holds the default value on creation for the created_at field.
+	modelrouter.DefaultCreatedAt = modelrouterDescCreatedAt.Default.(func() time.Time)
+	// modelrouterDescUpdatedAt is the schema descriptor for updated_at field.
+	modelrouterDescUpdatedAt := modelrouterMixinFields0[2].Descriptor()
+	// modelrouter.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	modelrouter.DefaultUpdatedAt = modelrouterDescUpdatedAt.Default.(func() time.Time)
+	// modelrouter.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	modelrouter.UpdateDefaultUpdatedAt = modelrouterDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// modelrouterDescName is the schema descriptor for name field.
+	modelrouterDescName := modelrouterFields[0].Descriptor()
+	// modelrouter.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	modelrouter.NameValidator = func() func(string) error {
+		validators := modelrouterDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// modelrouterDescRules is the schema descriptor for rules field.
+	modelrouterDescRules := modelrouterFields[3].Descriptor()
+	// modelrouter.DefaultRules holds the default value on creation for the rules field.
+	modelrouter.DefaultRules = modelrouterDescRules.Default.([]tiers.Rule)
+	// modelrouterDescDefaultTier is the schema descriptor for default_tier field.
+	modelrouterDescDefaultTier := modelrouterFields[4].Descriptor()
+	// modelrouter.DefaultTierValidator is a validator for the "default_tier" field. It is called by the builders before save.
+	modelrouter.DefaultTierValidator = func() func(string) error {
+		validators := modelrouterDescDefaultTier.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(default_tier string) error {
+			for _, fn := range fns {
+				if err := fn(default_tier); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// modelrouterDescQualityFloor is the schema descriptor for quality_floor field.
+	modelrouterDescQualityFloor := modelrouterFields[5].Descriptor()
+	// modelrouter.DefaultQualityFloor holds the default value on creation for the quality_floor field.
+	modelrouter.DefaultQualityFloor = modelrouterDescQualityFloor.Default.(float64)
+	// modelrouterDescSampleRate is the schema descriptor for sample_rate field.
+	modelrouterDescSampleRate := modelrouterFields[6].Descriptor()
+	// modelrouter.DefaultSampleRate holds the default value on creation for the sample_rate field.
+	modelrouter.DefaultSampleRate = modelrouterDescSampleRate.Default.(float64)
+	// modelrouterDescEvalBudgetMicros is the schema descriptor for eval_budget_micros field.
+	modelrouterDescEvalBudgetMicros := modelrouterFields[7].Descriptor()
+	// modelrouter.DefaultEvalBudgetMicros holds the default value on creation for the eval_budget_micros field.
+	modelrouter.DefaultEvalBudgetMicros = modelrouterDescEvalBudgetMicros.Default.(int64)
+	// modelrouterDescJudge is the schema descriptor for judge field.
+	modelrouterDescJudge := modelrouterFields[8].Descriptor()
+	// modelrouter.DefaultJudge holds the default value on creation for the judge field.
+	modelrouter.DefaultJudge = modelrouterDescJudge.Default.(string)
+	// modelrouter.JudgeValidator is a validator for the "judge" field. It is called by the builders before save.
+	modelrouter.JudgeValidator = modelrouterDescJudge.Validators[0].(func(string) error)
+	// modelrouterDescDecisionModel is the schema descriptor for decision_model field.
+	modelrouterDescDecisionModel := modelrouterFields[9].Descriptor()
+	// modelrouter.DefaultDecisionModel holds the default value on creation for the decision_model field.
+	modelrouter.DefaultDecisionModel = modelrouterDescDecisionModel.Default.(string)
+	// modelrouter.DecisionModelValidator is a validator for the "decision_model" field. It is called by the builders before save.
+	modelrouter.DecisionModelValidator = modelrouterDescDecisionModel.Validators[0].(func(string) error)
+	// modelrouterDescDecisionTimeoutMs is the schema descriptor for decision_timeout_ms field.
+	modelrouterDescDecisionTimeoutMs := modelrouterFields[10].Descriptor()
+	// modelrouter.DefaultDecisionTimeoutMs holds the default value on creation for the decision_timeout_ms field.
+	modelrouter.DefaultDecisionTimeoutMs = modelrouterDescDecisionTimeoutMs.Default.(int)
+	// modelrouterDescID is the schema descriptor for id field.
+	modelrouterDescID := modelrouterMixinFields0[0].Descriptor()
+	// modelrouter.DefaultID holds the default value on creation for the id field.
+	modelrouter.DefaultID = modelrouterDescID.Default.(func() uuid.UUID)
 	pricelistMixin := schema.PriceList{}.Mixin()
 	pricelistMixinFields0 := pricelistMixin[0].Fields()
 	_ = pricelistMixinFields0
@@ -456,6 +549,12 @@ func init() {
 	routeDescPromptCache := routeFields[4].Descriptor()
 	// route.DefaultPromptCache holds the default value on creation for the prompt_cache field.
 	route.DefaultPromptCache = routeDescPromptCache.Default.(bool)
+	// routeDescRouter is the schema descriptor for router field.
+	routeDescRouter := routeFields[5].Descriptor()
+	// route.DefaultRouter holds the default value on creation for the router field.
+	route.DefaultRouter = routeDescRouter.Default.(string)
+	// route.RouterValidator is a validator for the "router" field. It is called by the builders before save.
+	route.RouterValidator = routeDescRouter.Validators[0].(func(string) error)
 	// routeDescID is the schema descriptor for id field.
 	routeDescID := routeMixinFields0[0].Descriptor()
 	// route.DefaultID holds the default value on creation for the id field.

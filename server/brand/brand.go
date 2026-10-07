@@ -34,6 +34,10 @@ const (
 	// HeaderFamily names the call's prompt family (its task), instead of the
 	// family Promptdam derives from its instructions.
 	HeaderFamily = HeaderPrefix + "Family"
+	// HeaderTier picks a model router's tier for the call, as
+	// "model": "<router>:<tier>" does. The response names the tier that
+	// served it.
+	HeaderTier = HeaderPrefix + "Tier"
 )
 
 // Response headers the gateway adds.
@@ -45,6 +49,12 @@ const (
 	HeaderServedModel = HeaderPrefix + "Served-Model"
 	// HeaderProvider is the provider that answered.
 	HeaderProvider = HeaderPrefix + "Provider"
+	// HeaderRouter names the model router that placed the call, and
+	// HeaderTierSource the step that chose its tier (explicit, rule,
+	// classifier, decision, default; "shadow:" first when the router only
+	// watched).
+	HeaderRouter     = HeaderPrefix + "Router"
+	HeaderTierSource = HeaderPrefix + "Tier-Source"
 	// HeaderCache says how the response was cached: hit, miss or prompt.
 	HeaderCache = HeaderPrefix + "Cache"
 	// HeaderSavingsMicros is what the request saved, in micro-USD.

@@ -15,6 +15,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
+	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
@@ -83,6 +84,7 @@ func checkColumn(t, c string) error {
 			budget.Table:        budget.ValidColumn,
 			familylabel.Table:   familylabel.ValidColumn,
 			keysetting.Table:    keysetting.ValidColumn,
+			modelrouter.Table:   modelrouter.ValidColumn,
 			pricelist.Table:     pricelist.ValidColumn,
 			priceoverride.Table: priceoverride.ValidColumn,
 			provider.Table:      provider.ValidColumn,

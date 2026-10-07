@@ -117,6 +117,20 @@ func (_u *RouteUpdate) SetNillablePromptCache(v *bool) *RouteUpdate {
 	return _u
 }
 
+// SetRouter sets the "router" field.
+func (_u *RouteUpdate) SetRouter(v string) *RouteUpdate {
+	_u.mutation.SetRouter(v)
+	return _u
+}
+
+// SetNillableRouter sets the "router" field if the given value is not nil.
+func (_u *RouteUpdate) SetNillableRouter(v *string) *RouteUpdate {
+	if v != nil {
+		_u.SetRouter(*v)
+	}
+	return _u
+}
+
 // Mutation returns the RouteMutation object of the builder.
 func (_u *RouteUpdate) Mutation() *RouteMutation {
 	return _u.mutation
@@ -171,6 +185,11 @@ func (_u *RouteUpdate) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Route.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Router(); ok {
+		if err := route.RouterValidator(v); err != nil {
+			return &ValidationError{Name: "router", err: fmt.Errorf(`ent: validator failed for field "Route.router": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -214,6 +233,9 @@ func (_u *RouteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.PromptCache(); ok {
 		_spec.SetField(route.FieldPromptCache, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Router(); ok {
+		_spec.SetField(route.FieldRouter, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -323,6 +345,20 @@ func (_u *RouteUpdateOne) SetNillablePromptCache(v *bool) *RouteUpdateOne {
 	return _u
 }
 
+// SetRouter sets the "router" field.
+func (_u *RouteUpdateOne) SetRouter(v string) *RouteUpdateOne {
+	_u.mutation.SetRouter(v)
+	return _u
+}
+
+// SetNillableRouter sets the "router" field if the given value is not nil.
+func (_u *RouteUpdateOne) SetNillableRouter(v *string) *RouteUpdateOne {
+	if v != nil {
+		_u.SetRouter(*v)
+	}
+	return _u
+}
+
 // Mutation returns the RouteMutation object of the builder.
 func (_u *RouteUpdateOne) Mutation() *RouteMutation {
 	return _u.mutation
@@ -390,6 +426,11 @@ func (_u *RouteUpdateOne) check() error {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Route.name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Router(); ok {
+		if err := route.RouterValidator(v); err != nil {
+			return &ValidationError{Name: "router", err: fmt.Errorf(`ent: validator failed for field "Route.router": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -450,6 +491,9 @@ func (_u *RouteUpdateOne) sqlSave(ctx context.Context) (_node *Route, err error)
 	}
 	if value, ok := _u.mutation.PromptCache(); ok {
 		_spec.SetField(route.FieldPromptCache, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Router(); ok {
+		_spec.SetField(route.FieldRouter, field.TypeString, value)
 	}
 	_node = &Route{config: _u.config}
 	_spec.Assign = _node.assignValues

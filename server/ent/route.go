@@ -36,7 +36,9 @@ type Route struct {
 	// Answer identical non-streamed requests from the response cache for this long; 0: off
 	CacheTTLSeconds int `json:"cache_ttl_seconds,omitempty"`
 	// Add Anthropic cache breakpoints to requests without any, at the end of their stable prefix
-	PromptCache  bool `json:"prompt_cache,omitempty"`
+	PromptCache bool `json:"prompt_cache,omitempty"`
+	// A model router every call of the route goes through, whatever model it names; empty: none
+	Router       string `json:"router,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -51,7 +53,7 @@ func (*Route) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case route.FieldRetries, route.FieldCacheTTLSeconds:
 			values[i] = new(sql.NullInt64)
-		case route.FieldName:
+		case route.FieldName, route.FieldRouter:
 			values[i] = new(sql.NullString)
 		case route.FieldCreatedAt, route.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -134,6 +136,12 @@ func (_m *Route) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.PromptCache = value.Bool
 			}
+		case route.FieldRouter:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field router", values[i])
+			} else if value.Valid {
+				_m.Router = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -196,6 +204,9 @@ func (_m *Route) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("prompt_cache=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PromptCache))
+	builder.WriteString(", ")
+	builder.WriteString("router=")
+	builder.WriteString(_m.Router)
 	builder.WriteByte(')')
 	return builder.String()
 }

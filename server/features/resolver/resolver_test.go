@@ -2,6 +2,7 @@ package resolver_test
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -14,6 +15,8 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/resolver"
+	"github.com/hasan-muzak/promptdam/server/features/routers"
+	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 	"github.com/hasan-muzak/promptdam/server/features/rules"
 )
@@ -208,18 +211,24 @@ func TestRoutingRules(t *testing.T) {
 
 // A call for a model only a provider of the other API serves is sent to
 // it, translated; so is a fallback naming one.
-func TestCallsCrossFormats(t *testing.T) {
-	w := gatewaytest.New(t, gatewaytest.Options{})
-	// "main" serves every model unless it lists its own.
+// mainServes makes the World's "main" provider, which serves every model
+// unless it lists its own, list models.
+func mainServes(t *testing.T, w *gatewaytest.World, models ...string) {
+	t.Helper()
 	ps, err := w.App.Providers.List(w.Scoped(), w.Project)
 	if err != nil {
 		t.Fatal(err)
 	}
 	main := ps[0]
 	if _, err := w.App.Providers.Update(w.Scoped(), w.Org, w.Project, main.ID, providers.Input{Name: main.Name, Kind: main.Kind,
-		Format: string(main.APIFormat), BaseURL: main.BaseURL, Models: []string{"gpt-5-mini"}, Enabled: true}); err != nil {
+		Format: string(main.APIFormat), BaseURL: main.BaseURL, Models: models, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestCallsCrossFormats(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{})
+	mainServes(t, w, "gpt-5-mini")
 	w.Provider("claude", providers.FormatAnthropic, []string{"claude-haiku-4-5"})
 	w.Eventually(func() bool {
 		status, h, body := w.Call("/v1/chat/completions", `{"model":"claude-haiku-4-5","messages":[{"role":"user","content":"hi"}]}`)
@@ -242,5 +251,100 @@ func TestCallsCrossFormats(t *testing.T) {
 	})
 	if rec := w.Records()[len(w.Records())-1]; !rec.Translated || !rec.Fallback {
 		t.Fatalf("record %+v", rec)
+	}
+}
+
+// A model router places each call in a tier: the client's, else the first
+// rule that holds, else its default; a tier that fails falls back to the
+// stronger ones. In shadow mode it decides but serves its default tier.
+func TestRouters(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{})
+	mainServes(t, w, "gpt-5-nano", "gpt-5-mini")
+	w.Provider("claude", providers.FormatAnthropic, []string{"claude-opus-5-5"})
+	rt, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
+		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-nano"}, {Name: "smart", Model: "claude-opus-5-5"}},
+			Rules: []tiers.Rule{{When: "request.messages == 1 && !request.has_tools", Tier: "fast"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one := `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`
+	two := `{"model":"auto","messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"yes?"},{"role":"user","content":"and?"}]}`
+	placed := func(body string, header ...string) (tier, source, served string) {
+		t.Helper()
+		status, h, out := w.Call("/v1/chat/completions", body, header...)
+		if status != 200 || !strings.Contains(out, `"object":"chat.completion"`) {
+			t.Fatalf("%d %s", status, out)
+		}
+		return h.Get(brand.HeaderTier), h.Get(brand.HeaderTierSource), h.Get(brand.HeaderServedModel)
+	}
+	w.Eventually(func() bool {
+		status, h, _ := w.Call("/v1/chat/completions", one)
+		return status == 200 && h.Get(brand.HeaderRouter) == "auto"
+	})
+	if tier, source, served := placed(one); tier != "fast" || source != "rule" || served != "gpt-5-nano" {
+		t.Fatalf("a short call: %s %s %s", tier, source, served)
+	}
+	// No rule holds: the default tier, an Anthropic model, answers the
+	// OpenAI-format call.
+	if tier, source, served := placed(two); tier != "smart" || source != "default" || served != "claude-opus-5-5" {
+		t.Fatalf("a longer call: %s %s %s", tier, source, served)
+	}
+	if rec := w.Records()[len(w.Records())-1]; !rec.Translated {
+		t.Fatalf("record %+v", rec)
+	}
+	// The client's tier, in the model or a header.
+	if tier, source, _ := placed(strings.Replace(one, `"auto"`, `"auto:smart"`, 1)); tier != "smart" || source != "explicit" {
+		t.Fatalf("auto:smart: %s %s", tier, source)
+	}
+	if tier, source, _ := placed(two, brand.HeaderTier, "fast"); tier != "fast" || source != "explicit" {
+		t.Fatalf("the header: %s %s", tier, source)
+	}
+	if status, h, _ := w.Call("/v1/chat/completions", strings.Replace(one, `"auto"`, `"auto:huge"`, 1)); status != 400 ||
+		h.Get(brand.HeaderErrorCode) != "unknown_tier" {
+		t.Fatalf("an unknown tier: %d %s", status, h.Get(brand.HeaderErrorCode))
+	}
+	if status, h, _ := w.Call("/v1/embeddings", `{"model":"auto","input":"hi"}`); status != 400 || h.Get(brand.HeaderErrorCode) != "router_format" {
+		t.Fatalf("embeddings: %d %s", status, h.Get(brand.HeaderErrorCode))
+	}
+	// The fast tier failing (a try and a retry), the stronger one answers.
+	w.Fake.Fail(http.StatusServiceUnavailable, http.StatusServiceUnavailable)
+	if tier, _, served := placed(one); tier != "fast" || served != "claude-opus-5-5" {
+		t.Fatalf("fallback: %s %s", tier, served)
+	}
+	m := w.Records()[len(w.Records())-1].Meta.(*resolver.Meta)
+	if m.Router != "auto" || m.Tier != "fast" || m.TierSource != "rule" || m.Baseline.Model != "claude-opus-5-5" {
+		t.Fatalf("meta %+v", m)
+	}
+
+	// In shadow mode the router decides, and the default tier serves.
+	in := routers.Input{Name: "auto", Status: tiers.Shadow, Spec: tiers.Spec{Tiers: rt.Tiers, Rules: rt.Rules}}
+	if _, err := w.App.Routers.Update(w.Scoped(), w.Project, rt.ID, in); err != nil {
+		t.Fatal(err)
+	}
+	w.Eventually(func() bool {
+		_, h, _ := w.Call("/v1/chat/completions", one)
+		return h.Get(brand.HeaderTierSource) == "shadow:rule" && h.Get(brand.HeaderTier) == "smart"
+	})
+	m = w.Records()[len(w.Records())-1].Meta.(*resolver.Meta)
+	if !m.Shadow || m.Decided != "fast" || m.Tier != "smart" {
+		t.Fatalf("shadow meta %+v", m)
+	}
+
+	// A route sends every call through the router, whatever model it names.
+	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{Name: "agents", Router: "auto", Retries: 1}); err != nil {
+		t.Fatal(err)
+	}
+	w.Eventually(func() bool {
+		_, h, _ := w.Call("/v1/chat/completions", chat, brand.HeaderRoute, "agents")
+		return h.Get(brand.HeaderRouter) == "auto" && h.Get(brand.HeaderTier) == "smart"
+	})
+	m = w.Records()[len(w.Records())-1].Meta.(*resolver.Meta)
+	if m.Baseline.Model != "" {
+		t.Fatalf("a call naming its model counts savings against it: %+v", m.Baseline)
+	}
+	// A router routes send calls through can't be deleted.
+	var inUse *routers.InUseError
+	if err := w.App.Routers.Delete(w.Scoped(), w.Project, rt.ID); !errors.As(err, &inUse) || inUse.Routes[0] != "agents" {
+		t.Fatalf("delete: %v", err)
 	}
 }

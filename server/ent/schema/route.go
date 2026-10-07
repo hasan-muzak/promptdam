@@ -30,6 +30,8 @@ func (Route) Fields() []ent.Field {
 			Comment("Answer identical non-streamed requests from the response cache for this long; 0: off"),
 		field.Bool("prompt_cache").Default(false).
 			Comment("Add Anthropic cache breakpoints to requests without any, at the end of their stable prefix"),
+		field.String("router").Default("").MaxLen(64).
+			Comment("A model router every call of the route goes through, whatever model it names; empty: none"),
 	}
 }
 

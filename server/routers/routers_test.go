@@ -348,6 +348,112 @@ func TestRules(t *testing.T) {
 	e.client.Get(path+"/rul_nope", alice).AssertStatus(http.StatusNotFound)
 }
 
+func TestRouters(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	alice := e.as("alice")
+	org, _, base := e.project("alice")
+	orgID := mustID(t, ids.Org, org.ID)
+	path := base + "/routers"
+	e.client.Post(base+"/providers", alice, testclient.JSON(map[string]any{
+		"name": "openai", "kind": "openai", "api_key": "sk-test-secret-abcd",
+	})).AssertStatus(http.StatusCreated)
+	auto := map[string]any{
+		"name": "auto",
+		"tiers": []map[string]any{
+			{"name": "fast", "model": "gpt-5-nano", "description": "Short questions"},
+			{"name": "smart", "model": "gpt-5", "fallbacks": []string{"openai/gpt-5-mini"}},
+		},
+		"rules": []map[string]any{{"when": "request.messages == 1", "tier": "fast"}},
+	}
+
+	// Every plan runs routers in shadow mode, the default.
+	rtr := testclient.Decoded[handlers.RouterOut](e.client.Post(path, alice, testclient.JSON(auto)).AssertStatus(http.StatusCreated))
+	if rtr.Status != "shadow" || rtr.DefaultTier != "smart" || rtr.EvalBudgetMicros != 100_000_000 || rtr.QualityFloor != 0.95 ||
+		!strings.HasPrefix(rtr.ID, handlers.RouterPrefix+"_") || len(rtr.Tiers) != 2 || rtr.Tiers[0].Fallbacks == nil {
+		t.Fatalf("created %+v", rtr)
+	}
+	if res := e.client.Post(path, alice, testclient.JSON(auto)); res.Status != http.StatusConflict ||
+		res.Error().Error.Code != handlers.CodeRouterNameTaken {
+		t.Fatalf("same name: %d %s", res.Status, res.String())
+	}
+	// Serving traffic needs a plan with model routers.
+	auto["status"] = "active"
+	if res := e.client.Put(path+"/"+rtr.ID, alice, testclient.JSON(auto)); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free: %d %s", res.Status, res.String())
+	}
+	e.c.DB.Ent.OrgFlag.Create().SetOrgID(orgID).SetKey("feature." + catalog.Routers).SetValue(json.RawMessage(`true`)).
+		SaveX(entx.SkipTenant(ctx))
+	e.c.Billing.BustEntitlements(ctx, orgID)
+	got := testclient.Decoded[handlers.RouterOut](e.client.Put(path+"/"+rtr.ID, alice, testclient.JSON(auto)).AssertStatus(http.StatusOK))
+	if got.Status != "active" || got.ActivatedAt == nil {
+		t.Fatalf("updated %+v", got)
+	}
+
+	for name, tt := range map[string]struct {
+		body  map[string]any
+		field string
+	}{
+		"a rule that doesn't compile": {map[string]any{"name": "x", "tiers": []map[string]any{{"name": "a", "model": "m"}},
+			"rules": []map[string]any{{"when": "true", "tier": "a"}, {"when": "request.nope", "tier": "a"}}}, "rules[1].when"},
+		"a model's name": {map[string]any{"name": "gpt-5", "tiers": []map[string]any{{"name": "a", "model": "m"}}}, ""},
+		"no tiers":       {map[string]any{"name": "x", "tiers": []map[string]any{}}, ""},
+		"a bad tier":     {map[string]any{"name": "x", "tiers": []map[string]any{{"name": "A B", "model": "m"}}}, ""},
+	} {
+		res := e.client.Post(path, alice, testclient.JSON(tt.body))
+		if res.Status != http.StatusUnprocessableEntity {
+			t.Errorf("%s: %d %s", name, res.Status, res.String())
+			continue
+		}
+		if er := res.Error().Error; tt.field != "" && (len(er.Details) == 0 || er.Details[0].Field != tt.field) {
+			t.Errorf("%s: %s", name, res.String())
+		}
+	}
+
+	// Explain: how the router would place a request, with no provider called.
+	ex := testclient.Decoded[handlers.ExplainRouterOut](e.client.Post(path+"/"+rtr.ID+"/explain", alice, testclient.JSON(map[string]any{
+		"request": map[string]any{"model": "auto", "messages": []map[string]string{{"role": "user", "content": "hi"}}},
+	})).AssertStatus(http.StatusOK))
+	if ex.Tier != "fast" || ex.Source != "rule" || ex.Rule == nil || *ex.Rule != 1 || ex.Shadow || len(ex.Tiers) != 2 ||
+		ex.Tiers[0].Provider != "openai" || !ex.Tiers[0].Serves || len(ex.Targets) != 3 || ex.Targets[0].Model != "gpt-5-nano" ||
+		ex.Targets[2].Model != "gpt-5-mini" {
+		t.Fatalf("explain %+v", ex)
+	}
+	ex = testclient.Decoded[handlers.ExplainRouterOut](e.client.Post(path+"/"+rtr.ID+"/explain", alice, testclient.JSON(map[string]any{
+		"api_format": "anthropic.messages", "tier": "smart",
+		"request": map[string]any{"model": "auto", "max_tokens": 10, "messages": []map[string]string{{"role": "user", "content": "hi"}}},
+	})).AssertStatus(http.StatusOK))
+	if ex.Tier != "smart" || ex.Source != "explicit" || !ex.Targets[0].Translated {
+		t.Fatalf("explain an Anthropic call %+v", ex)
+	}
+	if res := e.client.Post(path+"/"+rtr.ID+"/explain", alice, testclient.JSON(map[string]any{
+		"tier": "huge", "request": map[string]any{"model": "auto", "messages": []any{}},
+	})); res.Status != http.StatusUnprocessableEntity || res.Error().Error.Code != "unknown_tier" {
+		t.Fatalf("explain an unknown tier: %d %s", res.Status, res.String())
+	}
+
+	// Routes send calls through routers the project has; such a router
+	// stays until no route does.
+	if res := e.client.Post(base+"/routes", alice, testclient.JSON(map[string]any{"name": "agents", "router": "nope"})); res.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("a route through no router: %d %s", res.Status, res.String())
+	}
+	rte := testclient.Decoded[handlers.RouteOut](e.client.Post(base+"/routes", alice, testclient.JSON(map[string]any{
+		"name": "agents", "router": "auto",
+	})).AssertStatus(http.StatusCreated))
+	if rte.Router != "auto" {
+		t.Fatalf("route %+v", rte)
+	}
+	if res := e.client.Delete(path+"/"+rtr.ID, alice); res.Status != http.StatusConflict || res.Error().Error.Code != handlers.CodeRouterInUse {
+		t.Fatalf("delete in use: %d %s", res.Status, res.String())
+	}
+	e.client.Delete(base+"/routes/"+rte.ID, alice).AssertStatus(http.StatusNoContent)
+	e.client.Delete(path+"/"+rtr.ID, alice).AssertStatus(http.StatusNoContent)
+	list := testclient.Decoded[httpx.List[handlers.RouterOut]](e.client.Get(path, alice).AssertStatus(http.StatusOK))
+	if len(list.Data) != 0 {
+		t.Fatalf("list %+v", list)
+	}
+}
+
 func TestBudgets(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
@@ -527,13 +633,16 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 	rul := testclient.Decoded[handlers.RuleOut](e.client.Post(base+"/rules", alice, testclient.JSON(map[string]any{
 		"name": "short", "when": "request.input_tokens < 1500", "to_model": "gpt-5-mini",
 	})).AssertStatus(http.StatusCreated))
+	rtr := testclient.Decoded[handlers.RouterOut](e.client.Post(base+"/routers", alice, testclient.JSON(map[string]any{
+		"name": "auto", "tiers": []map[string]any{{"name": "fast", "model": "gpt-5-mini"}},
+	})).AssertStatus(http.StatusCreated))
 
 	victim := map[string]string{
 		"org": org.ID, "project": prj.ID, "user": me.User.ID, "invitation": inv.ID, "key": key.ID, "channel": ch.ID,
 		"webhook": ids.Encode(ids.WebhookEndpoint, ep.ID), "delivery": ids.Encode(ids.WebhookDelivery, del.ID),
 		"meter": "requests", "provider": p.ID, "route": rte.ID, "budget": bdg.ID,
 		"request": ids.Encode("req", ids.New()), "price": prc.ID, "family": "0123456789abcdef",
-		"rule": rul.ID,
+		"rule": rul.ID, "router": rtr.ID,
 	}
 	e.client.Put(base+"/keys/"+key.ID+"/gateway", alice, testclient.JSON(map[string]any{"rpm": 10})).AssertStatus(http.StatusOK)
 	mallory := e.as("mallory")
@@ -553,11 +662,13 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 	testkit.AssertNoForeignIDs(t, e.client, map[string]string{"org": ownOrg.ID, "project": ownPrj.ID, "meter": "requests",
 		"family": "0123456789abcdef"},
 		victim, []string{"meter", "family"}, map[string]string{
-			"PATCH /v1/orgs/{org}/members/{user}":                        `{"role":"viewer"}`,
-			"PUT /v1/orgs/{org}/projects/{project}/providers/{provider}": `{"name":"x","kind":"openai","api_key":"sk-x-0000000000"}`,
-			"PUT /v1/orgs/{org}/projects/{project}/keys/{key}/gateway":   `{"rpm":1}`,
-			"PUT /v1/orgs/{org}/projects/{project}/routes/{route}":       `{"name":"x","fallbacks":[]}`,
-			"PUT /v1/orgs/{org}/projects/{project}/budgets/{budget}":     `{"name":"x","scope":"project","window":"day","limit_micros":1,"channels":[]}`,
-			"PUT /v1/orgs/{org}/projects/{project}/rules/{rule}":         `{"name":"x","when":"true","to_model":"m"}`,
+			"PATCH /v1/orgs/{org}/members/{user}":                             `{"role":"viewer"}`,
+			"PUT /v1/orgs/{org}/projects/{project}/providers/{provider}":      `{"name":"x","kind":"openai","api_key":"sk-x-0000000000"}`,
+			"PUT /v1/orgs/{org}/projects/{project}/keys/{key}/gateway":        `{"rpm":1}`,
+			"PUT /v1/orgs/{org}/projects/{project}/routes/{route}":            `{"name":"x","fallbacks":[]}`,
+			"PUT /v1/orgs/{org}/projects/{project}/budgets/{budget}":          `{"name":"x","scope":"project","window":"day","limit_micros":1,"channels":[]}`,
+			"PUT /v1/orgs/{org}/projects/{project}/rules/{rule}":              `{"name":"x","when":"true","to_model":"m"}`,
+			"PUT /v1/orgs/{org}/projects/{project}/routers/{router}":          `{"name":"x","tiers":[{"name":"a","model":"m"}]}`,
+			"POST /v1/orgs/{org}/projects/{project}/routers/{router}/explain": `{"request":{"model":"x","messages":[]}}`,
 		}, mallory)
 }

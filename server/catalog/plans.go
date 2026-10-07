@@ -38,15 +38,19 @@ const (
 	SecretsBlocking = "firewall.secrets"
 	SavingsReport   = "savings.report"
 	// Pro: automatic prompt caching and the cache doctor, routing rules,
-	// budgets and alerts, PII redaction, the ledger export.
+	// active model routers (explicit tiers and rules; every plan may run
+	// routers in shadow mode), budgets and alerts, PII redaction, the
+	// ledger export.
 	PromptCaching = "cache.prompt"
 	RoutingRules  = "routing.rules"
+	Routers       = "routing.routers"
 	Budgets       = "budgets"
 	PIIRedaction  = "firewall.pii"
 	LedgerExport  = "savings.export"
-	// Team: savings experiments with auto-revert, CEL firewall policies,
-	// per-developer keys, the audit log.
-	Experiments      = "experiments"
+	// Team: learned routing (evaluation, the classifier, the decision
+	// model) with auto-demotion, CEL firewall policies, per-developer keys,
+	// the audit log.
+	RoutingLearned   = "routing.learned"
 	FirewallPolicies = "firewall.policies"
 	DeveloperKeys    = "keys.developer"
 	AuditLog         = "audit"
@@ -62,8 +66,8 @@ const (
 
 var (
 	free     = []string{Gateway, Fallbacks, ExactCache, SecretsBlocking, SavingsReport}
-	pro      = append(append([]string{}, free...), PromptCaching, RoutingRules, Budgets, PIIRedaction, LedgerExport)
-	team     = append(append([]string{}, pro...), Experiments, FirewallPolicies, DeveloperKeys, AuditLog)
+	pro      = append(append([]string{}, free...), PromptCaching, RoutingRules, Routers, Budgets, PIIRedaction, LedgerExport)
+	team     = append(append([]string{}, pro...), RoutingLearned, FirewallPolicies, DeveloperKeys, AuditLog)
 	business = append(append([]string{}, team...), CustomPolicies, PayloadFree, DPA, SLA, SSOSAML, SupportFast)
 )
 
@@ -86,7 +90,7 @@ var Catalog = billing.Catalog{
 		},
 		{
 			Key: "pro", Name: "Pro", Rank: 1, Public: true, Monthly: 4900, Yearly: 49000,
-			Description: "Prompt caching, routing rules, budgets and PII redaction.",
+			Description: "Prompt caching, routing rules, model routers, budgets and PII redaction.",
 			Limits: map[string]int64{
 				Requests: 500_000, Seats: 10, RetentionDays: 30, APIRequestsPerMinute: 2400,
 			},
@@ -95,7 +99,7 @@ var Catalog = billing.Catalog{
 		},
 		{
 			Key: "team", Name: "Team", Rank: 2, Public: true, Monthly: 19900, Yearly: 199000,
-			Description: "Savings experiments, firewall policies and per-developer keys.",
+			Description: "Learned routing, firewall policies and per-developer keys.",
 			Limits: map[string]int64{
 				Requests: 3_000_000, Seats: billing.Unlimited, RetentionDays: 90, APIRequestsPerMinute: 6000,
 			},
