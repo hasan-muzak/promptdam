@@ -1,7 +1,7 @@
-# Promptdam tasks. From the repo root: `task promptdam:<name>`.
+# Promptdam tasks. From the repo root: `task promptdam:<name>`. Tasks read
+# Promptdam's .env one by one: an included Taskfile can't declare a
+# Taskfile-wide dotenv.
 version: "3"
-
-dotenv: [".env"]
 
 vars:
   # Promptdam's own local stack (infra/compose/product.yaml), never shared
@@ -32,26 +32,31 @@ tasks:
 
   migrate:
     desc: Apply Promptdam's Postgres and ClickHouse migrations (core, River, product graph)
+    dotenv: [".env"]
     cmds:
       - go run ./server/cmd/migrate
 
   dev:api:
     desc: Run Promptdam's API on :8281 (needs `task promptdam:dev:stack`)
+    dotenv: [".env"]
     cmds:
       - go run ./server/cmd/api
 
   dev:gateway:
     desc: Run Promptdam's gateway data plane on :8282 (clients' base URL is http://localhost:8282/v1)
+    dotenv: [".env"]
     cmds:
       - go run ./server/cmd/gateway
 
   dev:worker:
     desc: Run Promptdam's job worker
+    dotenv: [".env"]
     cmds:
       - KEEL_ADDR=:8291 go run ./server/cmd/worker
 
   stripe:sync:
     desc: Create Promptdam's Stripe products, prices and meters (test keys in .env)
+    dotenv: [".env"]
     cmds:
       - go run ./server/cmd/api stripe sync
 
