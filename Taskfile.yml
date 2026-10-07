@@ -1,0 +1,74 @@
+# Promptdam tasks. From the repo root: `task promptdam:<name>`.
+version: "3"
+
+dotenv: [".env"]
+
+vars:
+  # Promptdam's own local stack (infra/compose/product.yaml), never shared
+  # with another product.
+  STACK: docker compose -f ../../infra/compose/product.yaml -p promptdam --env-file stack.env
+
+tasks:
+  setup:
+    desc: Create Promptdam's .env from the template
+    cmds:
+      - test -f .env || cp .env.example .env
+
+  dev:stack:
+    desc: Start Promptdam's own Postgres, Valkey, ClickHouse, S3, Mailpit and stripe-mock and wait until healthy
+    cmds:
+      - "{{.STACK}} up -d --wait"
+
+  dev:stack:down:
+    desc: Stop Promptdam's stack, keeping its data
+    cmds:
+      - "{{.STACK}} down"
+
+  dev:stack:reset:
+    desc: Stop Promptdam's stack and delete all of its data
+    prompt: This deletes Promptdam's local databases, bucket and queues. Continue?
+    cmds:
+      - "{{.STACK}} down -v"
+
+  migrate:
+    desc: Apply Promptdam's Postgres and ClickHouse migrations (core, River, product graph)
+    cmds:
+      - go run ./server/cmd/migrate
+
+  dev:api:
+    desc: Run Promptdam's API on :8281 (needs `task promptdam:dev:stack`)
+    cmds:
+      - go run ./server/cmd/api
+
+  dev:gateway:
+    desc: Run Promptdam's gateway data plane on :8282 (clients' base URL is http://localhost:8282/v1)
+    cmds:
+      - go run ./server/cmd/gateway
+
+  dev:worker:
+    desc: Run Promptdam's job worker
+    cmds:
+      - KEEL_ADDR=:8291 go run ./server/cmd/worker
+
+  stripe:sync:
+    desc: Create Promptdam's Stripe products, prices and meters (test keys in .env)
+    cmds:
+      - go run ./server/cmd/api stripe sync
+
+  catalog:export:
+    desc: Write the public catalog for the pricing page
+    cmds:
+      - go run ./server/cmd/api catalog export web/site/catalog.json
+
+  test:
+    desc: Run Promptdam's Go tests against its own stack
+    env:
+      KEEL_TEST_DATABASE_URL: postgres://keel:keel@localhost:25432/keel_test?sslmode=disable
+      KEEL_TEST_VALKEY_URL: redis://localhost:26379/15
+      KEEL_TEST_CLICKHOUSE_URL: clickhouse://keel:keel@localhost:29000/keel_test
+      KEEL_TEST_S3_ENDPOINT: http://localhost:29100
+      KEEL_TEST_SMTP_URL: smtp://localhost:21025
+      KEEL_TEST_MAILPIT_URL: http://localhost:28025
+      KEEL_TEST_STRIPE_MOCK_URL: http://localhost:22111
+    cmds:
+      - go test -race ./server/...

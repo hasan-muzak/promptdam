@@ -1,0 +1,5 @@
+# Binaries "go build ./cmd/<name>" leaves here.
+/api
+/gateway
+/migrate
+/worker
