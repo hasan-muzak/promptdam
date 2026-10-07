@@ -5,6 +5,7 @@ import (
 	"github.com/hasan-muzak/keel/pkg/apikeys"
 	"github.com/hasan-muzak/keel/pkg/config"
 	"github.com/hasan-muzak/keel/pkg/db"
+	"github.com/hasan-muzak/keel/pkg/events"
 	"github.com/hasan-muzak/keel/pkg/keel"
 	"github.com/hasan-muzak/keel/pkg/llm"
 	"github.com/hasan-muzak/keel/pkg/webhooks"
@@ -59,8 +60,9 @@ var Product = keel.Product{
 	Scopes: []apikeys.Scope{
 		{Name: ScopeGateway, Description: "Call LLM providers through the gateway."},
 	},
-	Events:       []webhooks.EventType{budgets.EventThreshold, budgets.EventExceeded},
-	Migrations:   []db.MigrationSet{migrations.Postgres()},
-	Color:        "#0b7285",
-	SupportEmail: brand.SupportEmail,
+	Events:               []webhooks.EventType{budgets.EventThreshold, budgets.EventExceeded},
+	Migrations:           []db.MigrationSet{migrations.Postgres()},
+	ClickHouseMigrations: []events.MigrationSet{migrations.ClickHouse()},
+	Color:                "#0b7285",
+	SupportEmail:         brand.SupportEmail,
 }

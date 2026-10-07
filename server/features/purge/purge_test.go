@@ -44,6 +44,7 @@ func setup(t *testing.T) *world {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.Events = testkit.ClickHouse(t, migrations.ClickHouse())
 	return &world{t: t, ctx: ctx, c: c, app: core.NewApp(c)}
 }
 
@@ -123,6 +124,14 @@ func (w *world) fill(tn tenant) {
 			}
 		}
 	}
+	// The request log and, through its views, every rollup.
+	for _, p := range tn.projects {
+		err := w.c.Events.Unscoped().Exec(w.ctx, `INSERT INTO requests (project_id, ts, org_id, tags, developer, retention_days)
+			VALUES (?, now64(3), ?, ['t'], 'dev', 7)`, p, tn.org)
+		if err != nil {
+			w.t.Fatal(err)
+		}
+	}
 	// Valkey keys name the project they belong to (caches, counters).
 	for _, p := range tn.projects {
 		key := w.c.KV.Key("snapshot", p.String())
@@ -139,6 +148,20 @@ func (w *world) rows(column string, id uuid.UUID) int {
 	for _, s := range seeds(w.app.Ent) {
 		var n int
 		if err := w.c.DB.SQL.QueryRowContext(w.ctx, `SELECT count(*) FROM `+s.table+` WHERE `+column+` = $1`, id).Scan(&n); err != nil {
+			w.t.Fatal(err)
+		}
+		total += n
+	}
+	return total
+}
+
+// clickhouse counts a project's rows in every ClickHouse table.
+func (w *world) clickhouse(project uuid.UUID) uint64 {
+	w.t.Helper()
+	var total uint64
+	for _, table := range []string{"requests", "requests_hourly", "requests_hourly_developer", "requests_hourly_tag"} {
+		var n uint64
+		if err := w.c.Events.Unscoped().QueryRow(w.ctx, `SELECT count() FROM `+table+` WHERE project_id = ?`, project).Scan(&n); err != nil {
 			w.t.Fatal(err)
 		}
 		total += n
@@ -189,6 +212,12 @@ func TestDeletingAProjectThenItsOrgLeavesNothing(t *testing.T) {
 	if w.keys(p) != 0 {
 		t.Fatal("the deleted project's Valkey keys are left")
 	}
+	if n := w.clickhouse(p); n != 0 {
+		t.Fatalf("%d ClickHouse rows of the deleted project are left", n)
+	}
+	if w.clickhouse(sibling) != 4 {
+		t.Fatal("the purge took ClickHouse rows of a project that wasn't deleted")
+	}
 	if w.rows("project_id", sibling) == 0 || w.keys(sibling) == 0 || w.rows("org_id", b.org) == 0 || w.keys(b.projects[0]) == 0 {
 		t.Fatal("the purge took data of a project that wasn't deleted")
 	}
@@ -205,6 +234,12 @@ func TestDeletingAProjectThenItsOrgLeavesNothing(t *testing.T) {
 	}
 	if w.keys(sibling) != 0 {
 		t.Fatal("the deleted organization's Valkey keys are left")
+	}
+	if n := w.clickhouse(sibling); n != 0 {
+		t.Fatalf("%d ClickHouse rows of the deleted organization are left", n)
+	}
+	if w.clickhouse(b.projects[0]) != 4 {
+		t.Fatal("the purge took another organization's ClickHouse rows")
 	}
 	if w.rows("org_id", b.org) == 0 || w.keys(b.projects[0]) == 0 {
 		t.Fatal("the purge took another organization's data")

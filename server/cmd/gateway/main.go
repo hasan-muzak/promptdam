@@ -21,6 +21,7 @@ import (
 
 	"github.com/hasan-muzak/keel/products/promptdam/server/core"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/keel/products/promptdam/server/features/requestlog"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/resolver"
 	"github.com/hasan-muzak/keel/products/promptdam/server/features/snapshot"
 )
@@ -65,8 +66,13 @@ func run() error {
 		Keys: c.APIKeys, Snapshots: snapshots, Quota: c.Metering, Spend: app.Spend, Rates: rates, Prices: app.Prices,
 		Scope: core.ScopeGateway,
 	})
+	log := requestlog.New(requestlog.Config{
+		Events: c.Events, Prices: app.Prices, Spend: app.Spend, Entitlements: c.Metering.Entitlements,
+	})
 	h := gateway.New(gateway.Config{
 		Resolver: res,
+		// Every call is costed, counted against budgets and logged.
+		Done: log.Record,
 		// Providers' base URLs are public addresses; a local stack's fake
 		// provider runs on this machine.
 		Transport: safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: cfg.Env == config.Development}),
@@ -74,8 +80,9 @@ func run() error {
 	})
 
 	// Usage, spend and rate counters are flushed in the background, key
-	// last-used times batched, and configuration changes listened for.
-	for _, l := range []lifecycle{c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, snapshots} {
+	// last-used times and log rows batched, and configuration changes
+	// listened for.
+	for _, l := range []lifecycle{c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, snapshots, log} {
 		if err := l.Start(ctx); err != nil {
 			return err
 		}
