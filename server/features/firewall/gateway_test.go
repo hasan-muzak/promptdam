@@ -289,6 +289,11 @@ func TestEventsAreLogged(t *testing.T) {
 		page[0].BlockedBy != "secret" || page[0].Provider != "" {
 		t.Fatalf("second page %+v %v", page, err)
 	}
+	byTrace := f
+	byTrace.Trace = page[0].Trace
+	if one, _, _ := firewall.ListEvents(ctx, w.C.Events, w.Project, byTrace, nil, 10); len(one) != 1 || one[0].Detector != "aws_access_key" {
+		t.Fatalf("by trace %+v", one)
+	}
 	f.Blocked = true
 	if page, _, _ = firewall.ListEvents(ctx, w.C.Events, w.Project, f, nil, 10); len(page) != 1 {
 		t.Fatalf("blocked %+v", page)

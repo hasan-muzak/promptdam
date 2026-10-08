@@ -109,6 +109,12 @@ type ListRequestsIn struct {
 	Key       string `query:"key" doc:"Only this API key's calls (key_…)"`
 	Developer string `query:"developer"`
 	Errors    bool   `query:"errors" doc:"Only failed calls"`
+	Status    string `query:"status" doc:"Only calls the client got this status for (429), or a class of them (2xx, 4xx, 5xx)"`
+	ErrorCode string `query:"error_code" doc:"Only calls that failed with this code (budget_exceeded, firewall_blocked, provider_429…)"`
+	Firewall  string `query:"firewall" doc:"Only calls the firewall did this to: block, tokenize, redact, alert, or any"`
+	Router    string `query:"router" doc:"Only calls this model router placed"`
+	Tier      string `query:"tier" doc:"Only calls this tier served"`
+	Cache     string `query:"cache" doc:"Only calls the response cache answered (hit) or missed (miss)"`
 }
 
 // ListRequests lists a project's gateway calls, newest first.
@@ -119,7 +125,8 @@ func (h *Handlers) ListRequests(ctx *muzak.Context, in ListRequestsIn) (httpx.Li
 		return httpx.List[RequestOut]{}, err
 	}
 	f := analytics.Filter{From: from, To: to, Model: in.Model, Provider: in.Provider, Route: in.Route,
-		Developer: in.Developer, Errors: in.Errors}
+		Developer: in.Developer, Errors: in.Errors, Status: in.Status, ErrorCode: in.ErrorCode, FirewallAction: in.Firewall,
+		Router: in.Router, Tier: in.Tier, Cache: in.Cache}
 	if in.Key != "" {
 		if f.Key, err = ids.Decode(ids.APIKey, in.Key); err != nil {
 			return httpx.List[RequestOut]{}, httpx.NotFound("API key")
@@ -297,6 +304,8 @@ func analyticsFail(err error) error {
 		return muzak.UnprocessableEntity("the cursor is invalid").WithCode(CodeInvalidQuery)
 	case errors.Is(err, analytics.ErrGroup):
 		return muzak.UnprocessableEntity("unknown group_by").WithCode(CodeInvalidQuery)
+	case errors.Is(err, analytics.ErrStatus):
+		return muzak.UnprocessableEntity("status is an HTTP status (429) or a class (2xx, 4xx, 5xx)").WithCode(CodeInvalidQuery)
 	}
 	return err
 }

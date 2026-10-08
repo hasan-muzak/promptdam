@@ -103,6 +103,8 @@ type EventFilter struct {
 	From, To                          time.Time
 	Detector, Class, Action, Location string
 	Key                               uuid.UUID
+	// Trace keeps one call's events.
+	Trace string
 	// Blocked keeps only blocked calls' events.
 	Blocked bool
 }
@@ -133,7 +135,7 @@ func ListEvents(ctx context.Context, db *events.DB, project uuid.UUID, f EventFi
 		args = append(args, after.TS.UnixMilli(), after.Trace, after.Detector, after.Location)
 	}
 	for _, c := range []struct{ column, value string }{
-		{"detector", f.Detector}, {"class", f.Class}, {"action", f.Action}, {"location", f.Location},
+		{"detector", f.Detector}, {"class", f.Class}, {"action", f.Action}, {"location", f.Location}, {"trace", f.Trace},
 	} {
 		if c.value != "" {
 			q.WriteString(" AND " + c.column + " = ?")

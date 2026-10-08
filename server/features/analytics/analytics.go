@@ -104,7 +104,19 @@ type Filter struct {
 	Developer string
 	// Errors keeps only failed calls.
 	Errors bool
+	// FirewallAction is block, tokenize, redact, alert, or any (the
+	// firewall did something).
+	FirewallAction string
+	Router, Tier   string
+	// Cache is the response cache's answer: hit or miss.
+	Cache     string
+	ErrorCode string
+	// Status is an HTTP status (429), or a class of them (4xx).
+	Status string
 }
+
+// ErrStatus is a status filter that is neither a status nor a class.
+var ErrStatus = errors.New("analytics: status is an HTTP status (429) or a class (2xx, 4xx, 5xx)")
 
 func checkRange(from, to time.Time, most time.Duration) error {
 	if from.IsZero() || to.IsZero() || !from.Before(to) || to.Sub(from) > most {
@@ -157,11 +169,32 @@ func (s *Service) Requests(ctx context.Context, project uuid.UUID, f Filter, aft
 	}
 	for _, c := range []struct {
 		column, value string
-	}{{"served_model", f.Model}, {"provider", f.Provider}, {"route", f.Route}, {"developer", f.Developer}} {
+	}{{"served_model", f.Model}, {"provider", f.Provider}, {"route", f.Route}, {"developer", f.Developer},
+		{"router", f.Router}, {"tier", f.Tier}, {"cache", f.Cache}, {"error_code", f.ErrorCode}} {
 		if c.value != "" {
 			q.WriteString(" AND " + c.column + " = ?")
 			args = append(args, c.value)
 		}
+	}
+	switch f.FirewallAction {
+	case "":
+	case "any":
+		q.WriteString(" AND firewall_action != ''")
+	default:
+		q.WriteString(" AND firewall_action = ?")
+		args = append(args, f.FirewallAction)
+	}
+	if f.Status != "" {
+		code, class, err := status(f.Status)
+		if err != nil {
+			return nil, nil, err
+		}
+		if class {
+			q.WriteString(" AND intDiv(status, 100) = ?")
+		} else {
+			q.WriteString(" AND status = ?")
+		}
+		args = append(args, code)
 	}
 	if f.Key != uuid.Nil {
 		q.WriteString(" AND key_id = ?")
@@ -187,6 +220,18 @@ func (s *Service) Requests(ctx context.Context, project uuid.UUID, f Filter, aft
 		out = []Request{}
 	}
 	return out, next, nil
+}
+
+// status reads a status filter: 429, or 4xx (class true, code 4).
+func status(s string) (code uint16, class bool, err error) {
+	if len(s) == 3 && s[1:] == "xx" && s[0] >= '1' && s[0] <= '5' {
+		return uint16(s[0] - '0'), true, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 100 || n > 599 {
+		return 0, false, ErrStatus
+	}
+	return uint16(n), false, nil
 }
 
 // Request returns one call by its trace. The trace's TypeID holds the

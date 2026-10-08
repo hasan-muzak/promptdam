@@ -255,6 +255,7 @@ type ListFirewallEventsIn struct {
 	Action   string `query:"action" doc:"block, tokenize, redact or alert (or allow, route_to: a policy's event)"`
 	Location string `query:"location" doc:"messages, system, tools, input…, or response"`
 	Key      string `query:"key" doc:"Only this API key's calls (key_…)"`
+	Request  string `query:"request" doc:"Only this call's events: its trace (req_…)"`
 	Blocked  bool   `query:"blocked" doc:"Only the events of calls the firewall refused"`
 }
 
@@ -287,7 +288,7 @@ func (h *Handlers) ListFirewallEvents(ctx *muzak.Context, in ListFirewallEventsI
 		return httpx.List[FirewallEventOut]{}, err
 	}
 	f := firewall.EventFilter{From: from, To: to, Detector: in.Detector, Class: in.Class, Action: in.Action, Location: in.Location,
-		Blocked: in.Blocked}
+		Trace: in.Request, Blocked: in.Blocked}
 	if in.Key != "" {
 		if f.Key, err = ids.Decode(ids.APIKey, in.Key); err != nil {
 			return httpx.List[FirewallEventOut]{}, httpx.NotFound("API key")

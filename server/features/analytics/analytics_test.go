@@ -158,3 +158,52 @@ func TestUnpricedModels(t *testing.T) {
 		t.Fatalf("40 days: %v", err)
 	}
 }
+
+func TestRequestFilters(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true})
+	ctx := context.Background()
+	call := func(content string) {
+		t.Helper()
+		w.Call("/v1/chat/completions", `{"model":"gpt-5-mini","messages":[{"role":"user","content":"`+content+`"}]}`)
+		time.Sleep(2 * time.Millisecond)
+	}
+	call("hello")
+	w.Fake.Fail(500, 500, 500)
+	call("fails")
+	call("key AKIAIOSFODNN7EXAMPLE")
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s := analytics.New(w.C.Events)
+	now := time.Now()
+	count := func(f analytics.Filter) int {
+		t.Helper()
+		f.From, f.To = now.Add(-time.Hour), now.Add(time.Minute)
+		rows, _, err := s.Requests(ctx, w.Project, f, nil, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(rows)
+	}
+	for name, c := range map[string]struct {
+		f    analytics.Filter
+		want int
+	}{
+		"all":                  {analytics.Filter{}, 3},
+		"5xx":                  {analytics.Filter{Status: "5xx"}, 1},
+		"400":                  {analytics.Filter{Status: "400"}, 1},
+		"2xx":                  {analytics.Filter{Status: "2xx"}, 1},
+		"firewall_blocked":     {analytics.Filter{ErrorCode: "firewall_blocked"}, 1},
+		"the firewall did any": {analytics.Filter{FirewallAction: "any"}, 1},
+		"the firewall blocked": {analytics.Filter{FirewallAction: "block"}, 1},
+		"cache hits":           {analytics.Filter{Cache: "hit"}, 0},
+		"a router's":           {analytics.Filter{Router: "auto"}, 0},
+	} {
+		if got := count(c.f); got != c.want {
+			t.Errorf("%s: %d calls, want %d", name, got, c.want)
+		}
+	}
+	if _, _, err := s.Requests(ctx, w.Project, analytics.Filter{From: now.Add(-time.Hour), To: now, Status: "6xx"}, nil, 1); !errors.Is(err, analytics.ErrStatus) {
+		t.Fatalf("6xx: %v", err)
+	}
+}
