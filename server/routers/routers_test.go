@@ -15,6 +15,7 @@ import (
 
 	"github.com/hasan-muzak/keel-core/pkg/apikeys"
 	"github.com/hasan-muzak/keel-core/pkg/config"
+	"github.com/hasan-muzak/keel-core/pkg/ent/orgflag"
 	"github.com/hasan-muzak/keel-core/pkg/entx"
 	"github.com/hasan-muzak/keel-core/pkg/httpx"
 	"github.com/hasan-muzak/keel-core/pkg/ids"
@@ -509,6 +510,112 @@ func TestSuggestRouter(t *testing.T) {
 		AssertStatus(http.StatusCreated))
 	if created.Status != "shadow" || created.DefaultTier != "current" {
 		t.Fatalf("created %+v", created)
+	}
+}
+
+func TestFirewall(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	alice := e.as("alice")
+	org, _, base := e.project("alice")
+	orgID := mustID(t, ids.Org, org.ID)
+	path := base + "/firewall"
+	plan := func(features ...string) {
+		e.c.DB.Ent.OrgFlag.Delete().Where(orgflag.OrgID(orgID)).ExecX(entx.SkipTenant(ctx))
+		for _, f := range features {
+			e.c.DB.Ent.OrgFlag.Create().SetOrgID(orgID).SetKey("feature." + f).SetValue(json.RawMessage(`true`)).
+				SaveX(entx.SkipTenant(ctx))
+		}
+		e.c.Tenancy.ForgetOrg(ctx, orgID)
+		e.c.Billing.BustEntitlements(ctx, orgID)
+	}
+	put := func(s map[string]any) *testclient.Response { return e.client.Put(path, alice, testclient.JSON(s)) }
+
+	// Until it saves its own, a project blocks secrets and scans answers.
+	fw := testclient.Decoded[handlers.FirewallSettings](e.client.Get(path, alice).AssertStatus(http.StatusOK))
+	if !fw.Enabled || fw.Secrets != "block" || fw.PII != "off" || !fw.ScanResponses || fw.FailMode != "secrets_closed" ||
+		fw.Policies == nil || fw.Custom == nil {
+		t.Fatalf("defaults %+v", fw)
+	}
+	// Free: secrets and alerts on personal data; masking it needs Pro.
+	settings := map[string]any{"enabled": true, "secrets": "redact", "pii": "alert", "scan_responses": true}
+	put(settings).AssertStatus(http.StatusOK)
+	settings["pii"] = "tokenize"
+	if res := put(settings); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free tokenizes: %d %s", res.Status, res.String())
+	}
+	plan(catalog.PIIRedaction)
+	put(settings).AssertStatus(http.StatusOK)
+	settings["secrets"] = "tokenize"
+	if res := put(settings); res.Status != http.StatusUnprocessableEntity || res.Error().Error.Code != handlers.CodeInvalidFirewall {
+		t.Fatalf("tokenized secrets: %d %s", res.Status, res.String())
+	}
+	settings["secrets"] = "block"
+
+	// Policies come with Team; one that doesn't compile says where.
+	policy := map[string]any{"name": "no pii to openai", "when": "classes.pii > 0 &&\n  target.kind == \"openai\"", "action": "block"}
+	settings["policies"] = []any{policy}
+	if res := put(settings); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Pro sets policies: %d %s", res.Status, res.String())
+	}
+	plan(catalog.PIIRedaction, catalog.FirewallPolicies)
+	settings["policies"] = []any{map[string]any{"name": "bad", "when": "true &&\n  request.nope", "action": "block"}}
+	if er := put(settings).Error().Error; er.Code != handlers.CodeInvalidFirewall || len(er.Details) == 0 ||
+		er.Details[0].Field != "policies[0].when" || !strings.HasPrefix(er.Details[0].Issue, "line 2,") {
+		t.Fatalf("a policy that doesn't compile: %+v", er)
+	}
+	settings["policies"] = []any{policy}
+	got := testclient.Decoded[handlers.FirewallSettings](put(settings).AssertStatus(http.StatusOK))
+	if got.PII != "tokenize" || len(got.Policies) != 1 || got.CustomAction != "alert" {
+		t.Fatalf("saved %+v", got)
+	}
+
+	// A downgrade keeps what is saved: it may be kept while the rest
+	// changes, or removed, but not added to.
+	plan()
+	settings["scan_responses"] = false
+	put(settings).AssertStatus(http.StatusOK)
+	settings["custom"] = map[string]string{"badge": `BADGE-\d{6}`}
+	if res := put(settings); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free adds a pattern: %d %s", res.Status, res.String())
+	}
+	delete(settings, "custom")
+
+	// The dry-run: secrets blocked, personal data tokenized, the policy on
+	// where the call goes.
+	try := func(content string, extra map[string]any) handlers.TestFirewallOut {
+		t.Helper()
+		in := map[string]any{"request": map[string]any{"model": "gpt-5-mini", "messages": []any{
+			map[string]any{"role": "user", "content": content}}}}
+		for k, v := range extra {
+			in[k] = v
+		}
+		return testclient.Decoded[handlers.TestFirewallOut](e.client.Post(path+"/test", alice, testclient.JSON(in)).
+			AssertStatus(http.StatusOK))
+	}
+	out := try("deploy with AKIAIOSFODNN7EXAMPLE", nil)
+	if !out.Blocked || out.BlockedBy != "secret" || !strings.Contains(out.Message, "aws_access_key") || string(out.Request) != "null" ||
+		len(out.Hits) != 1 || out.Hits[0].Location != "messages" {
+		t.Fatalf("a secret %+v", out)
+	}
+	out = try("mail ada@example.com", nil)
+	if out.Blocked || out.Action != "tokenize" || !strings.Contains(string(out.Request), "⟦email_1⟧") || out.Target.Model != "" {
+		t.Fatalf("no provider yet %+v %s", out, out.Request)
+	}
+	e.client.Post(base+"/providers", alice, testclient.JSON(map[string]any{
+		"name": "openai", "kind": "openai", "api_key": "sk-test-secret-abcd",
+	})).AssertStatus(http.StatusCreated)
+	if out = try("mail ada@example.com", nil); !out.Blocked || out.Policy != "no pii to openai" || out.Target.Kind != "openai" {
+		t.Fatalf("the policy %+v", out)
+	}
+	// Settings tried before saving, a plan's features included.
+	out = try("badge BADGE-123456", map[string]any{"settings": map[string]any{"enabled": true,
+		"custom": map[string]string{"badge": `BADGE-\d{6}`}, "custom_action": "redact"}})
+	if out.Action != "redact" || !strings.Contains(string(out.Request), "[REDACTED:badge]") {
+		t.Fatalf("unsaved settings %+v", out)
+	}
+	if res := e.client.Post(path+"/test", alice, testclient.JSON(map[string]any{"request": map[string]any{"messages": []any{}}})); res.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("no model: %d %s", res.Status, res.String())
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
+	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
@@ -38,6 +39,8 @@ type Client struct {
 	Budget *BudgetClient
 	// FamilyLabel is the client for interacting with the FamilyLabel builders.
 	FamilyLabel *FamilyLabelClient
+	// FirewallSetting is the client for interacting with the FirewallSetting builders.
+	FirewallSetting *FirewallSettingClient
 	// KeySetting is the client for interacting with the KeySetting builders.
 	KeySetting *KeySettingClient
 	// ModelRouter is the client for interacting with the ModelRouter builders.
@@ -67,6 +70,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Budget = NewBudgetClient(c.config)
 	c.FamilyLabel = NewFamilyLabelClient(c.config)
+	c.FirewallSetting = NewFirewallSettingClient(c.config)
 	c.KeySetting = NewKeySettingClient(c.config)
 	c.ModelRouter = NewModelRouterClient(c.config)
 	c.PriceList = NewPriceListClient(c.config)
@@ -169,6 +173,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:           cfg,
 		Budget:           NewBudgetClient(cfg),
 		FamilyLabel:      NewFamilyLabelClient(cfg),
+		FirewallSetting:  NewFirewallSettingClient(cfg),
 		KeySetting:       NewKeySettingClient(cfg),
 		ModelRouter:      NewModelRouterClient(cfg),
 		PriceList:        NewPriceListClient(cfg),
@@ -198,6 +203,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:           cfg,
 		Budget:           NewBudgetClient(cfg),
 		FamilyLabel:      NewFamilyLabelClient(cfg),
+		FirewallSetting:  NewFirewallSettingClient(cfg),
 		KeySetting:       NewKeySettingClient(cfg),
 		ModelRouter:      NewModelRouterClient(cfg),
 		PriceList:        NewPriceListClient(cfg),
@@ -235,8 +241,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Budget, c.FamilyLabel, c.KeySetting, c.ModelRouter, c.PriceList,
-		c.PriceOverride, c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
+		c.Budget, c.FamilyLabel, c.FirewallSetting, c.KeySetting, c.ModelRouter,
+		c.PriceList, c.PriceOverride, c.Provider, c.Route, c.RouterClassifier,
+		c.RoutingRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -246,8 +253,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Budget, c.FamilyLabel, c.KeySetting, c.ModelRouter, c.PriceList,
-		c.PriceOverride, c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
+		c.Budget, c.FamilyLabel, c.FirewallSetting, c.KeySetting, c.ModelRouter,
+		c.PriceList, c.PriceOverride, c.Provider, c.Route, c.RouterClassifier,
+		c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -260,6 +268,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Budget.mutate(ctx, m)
 	case *FamilyLabelMutation:
 		return c.FamilyLabel.mutate(ctx, m)
+	case *FirewallSettingMutation:
+		return c.FirewallSetting.mutate(ctx, m)
 	case *KeySettingMutation:
 		return c.KeySetting.mutate(ctx, m)
 	case *ModelRouterMutation:
@@ -548,6 +558,141 @@ func (c *FamilyLabelClient) mutate(ctx context.Context, m *FamilyLabelMutation) 
 		return (&FamilyLabelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown FamilyLabel mutation op: %q", m.Op())
+	}
+}
+
+// FirewallSettingClient is a client for the FirewallSetting schema.
+type FirewallSettingClient struct {
+	config
+}
+
+// NewFirewallSettingClient returns a client for the FirewallSetting from the given config.
+func NewFirewallSettingClient(c config) *FirewallSettingClient {
+	return &FirewallSettingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `firewallsetting.Hooks(f(g(h())))`.
+func (c *FirewallSettingClient) Use(hooks ...Hook) {
+	c.hooks.FirewallSetting = append(c.hooks.FirewallSetting, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `firewallsetting.Intercept(f(g(h())))`.
+func (c *FirewallSettingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.FirewallSetting = append(c.inters.FirewallSetting, interceptors...)
+}
+
+// Create returns a builder for creating a FirewallSetting entity.
+func (c *FirewallSettingClient) Create() *FirewallSettingCreate {
+	mutation := newFirewallSettingMutation(c.config, OpCreate)
+	return &FirewallSettingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of FirewallSetting entities.
+func (c *FirewallSettingClient) CreateBulk(builders ...*FirewallSettingCreate) *FirewallSettingCreateBulk {
+	return &FirewallSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *FirewallSettingClient) MapCreateBulk(slice any, setFunc func(*FirewallSettingCreate, int)) *FirewallSettingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &FirewallSettingCreateBulk{err: fmt.Errorf("calling to FirewallSettingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*FirewallSettingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &FirewallSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for FirewallSetting.
+func (c *FirewallSettingClient) Update() *FirewallSettingUpdate {
+	mutation := newFirewallSettingMutation(c.config, OpUpdate)
+	return &FirewallSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *FirewallSettingClient) UpdateOne(_m *FirewallSetting) *FirewallSettingUpdateOne {
+	mutation := newFirewallSettingMutation(c.config, OpUpdateOne, withFirewallSetting(_m))
+	return &FirewallSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *FirewallSettingClient) UpdateOneID(id uuid.UUID) *FirewallSettingUpdateOne {
+	mutation := newFirewallSettingMutation(c.config, OpUpdateOne, withFirewallSettingID(id))
+	return &FirewallSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for FirewallSetting.
+func (c *FirewallSettingClient) Delete() *FirewallSettingDelete {
+	mutation := newFirewallSettingMutation(c.config, OpDelete)
+	return &FirewallSettingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *FirewallSettingClient) DeleteOne(_m *FirewallSetting) *FirewallSettingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *FirewallSettingClient) DeleteOneID(id uuid.UUID) *FirewallSettingDeleteOne {
+	builder := c.Delete().Where(firewallsetting.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &FirewallSettingDeleteOne{builder}
+}
+
+// Query returns a query builder for FirewallSetting.
+func (c *FirewallSettingClient) Query() *FirewallSettingQuery {
+	return &FirewallSettingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeFirewallSetting},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a FirewallSetting entity by its id.
+func (c *FirewallSettingClient) Get(ctx context.Context, id uuid.UUID) (*FirewallSetting, error) {
+	return c.Query().Where(firewallsetting.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *FirewallSettingClient) GetX(ctx context.Context, id uuid.UUID) *FirewallSetting {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *FirewallSettingClient) Hooks() []Hook {
+	hooks := c.hooks.FirewallSetting
+	return append(hooks[:len(hooks):len(hooks)], firewallsetting.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *FirewallSettingClient) Interceptors() []Interceptor {
+	inters := c.inters.FirewallSetting
+	return append(inters[:len(inters):len(inters)], firewallsetting.Interceptors[:]...)
+}
+
+func (c *FirewallSettingClient) mutate(ctx context.Context, m *FirewallSettingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&FirewallSettingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&FirewallSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&FirewallSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&FirewallSettingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown FirewallSetting mutation op: %q", m.Op())
 	}
 }
 
@@ -1632,12 +1777,12 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Budget, FamilyLabel, KeySetting, ModelRouter, PriceList, PriceOverride,
-		Provider, Route, RouterClassifier, RoutingRule []ent.Hook
+		Budget, FamilyLabel, FirewallSetting, KeySetting, ModelRouter, PriceList,
+		PriceOverride, Provider, Route, RouterClassifier, RoutingRule []ent.Hook
 	}
 	inters struct {
-		Budget, FamilyLabel, KeySetting, ModelRouter, PriceList, PriceOverride,
-		Provider, Route, RouterClassifier, RoutingRule []ent.Interceptor
+		Budget, FamilyLabel, FirewallSetting, KeySetting, ModelRouter, PriceList,
+		PriceOverride, Provider, Route, RouterClassifier, RoutingRule []ent.Interceptor
 	}
 )
 

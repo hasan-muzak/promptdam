@@ -2,6 +2,7 @@ package schema
 
 import (
 	"entgo.io/ent"
+	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 
@@ -44,7 +45,7 @@ func (ModelRouter) Fields() []ent.Field {
 			Comment("Asked when the classifier is unsure: model or provider/model; empty: never"),
 		field.Int("decision_timeout_ms").Default(150).Comment("How long the decision model may take before the default tier serves"),
 		field.Time("activated_at").Optional().Nillable(),
-		field.JSON("demoted", []tiers.Demotion{}).Default([]tiers.Demotion{}).
+		field.JSON("demoted", []tiers.Demotion{}).Default([]tiers.Demotion{}).Annotations(entsql.Default("[]")).
 			Comment("Tiers the canary demoted: the router places no call on them until restored"),
 		field.Time("ready_at").Optional().Nillable().
 			Comment("When the router's evidence first met its floor (router.ready); cleared when it changes"),

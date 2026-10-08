@@ -28,6 +28,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/memcache"
 
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
@@ -75,6 +76,9 @@ type Data struct {
 	Prices    []prices.Override               `json:"prices"`
 	Rules     []rules.Rule                    `json:"rules"`
 	Routers   []routers.Router                `json:"routers"`
+	// Firewall is the project's firewall; nil (a copy cached before it
+	// existed) is the defaults.
+	Firewall *firewall.Settings `json:"firewall,omitempty"`
 }
 
 // Snapshot is a project's configuration as a gateway holds it in memory.
@@ -91,6 +95,8 @@ type Snapshot struct {
 	Rules []rules.Rule
 	// Routers are the model routers that aren't disabled, by name.
 	Routers map[string]*routers.Router
+	// Firewall inspects the project's calls; nil when it is off.
+	Firewall *firewall.Engine
 }
 
 // Opened is a provider with its key's headers.
@@ -108,6 +114,7 @@ type Sources struct {
 	Prices    *prices.Overrides
 	Rules     *rules.Service
 	Routers   *routers.Service
+	Firewall  *firewall.Service
 }
 
 // Build reads a project's configuration from Postgres.
@@ -154,6 +161,13 @@ func (s Sources) Build(ctx context.Context, org, project uuid.UUID) (Data, error
 		if d.Routers, err = s.Routers.Serving(ctx, project); err != nil {
 			return Data{}, fmt.Errorf("snapshot: routers: %w", err)
 		}
+	}
+	if s.Firewall != nil {
+		fw, err := s.Firewall.Get(ctx, project)
+		if err != nil {
+			return Data{}, fmt.Errorf("snapshot: firewall: %w", err)
+		}
+		d.Firewall = &fw
 	}
 	return d, nil
 }
@@ -250,6 +264,11 @@ func assemble(project uuid.UUID, d Data, header func(Provider) (http.Header, err
 		Routes: make(map[string]Route, len(d.Routes)), Budgets: d.Budgets, Prices: prices.ProjectPrices(d.Prices),
 		Rules: d.Rules, Routers: make(map[string]*routers.Router, len(d.Routers)),
 	}
+	fw := firewall.Defaults()
+	if d.Firewall != nil {
+		fw = *d.Firewall
+	}
+	snap.Firewall = firewall.Load(fw)
 	for i := range d.Routers {
 		if m := d.Routers[i].Classifier; m != nil {
 			m.Prepare() // before any call reads it

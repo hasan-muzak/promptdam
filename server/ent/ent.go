@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
+	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
@@ -84,6 +85,7 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			budget.Table:           budget.ValidColumn,
 			familylabel.Table:      familylabel.ValidColumn,
+			firewallsetting.Table:  firewallsetting.ValidColumn,
 			keysetting.Table:       keysetting.ValidColumn,
 			modelrouter.Table:      modelrouter.ValidColumn,
 			pricelist.Table:        pricelist.ValidColumn,

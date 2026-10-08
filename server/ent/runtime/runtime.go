@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
+	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
@@ -150,6 +151,29 @@ func init() {
 	familylabelDescID := familylabelMixinFields0[0].Descriptor()
 	// familylabel.DefaultID holds the default value on creation for the id field.
 	familylabel.DefaultID = familylabelDescID.Default.(func() uuid.UUID)
+	firewallsettingMixin := schema.FirewallSetting{}.Mixin()
+	firewallsettingMixinHooks1 := firewallsettingMixin[1].Hooks()
+	firewallsetting.Hooks[0] = firewallsettingMixinHooks1[0]
+	firewallsettingMixinInters1 := firewallsettingMixin[1].Interceptors()
+	firewallsetting.Interceptors[0] = firewallsettingMixinInters1[0]
+	firewallsettingMixinFields0 := firewallsettingMixin[0].Fields()
+	_ = firewallsettingMixinFields0
+	firewallsettingFields := schema.FirewallSetting{}.Fields()
+	_ = firewallsettingFields
+	// firewallsettingDescCreatedAt is the schema descriptor for created_at field.
+	firewallsettingDescCreatedAt := firewallsettingMixinFields0[1].Descriptor()
+	// firewallsetting.DefaultCreatedAt holds the default value on creation for the created_at field.
+	firewallsetting.DefaultCreatedAt = firewallsettingDescCreatedAt.Default.(func() time.Time)
+	// firewallsettingDescUpdatedAt is the schema descriptor for updated_at field.
+	firewallsettingDescUpdatedAt := firewallsettingMixinFields0[2].Descriptor()
+	// firewallsetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	firewallsetting.DefaultUpdatedAt = firewallsettingDescUpdatedAt.Default.(func() time.Time)
+	// firewallsetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	firewallsetting.UpdateDefaultUpdatedAt = firewallsettingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// firewallsettingDescID is the schema descriptor for id field.
+	firewallsettingDescID := firewallsettingMixinFields0[0].Descriptor()
+	// firewallsetting.DefaultID holds the default value on creation for the id field.
+	firewallsetting.DefaultID = firewallsettingDescID.Default.(func() uuid.UUID)
 	keysettingMixin := schema.KeySetting{}.Mixin()
 	keysettingMixinHooks1 := keysettingMixin[1].Hooks()
 	keysetting.Hooks[0] = keysettingMixinHooks1[0]

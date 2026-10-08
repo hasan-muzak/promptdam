@@ -18,6 +18,8 @@ type Tx struct {
 	Budget *BudgetClient
 	// FamilyLabel is the client for interacting with the FamilyLabel builders.
 	FamilyLabel *FamilyLabelClient
+	// FirewallSetting is the client for interacting with the FirewallSetting builders.
+	FirewallSetting *FirewallSettingClient
 	// KeySetting is the client for interacting with the KeySetting builders.
 	KeySetting *KeySettingClient
 	// ModelRouter is the client for interacting with the ModelRouter builders.
@@ -167,6 +169,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.Budget = NewBudgetClient(tx.config)
 	tx.FamilyLabel = NewFamilyLabelClient(tx.config)
+	tx.FirewallSetting = NewFirewallSettingClient(tx.config)
 	tx.KeySetting = NewKeySettingClient(tx.config)
 	tx.ModelRouter = NewModelRouterClient(tx.config)
 	tx.PriceList = NewPriceListClient(tx.config)

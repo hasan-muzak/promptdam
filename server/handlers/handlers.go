@@ -10,6 +10,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/cachedoctor"
 	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
@@ -33,5 +34,7 @@ type Handlers struct {
 	Rules       *rules.Service
 	RuleDeps    RuleDeps
 	Routers     *routers.Service
-	RouterDeps  RouterDeps
+	// RouterDeps serve the firewall's routes too: plans, dry-runs.
+	RouterDeps RouterDeps
+	Firewall   *firewall.Service
 }

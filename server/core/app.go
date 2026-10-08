@@ -16,6 +16,7 @@ import (
 
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
@@ -46,6 +47,9 @@ type App struct {
 	// Training trains their classifiers on their judged calls.
 	Routers  *routers.Service
 	Training *training.Service
+	// Firewall keeps projects' firewalls: what their calls' secrets and
+	// personal data get, and their policies.
+	Firewall *firewall.Service
 	// Watcher announces ready routers and demotes drifting tiers.
 	Watcher *routers.Watcher
 	// GatewayURL is where clients reach the gateway, for setup instructions.
@@ -110,6 +114,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.RuleEnv = env
 	a.Rules = rules.New(a.Ent, env, a.configChanged)
 	a.Routers = routers.New(a.Ent, env, a.Prices, a.configChanged)
+	a.Firewall = firewall.NewService(a.Ent, a.configChanged)
 	a.Training = training.New(training.Config{Ent: a.Ent, Events: c.Events, Changed: a.configChanged})
 	a.Watcher = routers.NewWatcher(routers.WatchConfig{Ent: a.Ent, Events: c.Events, Notifier: c.Notifier, Webhooks: c.Webhooks,
 		AppURL: c.Config.AppURL, Changed: a.configChanged})
@@ -147,5 +152,5 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 // Sources are where the gateway's snapshots are built from.
 func (a *App) Sources() snapshot.Sources {
 	return snapshot.Sources{Providers: a.Providers, Keys: a.Keys, Routes: a.Routes, Budgets: a.Budgets, Prices: a.PriceOverrides,
-		Rules: a.Rules, Routers: a.Routers}
+		Rules: a.Rules, Routers: a.Routers, Firewall: a.Firewall}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
+	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/predicate"
@@ -129,6 +130,33 @@ func (f TraverseFamilyLabel) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.FamilyLabelQuery", q)
+}
+
+// The FirewallSettingFunc type is an adapter to allow the use of ordinary function as a Querier.
+type FirewallSettingFunc func(context.Context, *ent.FirewallSettingQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f FirewallSettingFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.FirewallSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.FirewallSettingQuery", q)
+}
+
+// The TraverseFirewallSetting type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseFirewallSetting func(context.Context, *ent.FirewallSettingQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseFirewallSetting) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseFirewallSetting) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.FirewallSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.FirewallSettingQuery", q)
 }
 
 // The KeySettingFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -354,6 +382,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.BudgetQuery, predicate.Budget, budget.OrderOption]{typ: ent.TypeBudget, tq: q}, nil
 	case *ent.FamilyLabelQuery:
 		return &query[*ent.FamilyLabelQuery, predicate.FamilyLabel, familylabel.OrderOption]{typ: ent.TypeFamilyLabel, tq: q}, nil
+	case *ent.FirewallSettingQuery:
+		return &query[*ent.FirewallSettingQuery, predicate.FirewallSetting, firewallsetting.OrderOption]{typ: ent.TypeFirewallSetting, tq: q}, nil
 	case *ent.KeySettingQuery:
 		return &query[*ent.KeySettingQuery, predicate.KeySetting, keysetting.OrderOption]{typ: ent.TypeKeySetting, tq: q}, nil
 	case *ent.ModelRouterQuery:

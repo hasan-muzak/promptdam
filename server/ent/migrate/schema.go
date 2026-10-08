@@ -73,6 +73,33 @@ var (
 			},
 		},
 	}
+	// FirewallSettingsColumns holds the columns for the "firewall_settings" table.
+	FirewallSettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "settings", Type: field.TypeJSON},
+	}
+	// FirewallSettingsTable holds the schema information for the "firewall_settings" table.
+	FirewallSettingsTable = &schema.Table{
+		Name:       "firewall_settings",
+		Columns:    FirewallSettingsColumns,
+		PrimaryKey: []*schema.Column{FirewallSettingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "firewallsetting_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{FirewallSettingsColumns[3], FirewallSettingsColumns[4]},
+			},
+			{
+				Name:    "firewallsetting_project_id",
+				Unique:  true,
+				Columns: []*schema.Column{FirewallSettingsColumns[4]},
+			},
+		},
+	}
 	// KeySettingsColumns holds the columns for the "key_settings" table.
 	KeySettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -124,7 +151,7 @@ var (
 		{Name: "decision_model", Type: field.TypeString, Size: 300, Default: ""},
 		{Name: "decision_timeout_ms", Type: field.TypeInt, Default: 150},
 		{Name: "activated_at", Type: field.TypeTime, Nullable: true},
-		{Name: "demoted", Type: field.TypeJSON},
+		{Name: "demoted", Type: field.TypeJSON, Default: "[]"},
 		{Name: "ready_at", Type: field.TypeTime, Nullable: true},
 	}
 	// ModelRoutersTable holds the schema information for the "model_routers" table.
@@ -341,6 +368,7 @@ var (
 	Tables = []*schema.Table{
 		BudgetsTable,
 		FamilyLabelsTable,
+		FirewallSettingsTable,
 		KeySettingsTable,
 		ModelRoutersTable,
 		PriceListsTable,

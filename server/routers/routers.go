@@ -28,7 +28,7 @@ func Mount(a *muzak.App, app *core.App) {
 		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides, Families: families.NewService(app.Ent, c.Events),
 		CacheDoctor: cachedoctor.New(c.Events, app.Prices), Rules: app.Rules,
 		RuleDeps: handlers.RuleDeps{Env: app.RuleEnv, Events: c.Events, Prices: app.Prices},
-		Routers:  app.Routers,
+		Routers:  app.Routers, Firewall: app.Firewall,
 		RouterDeps: handlers.RouterDeps{Explainer: resolver.New(resolver.Config{Prices: app.Prices, Rules: app.RuleEnv}),
 			Sources: app.Sources(), Billing: c.Billing, AppURL: c.Config.AppURL, Events: c.Events, Prices: app.Prices, Jobs: c.Jobs},
 	}
@@ -193,6 +193,25 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Description("The tier it would serve and why (the step that chose it, the rule that held), what the request "+
 			"needs of a model (tools, images, files, a JSON schema, context), which tiers' models can take it, and the "+
 			"providers and models the gateway would try, in order."))
+
+	fwcat := muzak.WithCategory("Firewall")
+	fw := "/v1/orgs/{org}/projects/{project}/firewall"
+	r.Get(fw, h.GetFirewall, fwcat, muzak.Title("Get Firewall"), project(tenancy.PermProjectsRead),
+		muzak.Summary("What the firewall does with the secrets and personal data a project's calls carry"),
+		muzak.Description("Every text of a request is scanned before anything is sent. Each finding's class says what "+
+			"happens: secrets (API keys, tokens, private keys, connection strings), personal data and the project's own "+
+			"patterns are blocked, redacted (masked), tokenized (the model sees a placeholder, the answer gets the value "+
+			"back), alerted on, or let be. A project that set nothing blocks secrets and scans answers."))
+	r.Put(fw, h.PutFirewall, fwcat, muzak.Title("Set Firewall"), project(tenancy.PermProjectsManage),
+		muzak.Summary("Replace a project's firewall"),
+		muzak.Description("Redacting or tokenizing personal data needs a plan with PII redaction, policies one with "+
+			"firewall policies, custom patterns one with custom policies. A downgrade never loosens a firewall: what is "+
+			"saved keeps applying, and may be kept or removed. Gateways apply a change within seconds. Policy compile "+
+			"errors come back with their line and column."))
+	r.Post(fw+"/test", h.TestFirewall, fwcat, muzak.Title("Test Firewall"), project(tenancy.PermProjectsRead),
+		muzak.Summary("What the firewall would do with a request, without calling any provider"),
+		muzak.Description("What it finds where, what each finding gets, the request as the provider would get it, and "+
+			"the policy that decides. Try settings before saving them with settings."))
 
 	pcat := muzak.WithCategory("Prices")
 	pr := "/v1/orgs/{org}/projects/{project}/prices"

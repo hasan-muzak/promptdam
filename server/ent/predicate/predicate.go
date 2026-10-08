@@ -12,6 +12,9 @@ type Budget func(*sql.Selector)
 // FamilyLabel is the predicate function for familylabel builders.
 type FamilyLabel func(*sql.Selector)
 
+// FirewallSetting is the predicate function for firewallsetting builders.
+type FirewallSetting func(*sql.Selector)
+
 // KeySetting is the predicate function for keysetting builders.
 type KeySetting func(*sql.Selector)
 

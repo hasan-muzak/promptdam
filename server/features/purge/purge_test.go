@@ -20,6 +20,7 @@ import (
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
+	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
@@ -96,6 +97,9 @@ func seeds(c *pdent.Client) []seed {
 		}},
 		{"FamilyLabel", familylabel.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.FamilyLabel.Create().SetOrgID(org).SetProjectID(p).SetFamilyID("0123456789abcdef").SetLabel("x").Exec(ctx)
+		}},
+		{"FirewallSetting", firewallsetting.Table, func(ctx context.Context, org, p uuid.UUID) error {
+			return c.FirewallSetting.Create().SetOrgID(org).SetProjectID(p).SetSettings([]byte(`{"enabled":true}`)).Exec(ctx)
 		}},
 		{"KeySetting", keysetting.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.KeySetting.Create().SetOrgID(org).SetProjectID(p).SetAPIKeyID(uuid.New()).Exec(ctx)

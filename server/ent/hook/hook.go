@@ -33,6 +33,18 @@ func (f FamilyLabelFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.FamilyLabelMutation", m)
 }
 
+// The FirewallSettingFunc type is an adapter to allow the use of ordinary
+// function as FirewallSetting mutator.
+type FirewallSettingFunc func(context.Context, *ent.FirewallSettingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f FirewallSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.FirewallSettingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.FirewallSettingMutation", m)
+}
+
 // The KeySettingFunc type is an adapter to allow the use of ordinary
 // function as KeySetting mutator.
 type KeySettingFunc func(context.Context, *ent.KeySettingMutation) (ent.Value, error)

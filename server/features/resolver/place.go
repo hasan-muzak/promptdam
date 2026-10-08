@@ -22,8 +22,9 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/snapshot"
 )
 
-// ruleRequest is a call as rules see it, routing rules and routers' alike.
-func ruleRequest(c *gateway.Call, m *Meta) rules.Request {
+// RuleRequest is a call as rules see it: routing rules, routers' and
+// firewall policies alike.
+func RuleRequest(c *gateway.Call, m *Meta) rules.Request {
 	return rules.Request{Model: c.Request.Model, Format: c.Format.String(), Family: c.Shape.Family, User: m.User,
 		Developer: m.Developer, Route: m.Route, InputTokens: c.BodyBytes / 4, Messages: c.Request.Messages,
 		MaxTokens: c.Request.MaxTokens, HasTools: c.Request.Tools, JSON: c.Request.Prefix.Format != "",
@@ -116,7 +117,7 @@ func (p *placer) holds(when string) bool {
 		return false
 	}
 	if p.vars == nil {
-		p.vars = ruleRequest(p.c, p.m).Vars()
+		p.vars = RuleRequest(p.c, p.m).Vars()
 	}
 	ok, err := prg.Bool(p.vars)
 	return err == nil && ok

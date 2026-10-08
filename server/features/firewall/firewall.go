@@ -464,9 +464,9 @@ type Target struct {
 // Decide runs the policies on a call the scan let through or blocked:
 // the first that holds blocks it, allows it (cancelling a class's block)
 // or sends it to another model. A policy that fails to evaluate doesn't
-// hold.
+// hold; a request that couldn't be scanned stays as fail mode left it.
 func (e *Engine) Decide(o *Outcome, req rules.Request, t Target) {
-	if len(e.s.Policies) == 0 {
+	if len(e.s.Policies) == 0 || o.BlockedBy == "scan" || o.Failed {
 		return
 	}
 	findings, classes := map[string]int64{}, map[string]int64{ClassSecret: 0, ClassPII: 0, ClassCustom: 0}

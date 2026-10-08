@@ -304,7 +304,7 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	// model asked for stays the first fallback. Calls a router placed
 	// follow its own rules.
 	if rt == nil && len(snap.Rules) > 0 && r.cfg.Rules != nil {
-		if rule, ok := rules.Match(r.cfg.Rules, snap.Rules, m.Route, ruleRequest(c, m)); ok {
+		if rule, ok := rules.Match(r.cfg.Rules, snap.Rules, m.Route, RuleRequest(c, m)); ok {
 			if routed := r.fallback(snap, format, rule.ToModel, nil); len(routed) > 0 {
 				m.Rule = rule.Name
 				for _, t := range targets {
