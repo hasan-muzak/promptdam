@@ -158,6 +158,13 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Description("Routers start in shadow mode: they decide every call and log their choice, but serve the default "+
 			"tier, until made active (a plan with model routers). Tiers may name models of either API format: calls are "+
 			"translated. Rule compile errors come back with their line and column."))
+	r.Get(mr+"/suggest", h.SuggestRouter, mrcat, muzak.Title("Suggest Router"), project(tenancy.PermProjectsRead),
+		muzak.Summary("A router to start from, built from the project's providers' models"),
+		muzak.Description("Tiers from cheapest to strongest, each the newest model of a known family (Claude Haiku, Sonnet "+
+			"and Opus; GPT nano, mini and the base model; Gemini Flash-Lite, Flash and Pro; Mistral, DeepSeek and Grok "+
+			"likewise) a provider of the project serves, else picked by price, with the same tier of the other providers "+
+			"as fallbacks. The model the project used most in the last 7 days (or current_model) becomes the default "+
+			"tier. Create it as is, in shadow mode, or edit it first."))
 	r.Get(mr+"/{router}", h.GetRouter, mrcat, muzak.Title("Get Router"), project(tenancy.PermProjectsRead),
 		muzak.Summary("Get a model router"))
 	r.Put(mr+"/{router}", h.UpdateRouter, mrcat, muzak.Title("Update Router"), project(tenancy.PermProjectsManage),

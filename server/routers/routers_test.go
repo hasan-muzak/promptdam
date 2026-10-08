@@ -476,6 +476,42 @@ func TestRouters(t *testing.T) {
 	}
 }
 
+// A suggested router is built from the project's providers and can be
+// created as is.
+func TestSuggestRouter(t *testing.T) {
+	e := setup(t)
+	alice := e.as("alice")
+	_, _, base := e.project("alice")
+	if res := e.client.Get(base+"/routers/suggest", alice); res.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("no provider: %d %s", res.Status, res.String())
+	}
+	for _, p := range []map[string]any{
+		{"name": "claude", "kind": "anthropic", "api_key": "sk-ant-test-abcd"},
+		{"name": "openai", "kind": "openai", "api_key": "sk-test-secret-abcd", "priority": 1},
+	} {
+		e.client.Post(base+"/providers", alice, testclient.JSON(p)).AssertStatus(http.StatusCreated)
+	}
+	s := testclient.Decoded[handlers.SuggestRouterOut](e.client.Get(base+"/routers/suggest", alice).AssertStatus(http.StatusOK))
+	r := s.Router
+	if r.Name != "auto" || r.Status != "shadow" || len(r.Tiers) != 3 || r.Tiers[0].Model != "claude/claude-haiku-4-5" ||
+		r.Tiers[1].Model != "claude/claude-sonnet-5-5" || r.Tiers[2].Model != "claude/claude-opus-5-5" ||
+		len(r.Tiers[2].Fallbacks) != 1 || r.Tiers[2].Fallbacks[0] != "openai/gpt-5" || r.DefaultTier != "expert" ||
+		r.Judge != "claude/claude-sonnet-5-5" || len(s.Tiers) != 3 || s.Tiers[0].Picked != "family" || len(s.Notes) == 0 {
+		t.Fatalf("suggested %+v", s)
+	}
+	// The model used today becomes the default tier.
+	s = testclient.Decoded[handlers.SuggestRouterOut](e.client.Get(base+"/routers/suggest?tiers=2&current_model=gpt-4o", alice).
+		AssertStatus(http.StatusOK))
+	if s.Router.DefaultTier != "current" || len(s.Router.Tiers) != 3 {
+		t.Fatalf("with the current model %+v", s.Router)
+	}
+	created := testclient.Decoded[handlers.RouterOut](e.client.Post(base+"/routers", alice, testclient.JSON(s.Router)).
+		AssertStatus(http.StatusCreated))
+	if created.Status != "shadow" || created.DefaultTier != "current" {
+		t.Fatalf("created %+v", created)
+	}
+}
+
 func TestBudgets(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
