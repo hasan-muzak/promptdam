@@ -299,6 +299,18 @@ func Mount(a *muzak.App, app *core.App) {
 			"or alert rule's own history with subject. Kept 90 days."))
 
 	ana := muzak.WithCategory("Analytics")
+	r.Get("/v1/orgs/{org}/projects/{project}/overview", h.GetOverview, ana, muzak.Title("Get Overview"),
+		project(tenancy.PermProjectsRead), muzak.Summary("A project at a glance, in one call"),
+		muzak.Description("Calls, errors and spend against the same length of time before, what they would have cost "+
+			"without Promptdam and what was saved, a daily series of both, p95 latency, prompt and response cache use, the "+
+			"firewall's calls and refusals, the top models, keys and families, what needs attention (budgets past a "+
+			"threshold, routers ready, demoted or kept watching by the plan, providers failing their check, alert rules "+
+			"firing, models without a price), most urgent first, and the latest activity. Default this month."))
+	r.Get("/v1/orgs/{org}/analytics/projects", h.GetProjectsUsage, ana, muzak.Title("Get Projects Usage"),
+		muzak.Needs(c.Tenancy.RequireOrg(tenancy.PermProjectsRead)),
+		muzak.Summary("Each project's calls, spend and savings over a range"),
+		muzak.Description("Every project of the organization, by spend, those without calls last. Default this month; at "+
+			"most 400 days."))
 	r.Get("/v1/orgs/{org}/projects/{project}/analytics/spend", h.GetSpend, ana, muzak.Title("Get Spend"),
 		project(tenancy.PermProjectsRead), muzak.Summary("Calls, errors, tokens and spend over a range"),
 		muzak.Description("Totals, a series per hour or day, and groups by model, provider, key, route, developer or "+

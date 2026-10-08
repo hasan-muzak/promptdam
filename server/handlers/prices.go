@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/features/analytics"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/requestlog"
@@ -154,25 +156,34 @@ func (h *Handlers) MissingPrices(ctx *muzak.Context, in MissingPricesIn) (httpx.
 	if err != nil {
 		return httpx.List[MissingPriceOut]{}, err
 	}
-	rows, err := h.Analytics.Unpriced(ctx.Context(), pa.Project.ID, from, to)
+	missing, err := h.missingPrices(ctx, pa.Project.ID, from, to)
 	if err != nil {
 		return httpx.List[MissingPriceOut]{}, analyticsFail(err)
 	}
-	own, err := h.Prices.All(ctx.Context(), pa.Project.ID)
-	if err != nil {
-		return httpx.List[MissingPriceOut]{}, err
-	}
-	project := prices.ProjectPrices(own)
-	out := httpx.List[MissingPriceOut]{Data: []MissingPriceOut{}}
-	for _, r := range rows {
-		// Priced since, by the project or the price list.
-		if _, ok := requestlog.Price(h.RouterDeps.Prices, project, r.Provider, r.Kind, r.Model); ok {
-			continue
-		}
-		out.Data = append(out.Data, MissingPriceOut{Model: r.Model, Provider: r.Provider, Kind: r.Kind, Calls: r.Calls,
-			InputTokens: r.InputTokens, OutputTokens: r.OutputTokens, LastSeen: r.LastSeen.UTC()})
+	out := httpx.List[MissingPriceOut]{Data: make([]MissingPriceOut, len(missing))}
+	for i, r := range missing {
+		out.Data[i] = MissingPriceOut{Model: r.Model, Provider: r.Provider, Kind: r.Kind, Calls: r.Calls,
+			InputTokens: r.InputTokens, OutputTokens: r.OutputTokens, LastSeen: r.LastSeen.UTC()}
 	}
 	return out, nil
+}
+
+// missingPrices are the models a project's calls had no price for over a
+// range that the project or the price list still don't price.
+func (h *Handlers) missingPrices(ctx *muzak.Context, project uuid.UUID, from, to time.Time) ([]analytics.Unpriced, error) {
+	rows, err := h.Analytics.Unpriced(ctx.Context(), project, from, to)
+	if err != nil {
+		return nil, err
+	}
+	own, err := h.Prices.All(ctx.Context(), project)
+	if err != nil {
+		return nil, err
+	}
+	priced := prices.ProjectPrices(own)
+	return slices.DeleteFunc(rows, func(r analytics.Unpriced) bool {
+		_, ok := requestlog.Price(h.RouterDeps.Prices, priced, r.Provider, r.Kind, r.Model)
+		return ok
+	}), nil
 }
 
 // PricePath names a price.

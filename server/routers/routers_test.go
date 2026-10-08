@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -873,6 +874,69 @@ func TestAlertRules(t *testing.T) {
 	}
 	e.client.Delete(path+"/"+rule.ID, alice).AssertStatus(http.StatusNoContent)
 	e.client.Get(path+"/"+rule.ID, alice).AssertStatus(http.StatusNotFound)
+}
+
+func TestOverview(t *testing.T) {
+	e := setupWith(t, true)
+	ctx := context.Background()
+	alice := e.as("alice")
+	org, prj, base := e.project("alice")
+	orgID, prjID := mustID(t, ids.Org, org.ID), mustID(t, ids.Project, prj.ID)
+	empty := testclient.Decoded[platform.ProjectOut](e.client.Post("/v1/orgs/"+org.ID+"/projects", alice,
+		testclient.JSON(map[string]string{"name": "Staging"})))
+	insert := func(n int, model, kind string, cost, saved int64, reason string) {
+		t.Helper()
+		err := e.c.Events.Unscoped().Exec(ctx, `INSERT INTO requests (project_id, ts, trace, org_id, provider, kind,
+			requested_model, served_model, status, usage_known, input_tokens, output_tokens, cache_read_tokens, cost_micros,
+			counterfactual_micros, savings_micros, savings_reason, latency_ms, retention_days)
+			SELECT ?, now64(3) - toIntervalSecond(number), concat(?, toString(number)), ?, 'main', ?, 'gpt-5', ?, 200, true,
+			1000, 100, 400, ?, ?, ?, ?, 900, 7 FROM numbers(?)`,
+			prjID, model, orgID, kind, model, cost, cost+saved, saved, reason, n)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert(30, "gpt-5-mini", "openai", 2000, 8000, "routing")
+	insert(10, "gpt-5", "openai", 10_000, 0, "")
+	insert(5, "llama-local", "custom", 0, 0, "")
+
+	// What needs attention: a ready router, a failing provider, a firing
+	// alert rule (and the unpriced model above).
+	scoped := entx.WithOrg(ctx, orgID)
+	p := testclient.Decoded[handlers.ProviderOut](e.client.Post(base+"/providers", alice, testclient.JSON(map[string]any{
+		"name": "openai", "kind": "openai", "api_key": "sk-test-secret-abcd",
+	})).AssertStatus(http.StatusCreated))
+	e.app.Ent.Provider.UpdateOneID(mustID(t, handlers.ProviderPrefix, p.ID)).SetCheckError("the key was refused").ExecX(scoped)
+	rtr := testclient.Decoded[handlers.RouterOut](e.client.Post(base+"/routers", alice, testclient.JSON(map[string]any{
+		"name": "auto", "tiers": []map[string]any{{"name": "fast", "model": "gpt-5-mini"}, {"name": "smart", "model": "gpt-5"}},
+	})).AssertStatus(http.StatusCreated))
+	e.app.Ent.ModelRouter.UpdateOneID(mustID(t, handlers.RouterPrefix, rtr.ID)).SetReadyAt(time.Now()).ExecX(scoped)
+	e.plan(t, org.ID, catalog.Alerts)
+	alr := testclient.Decoded[handlers.AlertRuleOut](e.client.Post(base+"/alerts", alice, testclient.JSON(map[string]any{
+		"name": "errors", "kind": "error_rate", "channels": []string{},
+	})).AssertStatus(http.StatusCreated))
+	e.app.Ent.AlertRule.UpdateOneID(mustID(t, "alr", alr.ID)).SetFiring(true).ExecX(scoped)
+
+	o := testclient.Decoded[handlers.OverviewOut](e.client.Get(base+"/overview", alice).AssertStatus(http.StatusOK))
+	if o.Requests != 45 || o.CostMicros != 160_000 || o.SavedMicros != 240_000 || o.CounterfactualMicros != 400_000 ||
+		len(o.Days) == 0 || o.LatencyP95Ms == 0 || o.PromptCacheShare != 0.4 || o.TopModels[0].ID != "gpt-5" ||
+		o.From.Day() != 1 {
+		t.Fatalf("overview %+v", o)
+	}
+	var kinds []string
+	for _, a := range o.Attention {
+		kinds = append(kinds, a.Kind)
+	}
+	if want := []string{"provider_check", "alert_firing", "router_ready", "missing_prices"}; !slices.Equal(kinds, want) {
+		t.Fatalf("attention %v, want %v", kinds, want)
+	}
+
+	usage := testclient.Decoded[handlers.ProjectsUsageOut](e.client.Get("/v1/orgs/"+org.ID+"/analytics/projects", alice).
+		AssertStatus(http.StatusOK))
+	if len(usage.Data) != 2 || usage.Data[0].Project != prj.ID || usage.Data[0].CostMicros != 160_000 ||
+		usage.Data[0].SavedMicros != 240_000 || usage.Data[1].Project != empty.ID || usage.Data[1].Requests != 0 {
+		t.Fatalf("usage %+v", usage)
+	}
 }
 
 func TestBudgets(t *testing.T) {

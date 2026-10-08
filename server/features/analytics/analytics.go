@@ -480,3 +480,69 @@ func (s *Service) Unpriced(ctx context.Context, project uuid.UUID, from, to time
 	}
 	return out, nil
 }
+
+// Tokens are a project's input tokens over a range and those the
+// providers' prompt caches served.
+func (s *Service) Tokens(ctx context.Context, project uuid.UUID, from, to time.Time) (input, cacheRead uint64, err error) {
+	if err := checkRange(from, to, MaxRange); err != nil {
+		return 0, 0, err
+	}
+	if s.db == nil {
+		return 0, 0, nil
+	}
+	var rows []struct {
+		Input     uint64 `ch:"input"`
+		CacheRead uint64 `ch:"cache_read"`
+	}
+	err = s.db.Select(ctx, &rows, events.Project(project), `SELECT sum(input_tokens) AS input, sum(cache_read_tokens) AS cache_read
+		FROM requests_hourly WHERE {tenant} AND hour >= toStartOfHour(fromUnixTimestamp64Milli(?)) AND hour < fromUnixTimestamp64Milli(?)`,
+		from.UnixMilli(), to.UnixMilli())
+	if err != nil || len(rows) == 0 {
+		return 0, 0, err
+	}
+	return rows[0].Input, rows[0].CacheRead, nil
+}
+
+// ProjectUsage is one project's calls, spend and savings over a range.
+type ProjectUsage struct {
+	Project  uuid.UUID `ch:"project_id"`
+	Requests uint64    `ch:"requests"`
+	Errors   uint64    `ch:"errors"`
+	Cost     int64     `ch:"cost_micros"`
+	Savings  int64     `ch:"savings_micros"`
+}
+
+// Projects returns each of projects' calls, spend and savings over a
+// range, from the hourly rollups; projects without calls are left out.
+func (s *Service) Projects(ctx context.Context, projects []uuid.UUID, from, to time.Time) ([]ProjectUsage, error) {
+	if err := checkRange(from, to, MaxRange); err != nil {
+		return nil, err
+	}
+	out := []ProjectUsage{}
+	if s.db == nil || len(projects) == 0 {
+		return out, nil
+	}
+	scope, args := events.Project(projects...), []any{from.UnixMilli(), to.UnixMilli()}
+	where := ` WHERE {tenant} AND hour >= toStartOfHour(fromUnixTimestamp64Milli(?)) AND hour < fromUnixTimestamp64Milli(?)`
+	if err := s.db.Select(ctx, &out, scope, `SELECT project_id, sum(requests) AS requests, sum(errors) AS errors,
+		sum(cost_micros) AS cost_micros, toInt64(0) AS savings_micros FROM requests_hourly`+where+` GROUP BY project_id
+		ORDER BY cost_micros DESC`, args...); err != nil {
+		return nil, fmt.Errorf("analytics: projects: %w", err)
+	}
+	var saved []struct {
+		Project uuid.UUID `ch:"project_id"`
+		Savings int64     `ch:"savings_micros"`
+	}
+	if err := s.db.Select(ctx, &saved, scope, `SELECT project_id, sum(savings_micros) AS savings_micros FROM savings_hourly`+
+		where+` GROUP BY project_id`, args...); err != nil {
+		return nil, fmt.Errorf("analytics: projects' savings: %w", err)
+	}
+	byProject := make(map[uuid.UUID]int64, len(saved))
+	for _, sv := range saved {
+		byProject[sv.Project] = sv.Savings
+	}
+	for i := range out {
+		out[i].Savings = byProject[out[i].Project]
+	}
+	return out, nil
+}
