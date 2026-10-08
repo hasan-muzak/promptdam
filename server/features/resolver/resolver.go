@@ -33,6 +33,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
@@ -84,6 +85,9 @@ type Meta struct {
 	// it is off), Answer what it found in the answer.
 	Firewall *firewall.Outcome
 	Answer   *firewall.Response
+	// Capture keeps the call's payload, masked by its engine (nil: kept
+	// not).
+	Capture *payloads.Capture
 }
 
 // Who is what the call's spend counts against.
@@ -390,6 +394,14 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		if a := snap.Firewall.Response(o); a != nil {
 			m.Answer, out.Response = a, a
 		}
+	}
+	// The project keeps the call's payload: answers of the formats they
+	// can be read in. A call the firewall tokenized isn't kept: those are
+	// values the project chose to keep from leaving at all.
+	if cp := snap.Capture; cp != nil && (m.Firewall == nil || m.Firewall.Tokens == nil || m.Firewall.Tokens.Len() == 0) &&
+		r.cfg.Sample() < cp.SampleRate {
+		out.Capture, m.Capture = true, cp
+		out.CaptureAnswer = cp.Answers && (c.Format == wire.OpenAIChat || c.Format == wire.AnthropicMessages)
 	}
 	if route.CacheTTL > 0 {
 		out.CacheTTL = time.Duration(route.CacheTTL) * time.Second

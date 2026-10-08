@@ -49,9 +49,10 @@ type call struct {
 	// the Messages API too.
 	promptCache bool
 	// sample keeps the answer the client gets in answer (for a router's
-	// evaluation) until it grows past MaxSampledAnswer.
-	sample, overflow bool
-	answer           []byte
+	// evaluation, or the project's payloads) until it grows past
+	// MaxSampledAnswer; capture keeps it whatever the call's status.
+	sample, overflow, capture bool
+	answer                    []byte
 	// filter rewrites the provider's answer (Route.Response).
 	filter ResponseFilter
 }
@@ -123,9 +124,11 @@ func (c *call) serve() {
 	if c.filter != nil {
 		defer c.filter.End()
 	}
-	if route.Sample {
-		// The request as the client sent it; buf goes back to its pool.
-		c.sample, c.rec.Body = true, bytes.Clone(body)
+	if route.Sample || route.Capture {
+		// The request as the provider gets it (the firewall's, when it
+		// masked it); buf goes back to its pool.
+		c.rec.Body = bytes.Clone(body)
+		c.sample, c.capture = route.Sample || route.CaptureAnswer, route.Capture
 	}
 	if len(route.Targets) == 0 {
 		c.fail(&Error{Status: http.StatusNotFound, Type: TypeNotFound, Code: "no_provider",
@@ -400,7 +403,7 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	if c.rec.ErrorCode != "" {
 		return // the gateway answered with its own error
 	}
-	if c.sample && !c.overflow && res.StatusCode == http.StatusOK && readErr == nil {
+	if c.sample && !c.overflow && (c.capture || res.StatusCode == http.StatusOK && readErr == nil) {
 		c.rec.Answer = c.answer
 	}
 	switch {
@@ -536,6 +539,9 @@ func (c *call) serveCached(e *responsecache.Entry) {
 	h.Set(brand.HeaderCache, "hit")
 	c.w.WriteHeader(e.Status)
 	c.write(c.filterBody(e.Body))
+	if c.capture && c.sample && !c.overflow {
+		c.rec.Answer = c.answer
+	}
 	c.rec.Status, c.rec.Cache = e.Status, "hit"
 	c.rec.Provider, c.rec.Kind, c.rec.ServedModel, c.rec.TargetModel = e.Provider, e.Kind, e.Model, c.rec.RequestedModel
 	c.rec.Usage, c.rec.UsageKnown = e.Usage, true

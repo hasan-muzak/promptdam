@@ -64,6 +64,10 @@ type Route struct {
 	// Sample keeps the call's request and answer in its Record (Body,
 	// Answer), in memory, for a router's evaluation.
 	Sample bool
+	// Capture keeps the call's request in its Record (Body) for its
+	// project's payloads; CaptureAnswer keeps its answer too, whatever its
+	// status (Answer).
+	Capture, CaptureAnswer bool
 	// Body, when set, is sent instead of the client's request body (the
 	// firewall's, findings masked): for the response cache's key and
 	// a sample too.
@@ -175,10 +179,11 @@ type Record struct {
 	// format, translated; Dropped lists the parameters it left out.
 	Translated bool
 	Dropped    []string
-	// Body and Answer are a sampled call's request and the answer the
-	// client got (a whole response or its stream, in the client's
-	// format), held in memory for evaluation; Answer is nil when it was
-	// larger than MaxSampledAnswer or the call failed.
+	// Body and Answer are a sampled or captured call's request (as the
+	// provider got it) and the answer the client got (a whole response or
+	// its stream, in the client's format), held in memory; Answer is nil
+	// when it was larger than MaxSampledAnswer, or when a sampled call
+	// failed (a captured one keeps its error).
 	Body, Answer []byte
 	// Status is the HTTP status the client got; ErrorCode says why a call
 	// failed ("" when it didn't).
