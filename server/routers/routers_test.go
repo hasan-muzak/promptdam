@@ -901,6 +901,16 @@ func TestBudgets(t *testing.T) {
 	if err := e.c.DB.SQL.QueryRow(`SELECT alerted_percent FROM budgets WHERE name = 'Daily cap'`).Scan(&alerted); err != nil || alerted != 100 {
 		t.Fatalf("alerted %d, %v", alerted, err)
 	}
+	// The project's activity has each alert, and the budget's history.
+	history := testclient.Decoded[httpx.List[handlers.ActivityOut]](e.client.Get(base+"/activity?subject="+block.ID, alice).
+		AssertStatus(http.StatusOK))
+	if len(history.Data) != 1 || history.Data[0].Kind != "budget.exceeded" || history.Data[0].Severity != "critical" ||
+		history.Data[0].Data["threshold"] != float64(100) || !strings.HasPrefix(history.Data[0].ID, "act_") {
+		t.Fatalf("history %+v", history.Data)
+	}
+	if res := e.client.Get(base+"/activity?cursor=nope", alice); res.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("a bad cursor: %d %s", res.Status, res.String())
+	}
 	blocking, err := e.app.Budgets.Blockings(entx.WithOrg(ctx, orgID), prjID)
 	if err != nil || len(blocking) != 1 {
 		t.Fatalf("blocking %v, %v", blocking, err)

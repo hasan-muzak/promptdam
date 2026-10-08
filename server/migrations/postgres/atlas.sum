@@ -1,4 +1,4 @@
-h1:7tMIIw33tp3dbDySSfJZ7ti8wAiSS2BEc6kGPNjum6g=
+h1:S7PI9YOgI6asRc9oujhoXBq3fVd1awgu1sZzSkuZBdA=
 20261007103513_init.sql h1:bVyQ6g9OmnroRSresfeNjfapdzWItSeWtS+hU8gXKag=
 20261007110117_key_settings.sql h1:0IhbZBSVxQ8bGE34nOm201ldybxwuXeg6GBHg1dLZD4=
 20261007110559_routes.sql h1:qT7mskL0wkHMlY7VDpj+jQQBgVQO98wZ1DfkOybjk/o=
@@ -13,3 +13,4 @@ h1:7tMIIw33tp3dbDySSfJZ7ti8wAiSS2BEc6kGPNjum6g=
 20261007230447_router_classifiers.sql h1:xwiVSF0Rg2WDW/3ZephRPzGab6koIg3/Q12EPDiYXoE=
 20261007232613_router_canary.sql h1:A9KA3SL+LYU4GpHghzPwNdAzhrJILGduEJzZAhwRnRs=
 20261008091018_firewall_settings.sql h1:nQECBqUQ3nFE4YJu3TLx5Plxo/mcsjGWb1P5IDNWe7o=
+20261008104353_activities.sql h1:dCpUbyeukrsHPyx4+W+rizEU+Lw1QMGSLu3k5fgGRn4=

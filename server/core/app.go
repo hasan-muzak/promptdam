@@ -15,6 +15,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/policy"
 
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/features/activity"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
@@ -47,6 +48,8 @@ type App struct {
 	// Training trains their classifiers on their judged calls.
 	Routers  *routers.Service
 	Training *training.Service
+	// Activity keeps what happened to each project that was worth telling.
+	Activity *activity.Service
 	// Firewall keeps projects' firewalls: what their calls' secrets and
 	// personal data get, and their policies; FirewallWatch tells
 	// organizations what they did.
@@ -116,9 +119,10 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.RuleEnv = env
 	a.Rules = rules.New(a.Ent, env, a.configChanged)
 	a.Routers = routers.New(a.Ent, env, a.Prices, a.configChanged)
+	a.Activity = activity.New(a.Ent)
 	a.Firewall = firewall.NewService(a.Ent, a.configChanged)
 	a.FirewallWatch = firewall.NewWatcher(firewall.WatchConfig{Events: c.Events, KV: c.KV, Notifier: c.Notifier,
-		Webhooks: c.Webhooks, AppURL: c.Config.AppURL, ProjectName: func(ctx context.Context, id uuid.UUID) (string, error) {
+		Webhooks: c.Webhooks, Activity: a.Activity, AppURL: c.Config.AppURL, ProjectName: func(ctx context.Context, id uuid.UUID) (string, error) {
 			p, err := c.Tenancy.ProjectByID(ctx, id)
 			if err != nil {
 				return "", err
@@ -127,7 +131,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 		}})
 	a.Training = training.New(training.Config{Ent: a.Ent, Events: c.Events, Changed: a.configChanged})
 	a.Watcher = routers.NewWatcher(routers.WatchConfig{Ent: a.Ent, Events: c.Events, Notifier: c.Notifier, Webhooks: c.Webhooks,
-		AppURL: c.Config.AppURL, Changed: a.configChanged})
+		Activity: a.Activity, AppURL: c.Config.AppURL, Changed: a.configChanged})
 	if a.GatewayURL == "" {
 		a.GatewayURL = "http://localhost:8282"
 	}
@@ -145,7 +149,8 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.SpendCounters = counter.New(c.KV, "spend", counter.Options{})
 	a.Spend = budgets.NewSpend(a.SpendCounters)
 	a.Budgets = budgets.New(budgets.Config{
-		Ent: a.Ent, Spend: a.Spend, Notifier: c.Notifier, Webhooks: c.Webhooks, AppURL: c.Config.AppURL, Changed: a.configChanged,
+		Ent: a.Ent, Spend: a.Spend, Notifier: c.Notifier, Webhooks: c.Webhooks, Activity: a.Activity, AppURL: c.Config.AppURL,
+		Changed: a.configChanged,
 	})
 	// Every change to a project's gateway configuration reaches the
 	// gateways' snapshots.

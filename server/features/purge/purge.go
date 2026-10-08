@@ -33,6 +33,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/ent/activity"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -165,6 +166,7 @@ type deleter interface {
 func deleteRows(ctx context.Context, c *pdent.Client, org uuid.UUID, projects []uuid.UUID) error {
 	scoped := len(projects) > 0
 	for _, d := range []deleter{
+		c.Activity.Delete().Where(activity.OrgID(org), only(scoped, activity.ProjectIDIn(projects...))),
 		c.Budget.Delete().Where(budget.OrgID(org), only(scoped, budget.ProjectIDIn(projects...))),
 		c.FamilyLabel.Delete().Where(familylabel.OrgID(org), only(scoped, familylabel.ProjectIDIn(projects...))),
 		c.FirewallSetting.Delete().Where(firewallsetting.OrgID(org), only(scoped, firewallsetting.ProjectIDIn(projects...))),

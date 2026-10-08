@@ -20,6 +20,7 @@ import (
 
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
+	"github.com/hasan-muzak/promptdam/server/features/activity"
 	"github.com/hasan-muzak/promptdam/server/features/classifier"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 )
@@ -52,6 +53,8 @@ type WatchConfig struct {
 	Events   *events.DB
 	Notifier *notify.Notifier
 	Webhooks *webhooks.Service
+	// Activity keeps each announcement in the project's feed (nil: none).
+	Activity *activity.Service
 	// AppURL builds the dashboard's links.
 	AppURL string
 	// Changed runs after a router's demotions change.
@@ -131,7 +134,7 @@ func (w *Watcher) announce(ctx context.Context, r *pdent.ModelRouter) error {
 	}
 	p := RouterPayload{ID: ids.Encode(IDPrefix, r.ID), Project: ids.Encode(ids.Project, r.ProjectID), Name: r.Name,
 		Floor: r.QualityFloor, URL: w.url(r)}
-	w.tell(ctx, r.OrgID, EventReady, p, notify.Alert{
+	w.tell(ctx, r.OrgID, r.ProjectID, EventReady, p, notify.Alert{
 		Title:    fmt.Sprintf("Model router %s is ready to serve", r.Name),
 		Body:     fmt.Sprintf("In shadow mode, every tier it would use met its %.0f%% quality floor on your calls.", 100*r.QualityFloor),
 		URL:      p.URL,
@@ -180,7 +183,7 @@ func (w *Watcher) canary(ctx context.Context, r *pdent.ModelRouter) error {
 		p := RouterPayload{ID: ids.Encode(IDPrefix, r.ID), Project: ids.Encode(ids.Project, r.ProjectID), Name: r.Name, Tier: d.Tier,
 			Judged: d.Judged, Quality: quality, Floor: r.QualityFloor, URL: w.url(r)}
 		slog.Warn("routers: a tier was demoted", "router", r.ID, "tier", d.Tier, "judged", d.Judged, "quality", quality)
-		w.tell(ctx, r.OrgID, EventTierDemoted, p, notify.Alert{
+		w.tell(ctx, r.OrgID, r.ProjectID, EventTierDemoted, p, notify.Alert{
 			Title: fmt.Sprintf("Model router %s demoted its %s tier", r.Name, d.Tier),
 			Body: fmt.Sprintf("Its answers held up on %.0f%% of %d judged calls, under the %.0f%% floor. Its calls go to the next "+
 				"stronger tier until you restore it.", 100*quality, d.Judged, 100*r.QualityFloor),
@@ -192,7 +195,13 @@ func (w *Watcher) canary(ctx context.Context, r *pdent.ModelRouter) error {
 }
 
 // tell publishes an event and alerts the organization's channels.
-func (w *Watcher) tell(ctx context.Context, org uuid.UUID, event webhooks.EventType, p RouterPayload, a notify.Alert) {
+func (w *Watcher) tell(ctx context.Context, org, project uuid.UUID, event webhooks.EventType, p RouterPayload, a notify.Alert) {
+	data := map[string]any{"router": p.Name}
+	if p.Tier != "" {
+		data["tier"], data["judged"], data["quality"], data["floor"] = p.Tier, p.Judged, p.Quality, p.Floor
+	}
+	w.cfg.Activity.Record(ctx, activity.Entry{Org: org, Project: project, Kind: event.Name, Severity: a.Severity, Title: a.Title,
+		Body: a.Body, Subject: p.ID, URL: a.URL, Data: data})
 	if w.cfg.Webhooks != nil {
 		if err := w.cfg.Webhooks.Publish(ctx, org, event.Name, map[string]any{"router": p}); err != nil {
 			slog.Warn("routers: publishing a webhook", "event", event.Name, "err", err)

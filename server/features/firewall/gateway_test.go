@@ -8,12 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/hasan-muzak/keel-core/pkg/ent/webhookdelivery"
 	"github.com/hasan-muzak/keel-core/pkg/entx"
 	"github.com/hasan-muzak/keel-core/pkg/events"
 
 	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
 	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/features/activity"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
@@ -326,7 +329,8 @@ func TestWatcherTellsOfBlocks(t *testing.T) {
 		t.Fatal(err)
 	}
 	watcher := firewall.NewWatcher(firewall.WatchConfig{Events: w.C.Events, KV: w.C.KV, Notifier: w.C.Notifier,
-		Webhooks: w.C.Webhooks, AppURL: "https://app.example.com", Now: func() time.Time { return time.Now().Add(time.Minute) }})
+		Webhooks: w.C.Webhooks, Activity: w.App.Activity, AppURL: "https://app.example.com",
+		Now: func() time.Time { return time.Now().Add(time.Minute) }})
 	told := func() (hooks, alerts int) {
 		t.Helper()
 		hooks = w.C.DB.Ent.WebhookDelivery.Query().Where(webhookdelivery.EventType(firewall.EventBlocked.Name)).CountX(all)
@@ -342,6 +346,11 @@ func TestWatcherTellsOfBlocks(t *testing.T) {
 		if hooks, alerts := told(); hooks != 2 || alerts != 1 {
 			t.Fatalf("%d webhooks, %d alerts", hooks, alerts)
 		}
+	}
+	// The project's feed has the run, once.
+	feed, _, err := w.App.Activity.List(w.Scoped(), w.Project, activity.Filter{Kind: "firewall.blocked"}, uuid.Nil, 10)
+	if err != nil || len(feed) != 1 || feed[0].Title != "The firewall refused 2 calls" || feed[0].Data["calls"] != float64(2) {
+		t.Fatalf("feed %+v %v", feed, err)
 	}
 	for range 2 { // one digest a week
 		if err := watcher.Digest(ctx); err != nil {

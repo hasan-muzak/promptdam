@@ -7,8 +7,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/hasan-muzak/keel-core/pkg/ids"
+
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/catalog"
+	"github.com/hasan-muzak/promptdam/server/features/activity"
 	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
@@ -76,6 +79,11 @@ func TestWatcherAnnouncesReadyRouters(t *testing.T) {
 	}
 	if again, _ := w.App.Routers.Get(w.Scoped(), w.Project, row.ID); !again.ReadyAt.Equal(at) {
 		t.Fatal("announced twice")
+	}
+	feed, _, err := w.App.Activity.List(w.Scoped(), w.Project, activity.Filter{Subject: ids.Encode(routers.IDPrefix, row.ID)},
+		uuid.Nil, 10)
+	if err != nil || len(feed) != 1 || feed[0].Kind != routers.EventReady.Name || feed[0].Data["router"] != "auto" {
+		t.Fatalf("feed %+v %v", feed, err)
 	}
 }
 

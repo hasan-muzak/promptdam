@@ -28,7 +28,7 @@ func Mount(a *muzak.App, app *core.App) {
 		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides, Families: families.NewService(app.Ent, c.Events),
 		CacheDoctor: cachedoctor.New(c.Events, app.Prices), Rules: app.Rules,
 		RuleDeps: handlers.RuleDeps{Env: app.RuleEnv, Events: c.Events, Prices: app.Prices},
-		Routers:  app.Routers, Firewall: app.Firewall,
+		Routers:  app.Routers, Firewall: app.Firewall, Activity: app.Activity,
 		RouterDeps: handlers.RouterDeps{Explainer: resolver.New(resolver.Config{Prices: app.Prices, Rules: app.RuleEnv}),
 			Sources: app.Sources(), Billing: c.Billing, AppURL: c.Config.AppURL, Events: c.Events, Prices: app.Prices, Jobs: c.Jobs},
 	}
@@ -271,6 +271,12 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Description("Read from the request log's prefix rollup, never from prompts: how often a family's prefix "+
 			"changes and why (dates, IDs, numbers, tool order), missing Anthropic breakpoints, prefixes too short to "+
 			"cache. Default the last 7 days."))
+
+	r.Get("/v1/orgs/{org}/projects/{project}/activity", h.ListActivity, muzak.WithCategory("Activity"), muzak.Title("List Activity"),
+		project(tenancy.PermProjectsRead), muzak.Summary("What happened to the project that was worth telling, newest first"),
+		muzak.Description("Budget thresholds crossed, routers ready to serve or tiers demoted, calls the firewall refused, alert "+
+			"rules firing and resolving: what the organization's channels and webhooks got as it happened. A budget's, router's "+
+			"or alert rule's own history with subject. Kept 90 days."))
 
 	ana := muzak.WithCategory("Analytics")
 	r.Get("/v1/orgs/{org}/projects/{project}/analytics/spend", h.GetSpend, ana, muzak.Title("Get Spend"),

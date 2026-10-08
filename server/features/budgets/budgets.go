@@ -26,6 +26,7 @@ import (
 
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/features/activity"
 )
 
 // IDPrefix starts budget IDs: bdg_….
@@ -60,6 +61,8 @@ type Config struct {
 	Spend    *Spend
 	Notifier *notify.Notifier
 	Webhooks *webhooks.Service
+	// Activity keeps each alert in the project's feed (nil: none).
+	Activity *activity.Service
 	AppURL   string
 	// Changed runs after a project's budgets change (the gateway holds the
 	// blocking ones).
@@ -392,15 +395,18 @@ func (s *Service) alert(ctx context.Context, b *pdent.Budget, st Status, crossed
 			channels = append(channels, id)
 		}
 	}
-	err := s.cfg.Notifier.AlertTo(ctx, b.OrgID, channels, notify.Alert{
+	a := notify.Alert{
 		Title:    fmt.Sprintf("%s reached %d%% of its %s LLM budget", scope, crossed, b.Window),
 		Body:     fmt.Sprintf("%s of %s spent%s · budget %q", money.Micros(st.SpentMicros), money.Micros(b.LimitMicros), note, b.Name),
 		URL:      url,
 		Severity: severity,
-	})
-	if err != nil {
+	}
+	if err := s.cfg.Notifier.AlertTo(ctx, b.OrgID, channels, a); err != nil {
 		return fmt.Errorf("budgets: alerting: %w", err)
 	}
+	s.cfg.Activity.Record(ctx, activity.Entry{Org: b.OrgID, Project: b.ProjectID, Kind: event.Name, Severity: severity,
+		Title: a.Title, Body: a.Body, Subject: id, URL: url, Data: map[string]any{"threshold": crossed,
+			"spent_micros": st.SpentMicros, "limit_micros": b.LimitMicros, "window_start": st.WindowStart}})
 	if s.cfg.Webhooks != nil {
 		p := Payload{
 			ID: id, Project: ids.Encode(ids.Project, b.ProjectID), Name: b.Name, Scope: string(b.Scope), Target: b.Target,

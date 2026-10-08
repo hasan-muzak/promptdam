@@ -8,6 +8,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/hasan-muzak/promptdam/server/ent"
+	"github.com/hasan-muzak/promptdam/server/ent/activity"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -76,6 +77,33 @@ func (f TraverseFunc) Traverse(ctx context.Context, q ent.Query) error {
 		return err
 	}
 	return f(ctx, query)
+}
+
+// The ActivityFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ActivityFunc func(context.Context, *ent.ActivityQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ActivityFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ActivityQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ActivityQuery", q)
+}
+
+// The TraverseActivity type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseActivity func(context.Context, *ent.ActivityQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseActivity) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseActivity) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ActivityQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.ActivityQuery", q)
 }
 
 // The BudgetFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -378,6 +406,8 @@ func (f TraverseRoutingRule) Traverse(ctx context.Context, q ent.Query) error {
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
+	case *ent.ActivityQuery:
+		return &query[*ent.ActivityQuery, predicate.Activity, activity.OrderOption]{typ: ent.TypeActivity, tq: q}, nil
 	case *ent.BudgetQuery:
 		return &query[*ent.BudgetQuery, predicate.Budget, budget.OrderOption]{typ: ent.TypeBudget, tq: q}, nil
 	case *ent.FamilyLabelQuery:

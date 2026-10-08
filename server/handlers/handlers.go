@@ -9,6 +9,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/platform"
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
+	"github.com/hasan-muzak/promptdam/server/features/activity"
 	"github.com/hasan-muzak/promptdam/server/features/analytics"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/cachedoctor"
@@ -40,6 +41,7 @@ type Handlers struct {
 	// RouterDeps serve the firewall's routes too: plans, dry-runs.
 	RouterDeps RouterDeps
 	Firewall   *firewall.Service
+	Activity   *activity.Service
 }
 
 // requires refuses with 402 plan_required, and where to upgrade, when the

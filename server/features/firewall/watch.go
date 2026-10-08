@@ -18,6 +18,8 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/kv"
 	"github.com/hasan-muzak/keel-core/pkg/notify"
 	"github.com/hasan-muzak/keel-core/pkg/webhooks"
+
+	"github.com/hasan-muzak/promptdam/server/features/activity"
 )
 
 // EventBlocked is the webhook event of a call the firewall refused.
@@ -45,6 +47,8 @@ type WatchConfig struct {
 	KV       *kv.Store
 	Notifier *notify.Notifier
 	Webhooks *webhooks.Service
+	// Activity keeps each run's refusals in the project's feed (nil: none).
+	Activity *activity.Service
 	// AppURL builds the dashboard's links.
 	AppURL string
 	// ProjectName names a project in alerts (its ID when it fails).
@@ -165,9 +169,6 @@ func (w *Watcher) tell(ctx context.Context, calls []blockedCall) {
 			}
 		}
 	}
-	if w.cfg.Notifier == nil || !w.once(ctx, w.cfg.KV.Key("firewall", "alerted", project.String()), alertEvery) {
-		return
-	}
 	var found []string
 	for _, b := range calls {
 		found = append(found, b.Detectors...)
@@ -180,6 +181,16 @@ func (w *Watcher) tell(ctx context.Context, calls []blockedCall) {
 	calledN := "a call"
 	if len(calls) > 1 {
 		calledN = strconv.Itoa(len(calls)) + " calls"
+	}
+	traces := make([]string, 0, min(len(calls), 20))
+	for _, b := range calls[:min(len(calls), 20)] {
+		traces = append(traces, b.Trace)
+	}
+	w.cfg.Activity.Record(ctx, activity.Entry{Org: org, Project: project, Kind: EventBlocked.Name, Severity: activity.Warning,
+		Title: "The firewall refused " + calledN, Body: "They held " + strings.Join(found, ", ") + ".", URL: url,
+		Data: map[string]any{"calls": len(calls), "found": found, "requests": traces}})
+	if w.cfg.Notifier == nil || !w.once(ctx, w.cfg.KV.Key("firewall", "alerted", project.String()), alertEvery) {
+		return
 	}
 	err := w.cfg.Notifier.Alert(ctx, org, notify.Alert{
 		Title:    fmt.Sprintf("The firewall refused %s of %s", calledN, w.name(ctx, project)),
