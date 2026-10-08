@@ -125,16 +125,6 @@ func Firing(v bool) predicate.AlertRule {
 	return predicate.AlertRule(sql.FieldEQ(FieldFiring, v))
 }
 
-// LastValue applies equality check predicate on the "last_value" field. It's identical to LastValueEQ.
-func LastValue(v float64) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldEQ(FieldLastValue, v))
-}
-
-// EvaluatedAt applies equality check predicate on the "evaluated_at" field. It's identical to EvaluatedAtEQ.
-func EvaluatedAt(v time.Time) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldEQ(FieldEvaluatedAt, v))
-}
-
 // FiredAt applies equality check predicate on the "fired_at" field. It's identical to FiredAtEQ.
 func FiredAt(v time.Time) predicate.AlertRule {
 	return predicate.AlertRule(sql.FieldEQ(FieldFiredAt, v))
@@ -738,96 +728,6 @@ func FiringEQ(v bool) predicate.AlertRule {
 // FiringNEQ applies the NEQ predicate on the "firing" field.
 func FiringNEQ(v bool) predicate.AlertRule {
 	return predicate.AlertRule(sql.FieldNEQ(FieldFiring, v))
-}
-
-// LastValueEQ applies the EQ predicate on the "last_value" field.
-func LastValueEQ(v float64) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldEQ(FieldLastValue, v))
-}
-
-// LastValueNEQ applies the NEQ predicate on the "last_value" field.
-func LastValueNEQ(v float64) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldNEQ(FieldLastValue, v))
-}
-
-// LastValueIn applies the In predicate on the "last_value" field.
-func LastValueIn(vs ...float64) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldIn(FieldLastValue, vs...))
-}
-
-// LastValueNotIn applies the NotIn predicate on the "last_value" field.
-func LastValueNotIn(vs ...float64) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldNotIn(FieldLastValue, vs...))
-}
-
-// LastValueGT applies the GT predicate on the "last_value" field.
-func LastValueGT(v float64) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldGT(FieldLastValue, v))
-}
-
-// LastValueGTE applies the GTE predicate on the "last_value" field.
-func LastValueGTE(v float64) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldGTE(FieldLastValue, v))
-}
-
-// LastValueLT applies the LT predicate on the "last_value" field.
-func LastValueLT(v float64) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldLT(FieldLastValue, v))
-}
-
-// LastValueLTE applies the LTE predicate on the "last_value" field.
-func LastValueLTE(v float64) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldLTE(FieldLastValue, v))
-}
-
-// EvaluatedAtEQ applies the EQ predicate on the "evaluated_at" field.
-func EvaluatedAtEQ(v time.Time) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldEQ(FieldEvaluatedAt, v))
-}
-
-// EvaluatedAtNEQ applies the NEQ predicate on the "evaluated_at" field.
-func EvaluatedAtNEQ(v time.Time) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldNEQ(FieldEvaluatedAt, v))
-}
-
-// EvaluatedAtIn applies the In predicate on the "evaluated_at" field.
-func EvaluatedAtIn(vs ...time.Time) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldIn(FieldEvaluatedAt, vs...))
-}
-
-// EvaluatedAtNotIn applies the NotIn predicate on the "evaluated_at" field.
-func EvaluatedAtNotIn(vs ...time.Time) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldNotIn(FieldEvaluatedAt, vs...))
-}
-
-// EvaluatedAtGT applies the GT predicate on the "evaluated_at" field.
-func EvaluatedAtGT(v time.Time) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldGT(FieldEvaluatedAt, v))
-}
-
-// EvaluatedAtGTE applies the GTE predicate on the "evaluated_at" field.
-func EvaluatedAtGTE(v time.Time) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldGTE(FieldEvaluatedAt, v))
-}
-
-// EvaluatedAtLT applies the LT predicate on the "evaluated_at" field.
-func EvaluatedAtLT(v time.Time) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldLT(FieldEvaluatedAt, v))
-}
-
-// EvaluatedAtLTE applies the LTE predicate on the "evaluated_at" field.
-func EvaluatedAtLTE(v time.Time) predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldLTE(FieldEvaluatedAt, v))
-}
-
-// EvaluatedAtIsNil applies the IsNil predicate on the "evaluated_at" field.
-func EvaluatedAtIsNil() predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldIsNull(FieldEvaluatedAt))
-}
-
-// EvaluatedAtNotNil applies the NotNil predicate on the "evaluated_at" field.
-func EvaluatedAtNotNil() predicate.AlertRule {
-	return predicate.AlertRule(sql.FieldNotNull(FieldEvaluatedAt))
 }
 
 // FiredAtEQ applies the EQ predicate on the "fired_at" field.

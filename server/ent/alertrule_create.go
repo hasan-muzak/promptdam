@@ -198,34 +198,6 @@ func (_c *AlertRuleCreate) SetFiringOn(v []string) *AlertRuleCreate {
 	return _c
 }
 
-// SetLastValue sets the "last_value" field.
-func (_c *AlertRuleCreate) SetLastValue(v float64) *AlertRuleCreate {
-	_c.mutation.SetLastValue(v)
-	return _c
-}
-
-// SetNillableLastValue sets the "last_value" field if the given value is not nil.
-func (_c *AlertRuleCreate) SetNillableLastValue(v *float64) *AlertRuleCreate {
-	if v != nil {
-		_c.SetLastValue(*v)
-	}
-	return _c
-}
-
-// SetEvaluatedAt sets the "evaluated_at" field.
-func (_c *AlertRuleCreate) SetEvaluatedAt(v time.Time) *AlertRuleCreate {
-	_c.mutation.SetEvaluatedAt(v)
-	return _c
-}
-
-// SetNillableEvaluatedAt sets the "evaluated_at" field if the given value is not nil.
-func (_c *AlertRuleCreate) SetNillableEvaluatedAt(v *time.Time) *AlertRuleCreate {
-	if v != nil {
-		_c.SetEvaluatedAt(*v)
-	}
-	return _c
-}
-
 // SetFiredAt sets the "fired_at" field.
 func (_c *AlertRuleCreate) SetFiredAt(v time.Time) *AlertRuleCreate {
 	_c.mutation.SetFiredAt(v)
@@ -355,10 +327,6 @@ func (_c *AlertRuleCreate) defaults() error {
 		v := alertrule.DefaultFiringOn
 		_c.mutation.SetFiringOn(v)
 	}
-	if _, ok := _c.mutation.LastValue(); !ok {
-		v := alertrule.DefaultLastValue
-		_c.mutation.SetLastValue(v)
-	}
 	if _, ok := _c.mutation.ID(); !ok {
 		if alertrule.DefaultID == nil {
 			return fmt.Errorf("ent: uninitialized alertrule.DefaultID (forgotten import ent/runtime?)")
@@ -441,9 +409,6 @@ func (_c *AlertRuleCreate) check() error {
 	}
 	if _, ok := _c.mutation.FiringOn(); !ok {
 		return &ValidationError{Name: "firing_on", err: errors.New(`ent: missing required field "AlertRule.firing_on"`)}
-	}
-	if _, ok := _c.mutation.LastValue(); !ok {
-		return &ValidationError{Name: "last_value", err: errors.New(`ent: missing required field "AlertRule.last_value"`)}
 	}
 	return nil
 }
@@ -548,14 +513,6 @@ func (_c *AlertRuleCreate) createSpec() (*AlertRule, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FiringOn(); ok {
 		_spec.SetField(alertrule.FieldFiringOn, field.TypeJSON, value)
 		_node.FiringOn = value
-	}
-	if value, ok := _c.mutation.LastValue(); ok {
-		_spec.SetField(alertrule.FieldLastValue, field.TypeFloat64, value)
-		_node.LastValue = value
-	}
-	if value, ok := _c.mutation.EvaluatedAt(); ok {
-		_spec.SetField(alertrule.FieldEvaluatedAt, field.TypeTime, value)
-		_node.EvaluatedAt = &value
 	}
 	if value, ok := _c.mutation.FiredAt(); ok {
 		_spec.SetField(alertrule.FieldFiredAt, field.TypeTime, value)
@@ -812,42 +769,6 @@ func (u *AlertRuleUpsert) SetFiringOn(v []string) *AlertRuleUpsert {
 // UpdateFiringOn sets the "firing_on" field to the value that was provided on create.
 func (u *AlertRuleUpsert) UpdateFiringOn() *AlertRuleUpsert {
 	u.SetExcluded(alertrule.FieldFiringOn)
-	return u
-}
-
-// SetLastValue sets the "last_value" field.
-func (u *AlertRuleUpsert) SetLastValue(v float64) *AlertRuleUpsert {
-	u.Set(alertrule.FieldLastValue, v)
-	return u
-}
-
-// UpdateLastValue sets the "last_value" field to the value that was provided on create.
-func (u *AlertRuleUpsert) UpdateLastValue() *AlertRuleUpsert {
-	u.SetExcluded(alertrule.FieldLastValue)
-	return u
-}
-
-// AddLastValue adds v to the "last_value" field.
-func (u *AlertRuleUpsert) AddLastValue(v float64) *AlertRuleUpsert {
-	u.Add(alertrule.FieldLastValue, v)
-	return u
-}
-
-// SetEvaluatedAt sets the "evaluated_at" field.
-func (u *AlertRuleUpsert) SetEvaluatedAt(v time.Time) *AlertRuleUpsert {
-	u.Set(alertrule.FieldEvaluatedAt, v)
-	return u
-}
-
-// UpdateEvaluatedAt sets the "evaluated_at" field to the value that was provided on create.
-func (u *AlertRuleUpsert) UpdateEvaluatedAt() *AlertRuleUpsert {
-	u.SetExcluded(alertrule.FieldEvaluatedAt)
-	return u
-}
-
-// ClearEvaluatedAt clears the value of the "evaluated_at" field.
-func (u *AlertRuleUpsert) ClearEvaluatedAt() *AlertRuleUpsert {
-	u.SetNull(alertrule.FieldEvaluatedAt)
 	return u
 }
 
@@ -1172,48 +1093,6 @@ func (u *AlertRuleUpsertOne) SetFiringOn(v []string) *AlertRuleUpsertOne {
 func (u *AlertRuleUpsertOne) UpdateFiringOn() *AlertRuleUpsertOne {
 	return u.Update(func(s *AlertRuleUpsert) {
 		s.UpdateFiringOn()
-	})
-}
-
-// SetLastValue sets the "last_value" field.
-func (u *AlertRuleUpsertOne) SetLastValue(v float64) *AlertRuleUpsertOne {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.SetLastValue(v)
-	})
-}
-
-// AddLastValue adds v to the "last_value" field.
-func (u *AlertRuleUpsertOne) AddLastValue(v float64) *AlertRuleUpsertOne {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.AddLastValue(v)
-	})
-}
-
-// UpdateLastValue sets the "last_value" field to the value that was provided on create.
-func (u *AlertRuleUpsertOne) UpdateLastValue() *AlertRuleUpsertOne {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.UpdateLastValue()
-	})
-}
-
-// SetEvaluatedAt sets the "evaluated_at" field.
-func (u *AlertRuleUpsertOne) SetEvaluatedAt(v time.Time) *AlertRuleUpsertOne {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.SetEvaluatedAt(v)
-	})
-}
-
-// UpdateEvaluatedAt sets the "evaluated_at" field to the value that was provided on create.
-func (u *AlertRuleUpsertOne) UpdateEvaluatedAt() *AlertRuleUpsertOne {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.UpdateEvaluatedAt()
-	})
-}
-
-// ClearEvaluatedAt clears the value of the "evaluated_at" field.
-func (u *AlertRuleUpsertOne) ClearEvaluatedAt() *AlertRuleUpsertOne {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.ClearEvaluatedAt()
 	})
 }
 
@@ -1711,48 +1590,6 @@ func (u *AlertRuleUpsertBulk) SetFiringOn(v []string) *AlertRuleUpsertBulk {
 func (u *AlertRuleUpsertBulk) UpdateFiringOn() *AlertRuleUpsertBulk {
 	return u.Update(func(s *AlertRuleUpsert) {
 		s.UpdateFiringOn()
-	})
-}
-
-// SetLastValue sets the "last_value" field.
-func (u *AlertRuleUpsertBulk) SetLastValue(v float64) *AlertRuleUpsertBulk {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.SetLastValue(v)
-	})
-}
-
-// AddLastValue adds v to the "last_value" field.
-func (u *AlertRuleUpsertBulk) AddLastValue(v float64) *AlertRuleUpsertBulk {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.AddLastValue(v)
-	})
-}
-
-// UpdateLastValue sets the "last_value" field to the value that was provided on create.
-func (u *AlertRuleUpsertBulk) UpdateLastValue() *AlertRuleUpsertBulk {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.UpdateLastValue()
-	})
-}
-
-// SetEvaluatedAt sets the "evaluated_at" field.
-func (u *AlertRuleUpsertBulk) SetEvaluatedAt(v time.Time) *AlertRuleUpsertBulk {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.SetEvaluatedAt(v)
-	})
-}
-
-// UpdateEvaluatedAt sets the "evaluated_at" field to the value that was provided on create.
-func (u *AlertRuleUpsertBulk) UpdateEvaluatedAt() *AlertRuleUpsertBulk {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.UpdateEvaluatedAt()
-	})
-}
-
-// ClearEvaluatedAt clears the value of the "evaluated_at" field.
-func (u *AlertRuleUpsertBulk) ClearEvaluatedAt() *AlertRuleUpsertBulk {
-	return u.Update(func(s *AlertRuleUpsert) {
-		s.ClearEvaluatedAt()
 	})
 }
 

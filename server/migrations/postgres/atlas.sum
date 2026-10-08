@@ -1,4 +1,4 @@
-h1:kIjBgE30+7sKObWOcKpDf9SJF6dr4NqdAQfXLolaSoA=
+h1:Jwvhedb+A8VO7Smo7+zsjZLC1hpivonFhcIBBSHZjwg=
 20261007103513_init.sql h1:bVyQ6g9OmnroRSresfeNjfapdzWItSeWtS+hU8gXKag=
 20261007110117_key_settings.sql h1:0IhbZBSVxQ8bGE34nOm201ldybxwuXeg6GBHg1dLZD4=
 20261007110559_routes.sql h1:qT7mskL0wkHMlY7VDpj+jQQBgVQO98wZ1DfkOybjk/o=
@@ -18,3 +18,4 @@ h1:kIjBgE30+7sKObWOcKpDf9SJF6dr4NqdAQfXLolaSoA=
 20261008114325_capture_settings.sql h1:S9/ljtiZVbEA3hdb+HYC8RwnJaPNzbInZdr0wPPo2DA=
 20261008115049_payload_segments.sql h1:/pVS0F96A4E7M5s1j/lA3GppL7qOyIeQlE6SUqppv18=
 20261008142527_drop_activities.sql h1:BbQJ9bGpn8GgeCwTtHtI4jc9nfEvtznh0+lgzkUTL04=
+20261008143459_alert_rules_live.sql h1:roB/V+HGR3pPWzmAO8iNeQW6WLnfyX+2g4WuorMOuok=

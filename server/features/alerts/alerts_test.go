@@ -67,7 +67,7 @@ func TestEvaluate(t *testing.T) {
 	calls(t, w, now.Add(-time.Minute), 10, 8, "backup", 300, 0)
 
 	clock := now.Add(30 * time.Second)
-	e := alerts.NewEvaluator(alerts.EvalConfig{Ent: w.App.Ent, Events: w.C.Events, Notifier: w.C.Notifier, Webhooks: w.C.Webhooks,
+	e := alerts.NewEvaluator(alerts.EvalConfig{Ent: w.App.Ent, Events: w.C.Events, KV: w.C.KV, Notifier: w.C.Notifier, Webhooks: w.C.Webhooks,
 		Activity: w.App.Activity, Entitlements: w.C.Metering.Entitlements, Now: func() time.Time { return clock }})
 	if err := e.Evaluate(ctx); err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestEvaluate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return r.Firing, r.FiringOn, r.LastValue
+		return r.Firing, r.FiringOn, s.Live(ctx, r.ID)[r.ID].Value
 	}
 	for name, want := range map[string]bool{"errors": true, "down": true, "slow": true, "spike": true, "quiet": false,
 		"backup": false, "turned off": false} {
@@ -105,10 +105,18 @@ func TestEvaluate(t *testing.T) {
 		t.Fatalf("fired: %d entries, %d webhooks", feed, hooks)
 	}
 
-	// A minute later, still holding: nothing new until the cooldown.
+	// A minute later, still holding: nothing new until the cooldown, and
+	// rows that didn't change aren't written.
+	quiet, _ := s.Get(w.Scoped(), w.Project, ids["quiet"])
 	clock = clock.Add(time.Minute)
 	if err := e.Evaluate(ctx); err != nil {
 		t.Fatal(err)
+	}
+	if again, _ := s.Get(w.Scoped(), w.Project, ids["quiet"]); !again.UpdatedAt.Equal(quiet.UpdatedAt) {
+		t.Fatal("a quiet rule's row was written")
+	}
+	if live := s.Live(ctx, ids["quiet"]); live[ids["quiet"]].At.IsZero() {
+		t.Fatal("no measure kept for the quiet rule")
 	}
 	if feed, _ := told(alerts.EventFired.Name); feed != 4 {
 		t.Fatalf("fired again within the cooldown: %d", feed)

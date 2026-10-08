@@ -17,6 +17,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/events"
 	"github.com/hasan-muzak/keel-core/pkg/ids"
 	"github.com/hasan-muzak/keel-core/pkg/jobs"
+	"github.com/hasan-muzak/keel-core/pkg/kv"
 	"github.com/hasan-muzak/keel-core/pkg/money"
 	"github.com/hasan-muzak/keel-core/pkg/notify"
 	"github.com/hasan-muzak/keel-core/pkg/webhooks"
@@ -48,6 +49,8 @@ const baselineHours = 7 * 24
 type EvalConfig struct {
 	Ent      *pdent.Client
 	Events   *events.DB
+	// KV keeps what each evaluation measured.
+	KV       *kv.Store
 	Notifier *notify.Notifier
 	Webhooks *webhooks.Service
 	Activity *activity.Service
@@ -147,11 +150,16 @@ func (e *Evaluator) Evaluate(ctx context.Context) error {
 		}
 		usual = index(rows)
 	}
+	live := make(map[uuid.UUID]Live, len(rules))
 	for _, r := range rules {
 		v := e.verdict(r, measured[r.WindowMinutes], usual)
 		if err := e.apply(ctx, r, v); err != nil {
 			slog.Warn("alerts: a rule's evaluation wasn't kept", "rule", r.ID, "err", err)
 		}
+		live[r.ID] = Live{Value: v.value, At: e.cfg.Now().UTC()}
+	}
+	if err := saveLive(ctx, e.cfg.KV, live); err != nil {
+		slog.Warn("alerts: the rules' measures weren't kept", "err", err)
 	}
 	return nil
 }
@@ -245,20 +253,23 @@ func (e *Evaluator) verdict(r *pdent.AlertRule, m map[scope]measure, usual map[s
 // apply moves a rule to what its verdict says: fired on crossing, fired
 // again after its cooldown or when another provider goes down, resolved
 // when it no longer holds.
+// Its row is written only then: what each minute measures goes to Valkey.
 func (e *Evaluator) apply(ctx context.Context, r *pdent.AlertRule, v verdict) error {
 	now := e.cfg.Now()
-	u := e.cfg.Ent.AlertRule.UpdateOne(r).SetEvaluatedAt(now).SetLastValue(v.value)
+	u := e.cfg.Ent.AlertRule.UpdateOne(r)
 	newlyDown := slices.ContainsFunc(v.on, func(p string) bool { return !slices.Contains(r.FiringOn, p) })
 	switch {
 	case v.holds && (!r.Firing || newlyDown || r.FiredAt == nil ||
 		now.Sub(*r.FiredAt) >= time.Duration(r.CooldownMinutes)*time.Minute):
 		u.SetFiring(true).SetFiredAt(now).SetFiringOn(orEmpty(v.on))
 		e.tell(ctx, r, v, EventFired, r.Firing)
-	case v.holds:
-		u.SetFiringOn(orEmpty(v.on))
-	case r.Firing:
+	case v.holds && !slices.Equal(v.on, r.FiringOn):
+		u.SetFiringOn(orEmpty(v.on)) // a provider came back
+	case !v.holds && r.Firing:
 		u.SetFiring(false).SetResolvedAt(now).SetFiringOn([]string{})
 		e.tell(ctx, r, v, EventResolved, false)
+	default:
+		return nil
 	}
 	return u.Exec(entx.WithOrg(ctx, r.OrgID))
 }

@@ -87,9 +87,6 @@ type AlertRuleMutation struct {
 	firing              *bool
 	firing_on           *[]string
 	appendfiring_on     []string
-	last_value          *float64
-	addlast_value       *float64
-	evaluated_at        *time.Time
 	fired_at            *time.Time
 	resolved_at         *time.Time
 	clearedFields       map[string]struct{}
@@ -944,111 +941,6 @@ func (m *AlertRuleMutation) ResetFiringOn() {
 	m.appendfiring_on = nil
 }
 
-// SetLastValue sets the "last_value" field.
-func (m *AlertRuleMutation) SetLastValue(f float64) {
-	m.last_value = &f
-	m.addlast_value = nil
-}
-
-// LastValue returns the value of the "last_value" field in the mutation.
-func (m *AlertRuleMutation) LastValue() (r float64, exists bool) {
-	v := m.last_value
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLastValue returns the old "last_value" field's value of the AlertRule entity.
-// If the AlertRule object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AlertRuleMutation) OldLastValue(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLastValue is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLastValue requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLastValue: %w", err)
-	}
-	return oldValue.LastValue, nil
-}
-
-// AddLastValue adds f to the "last_value" field.
-func (m *AlertRuleMutation) AddLastValue(f float64) {
-	if m.addlast_value != nil {
-		*m.addlast_value += f
-	} else {
-		m.addlast_value = &f
-	}
-}
-
-// AddedLastValue returns the value that was added to the "last_value" field in this mutation.
-func (m *AlertRuleMutation) AddedLastValue() (r float64, exists bool) {
-	v := m.addlast_value
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetLastValue resets all changes to the "last_value" field.
-func (m *AlertRuleMutation) ResetLastValue() {
-	m.last_value = nil
-	m.addlast_value = nil
-}
-
-// SetEvaluatedAt sets the "evaluated_at" field.
-func (m *AlertRuleMutation) SetEvaluatedAt(t time.Time) {
-	m.evaluated_at = &t
-}
-
-// EvaluatedAt returns the value of the "evaluated_at" field in the mutation.
-func (m *AlertRuleMutation) EvaluatedAt() (r time.Time, exists bool) {
-	v := m.evaluated_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldEvaluatedAt returns the old "evaluated_at" field's value of the AlertRule entity.
-// If the AlertRule object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AlertRuleMutation) OldEvaluatedAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldEvaluatedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldEvaluatedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldEvaluatedAt: %w", err)
-	}
-	return oldValue.EvaluatedAt, nil
-}
-
-// ClearEvaluatedAt clears the value of the "evaluated_at" field.
-func (m *AlertRuleMutation) ClearEvaluatedAt() {
-	m.evaluated_at = nil
-	m.clearedFields[alertrule.FieldEvaluatedAt] = struct{}{}
-}
-
-// EvaluatedAtCleared returns if the "evaluated_at" field was cleared in this mutation.
-func (m *AlertRuleMutation) EvaluatedAtCleared() bool {
-	_, ok := m.clearedFields[alertrule.FieldEvaluatedAt]
-	return ok
-}
-
-// ResetEvaluatedAt resets all changes to the "evaluated_at" field.
-func (m *AlertRuleMutation) ResetEvaluatedAt() {
-	m.evaluated_at = nil
-	delete(m.clearedFields, alertrule.FieldEvaluatedAt)
-}
-
 // SetFiredAt sets the "fired_at" field.
 func (m *AlertRuleMutation) SetFiredAt(t time.Time) {
 	m.fired_at = &t
@@ -1181,7 +1073,7 @@ func (m *AlertRuleMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AlertRuleMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 19)
 	if m.created_at != nil {
 		fields = append(fields, alertrule.FieldCreatedAt)
 	}
@@ -1233,12 +1125,6 @@ func (m *AlertRuleMutation) Fields() []string {
 	if m.firing_on != nil {
 		fields = append(fields, alertrule.FieldFiringOn)
 	}
-	if m.last_value != nil {
-		fields = append(fields, alertrule.FieldLastValue)
-	}
-	if m.evaluated_at != nil {
-		fields = append(fields, alertrule.FieldEvaluatedAt)
-	}
 	if m.fired_at != nil {
 		fields = append(fields, alertrule.FieldFiredAt)
 	}
@@ -1287,10 +1173,6 @@ func (m *AlertRuleMutation) Field(name string) (ent.Value, bool) {
 		return m.Firing()
 	case alertrule.FieldFiringOn:
 		return m.FiringOn()
-	case alertrule.FieldLastValue:
-		return m.LastValue()
-	case alertrule.FieldEvaluatedAt:
-		return m.EvaluatedAt()
 	case alertrule.FieldFiredAt:
 		return m.FiredAt()
 	case alertrule.FieldResolvedAt:
@@ -1338,10 +1220,6 @@ func (m *AlertRuleMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldFiring(ctx)
 	case alertrule.FieldFiringOn:
 		return m.OldFiringOn(ctx)
-	case alertrule.FieldLastValue:
-		return m.OldLastValue(ctx)
-	case alertrule.FieldEvaluatedAt:
-		return m.OldEvaluatedAt(ctx)
 	case alertrule.FieldFiredAt:
 		return m.OldFiredAt(ctx)
 	case alertrule.FieldResolvedAt:
@@ -1474,20 +1352,6 @@ func (m *AlertRuleMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFiringOn(v)
 		return nil
-	case alertrule.FieldLastValue:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLastValue(v)
-		return nil
-	case alertrule.FieldEvaluatedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetEvaluatedAt(v)
-		return nil
 	case alertrule.FieldFiredAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -1525,9 +1389,6 @@ func (m *AlertRuleMutation) AddedFields() []string {
 	if m.addcooldown_minutes != nil {
 		fields = append(fields, alertrule.FieldCooldownMinutes)
 	}
-	if m.addlast_value != nil {
-		fields = append(fields, alertrule.FieldLastValue)
-	}
 	return fields
 }
 
@@ -1546,8 +1407,6 @@ func (m *AlertRuleMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedMinMicros()
 	case alertrule.FieldCooldownMinutes:
 		return m.AddedCooldownMinutes()
-	case alertrule.FieldLastValue:
-		return m.AddedLastValue()
 	}
 	return nil, false
 }
@@ -1592,13 +1451,6 @@ func (m *AlertRuleMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddCooldownMinutes(v)
 		return nil
-	case alertrule.FieldLastValue:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddLastValue(v)
-		return nil
 	}
 	return fmt.Errorf("unknown AlertRule numeric field %s", name)
 }
@@ -1607,9 +1459,6 @@ func (m *AlertRuleMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *AlertRuleMutation) ClearedFields() []string {
 	var fields []string
-	if m.FieldCleared(alertrule.FieldEvaluatedAt) {
-		fields = append(fields, alertrule.FieldEvaluatedAt)
-	}
 	if m.FieldCleared(alertrule.FieldFiredAt) {
 		fields = append(fields, alertrule.FieldFiredAt)
 	}
@@ -1630,9 +1479,6 @@ func (m *AlertRuleMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *AlertRuleMutation) ClearField(name string) error {
 	switch name {
-	case alertrule.FieldEvaluatedAt:
-		m.ClearEvaluatedAt()
-		return nil
 	case alertrule.FieldFiredAt:
 		m.ClearFiredAt()
 		return nil
@@ -1697,12 +1543,6 @@ func (m *AlertRuleMutation) ResetField(name string) error {
 		return nil
 	case alertrule.FieldFiringOn:
 		m.ResetFiringOn()
-		return nil
-	case alertrule.FieldLastValue:
-		m.ResetLastValue()
-		return nil
-	case alertrule.FieldEvaluatedAt:
-		m.ResetEvaluatedAt()
 		return nil
 	case alertrule.FieldFiredAt:
 		m.ResetFiredAt()

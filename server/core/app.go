@@ -131,8 +131,8 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.Activity = activity.New(c.Events)
 	a.Payloads = payloads.NewService(a.Ent, a.configChanged)
 	a.PayloadStore = payloads.NewStore(payloads.StoreConfig{Ent: a.Ent, Blob: c.Blob, Vault: c.Vault})
-	a.Alerts = alerts.New(a.Ent)
-	a.AlertsEval = alerts.NewEvaluator(alerts.EvalConfig{Ent: a.Ent, Events: c.Events, Notifier: c.Notifier, Webhooks: c.Webhooks,
+	a.Alerts = alerts.New(a.Ent, c.KV)
+	a.AlertsEval = alerts.NewEvaluator(alerts.EvalConfig{Ent: a.Ent, Events: c.Events, KV: c.KV, Notifier: c.Notifier, Webhooks: c.Webhooks,
 		Activity: a.Activity, Entitlements: c.Metering.Entitlements, AppURL: c.Config.AppURL})
 	a.Firewall = firewall.NewService(a.Ent, a.configChanged)
 	a.FirewallWatch = firewall.NewWatcher(firewall.WatchConfig{Events: c.Events, KV: c.KV, Notifier: c.Notifier,

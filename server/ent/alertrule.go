@@ -53,10 +53,6 @@ type AlertRule struct {
 	Firing bool `json:"firing,omitempty"`
 	// provider_down: the providers that look down
 	FiringOn []string `json:"firing_on,omitempty"`
-	// What the last evaluation measured, in the threshold's unit
-	LastValue float64 `json:"last_value,omitempty"`
-	// EvaluatedAt holds the value of the "evaluated_at" field.
-	EvaluatedAt *time.Time `json:"evaluated_at,omitempty"`
 	// FiredAt holds the value of the "fired_at" field.
 	FiredAt *time.Time `json:"fired_at,omitempty"`
 	// ResolvedAt holds the value of the "resolved_at" field.
@@ -73,13 +69,13 @@ func (*AlertRule) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case alertrule.FieldEnabled, alertrule.FieldFiring:
 			values[i] = new(sql.NullBool)
-		case alertrule.FieldThreshold, alertrule.FieldLastValue:
+		case alertrule.FieldThreshold:
 			values[i] = new(sql.NullFloat64)
 		case alertrule.FieldWindowMinutes, alertrule.FieldMinCalls, alertrule.FieldMinMicros, alertrule.FieldCooldownMinutes:
 			values[i] = new(sql.NullInt64)
 		case alertrule.FieldName, alertrule.FieldKind, alertrule.FieldProvider, alertrule.FieldModel:
 			values[i] = new(sql.NullString)
-		case alertrule.FieldCreatedAt, alertrule.FieldUpdatedAt, alertrule.FieldEvaluatedAt, alertrule.FieldFiredAt, alertrule.FieldResolvedAt:
+		case alertrule.FieldCreatedAt, alertrule.FieldUpdatedAt, alertrule.FieldFiredAt, alertrule.FieldResolvedAt:
 			values[i] = new(sql.NullTime)
 		case alertrule.FieldID, alertrule.FieldOrgID, alertrule.FieldProjectID:
 			values[i] = new(uuid.UUID)
@@ -210,19 +206,6 @@ func (_m *AlertRule) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field firing_on: %w", err)
 				}
 			}
-		case alertrule.FieldLastValue:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field last_value", values[i])
-			} else if value.Valid {
-				_m.LastValue = value.Float64
-			}
-		case alertrule.FieldEvaluatedAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field evaluated_at", values[i])
-			} else if value.Valid {
-				_m.EvaluatedAt = new(time.Time)
-				*_m.EvaluatedAt = value.Time
-			}
 		case alertrule.FieldFiredAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field fired_at", values[i])
@@ -323,14 +306,6 @@ func (_m *AlertRule) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("firing_on=")
 	builder.WriteString(fmt.Sprintf("%v", _m.FiringOn))
-	builder.WriteString(", ")
-	builder.WriteString("last_value=")
-	builder.WriteString(fmt.Sprintf("%v", _m.LastValue))
-	builder.WriteString(", ")
-	if v := _m.EvaluatedAt; v != nil {
-		builder.WriteString("evaluated_at=")
-		builder.WriteString(v.Format(time.ANSIC))
-	}
 	builder.WriteString(", ")
 	if v := _m.FiredAt; v != nil {
 		builder.WriteString("fired_at=")

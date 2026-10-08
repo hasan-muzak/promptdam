@@ -28,8 +28,6 @@ var (
 		{Name: "cooldown_minutes", Type: field.TypeInt, Default: 60},
 		{Name: "firing", Type: field.TypeBool, Default: false},
 		{Name: "firing_on", Type: field.TypeJSON},
-		{Name: "last_value", Type: field.TypeFloat64, Default: 0},
-		{Name: "evaluated_at", Type: field.TypeTime, Nullable: true},
 		{Name: "fired_at", Type: field.TypeTime, Nullable: true},
 		{Name: "resolved_at", Type: field.TypeTime, Nullable: true},
 	}

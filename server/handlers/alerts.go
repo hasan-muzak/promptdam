@@ -55,7 +55,7 @@ type AlertRuleOut struct {
 	CooldownMinutes int        `json:"cooldown_minutes"`
 	Firing          bool       `json:"firing" doc:"Its condition held at the last evaluation"`
 	FiringOn        []string   `json:"firing_on" doc:"provider_down: the providers that look down"`
-	LastValue       float64    `json:"last_value" doc:"What the last evaluation measured, in the threshold's unit"`
+	LastValue       *float64   `json:"last_value" doc:"What the last evaluation measured, in the threshold's unit; null when it wasn't evaluated in the last minutes"`
 	EvaluatedAt     *time.Time `json:"evaluated_at" doc:"Rules are evaluated every minute while the plan includes them"`
 	FiredAt         *time.Time `json:"fired_at"`
 	ResolvedAt      *time.Time `json:"resolved_at"`
@@ -63,11 +63,11 @@ type AlertRuleOut struct {
 	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
-func alertOut(r *pdent.AlertRule) AlertRuleOut {
+func alertOut(r *pdent.AlertRule, live map[uuid.UUID]alerts.Live) AlertRuleOut {
 	out := AlertRuleOut{ID: ids.Encode(alerts.IDPrefix, r.ID), Name: r.Name, Kind: string(r.Kind), Threshold: r.Threshold,
 		WindowMinutes: r.WindowMinutes, MinCalls: r.MinCalls, MinMicros: r.MinMicros, Provider: r.Provider, Model: r.Model,
 		Channels: make([]string, 0, len(r.ChannelIds)), Enabled: r.Enabled, CooldownMinutes: r.CooldownMinutes,
-		Firing: r.Firing, FiringOn: r.FiringOn, LastValue: r.LastValue, EvaluatedAt: r.EvaluatedAt, FiredAt: r.FiredAt,
+		Firing: r.Firing, FiringOn: r.FiringOn, FiredAt: r.FiredAt,
 		ResolvedAt: r.ResolvedAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 	for _, c := range r.ChannelIds {
 		if id, err := uuid.Parse(c); err == nil {
@@ -77,7 +77,15 @@ func alertOut(r *pdent.AlertRule) AlertRuleOut {
 	if out.FiringOn == nil {
 		out.FiringOn = []string{}
 	}
+	if l, ok := live[r.ID]; ok {
+		out.LastValue, out.EvaluatedAt = &l.Value, &l.At
+	}
 	return out
+}
+
+// alertLive is what one rule's last evaluation measured.
+func (h *Handlers) alertLive(ctx *muzak.Context, r *pdent.AlertRule) map[uuid.UUID]alerts.Live {
+	return h.Alerts.Live(ctx.Context(), r.ID)
 }
 
 // CreateAlertIn creates an alert rule.
@@ -115,9 +123,14 @@ func (h *Handlers) ListAlerts(ctx *muzak.Context, _ platform.ProjectPath) (httpx
 	if err != nil {
 		return httpx.List[AlertRuleOut]{}, err
 	}
+	rids := make([]uuid.UUID, len(rs))
+	for i, r := range rs {
+		rids[i] = r.ID
+	}
+	live := h.Alerts.Live(ctx.Context(), rids...)
 	out := httpx.List[AlertRuleOut]{Data: make([]AlertRuleOut, len(rs))}
 	for i, r := range rs {
-		out.Data[i] = alertOut(r)
+		out.Data[i] = alertOut(r, live)
 	}
 	return out, nil
 }
@@ -137,7 +150,7 @@ func (h *Handlers) CreateAlert(ctx *muzak.Context, in CreateAlertIn) (AlertRuleO
 		return AlertRuleOut{}, alertFail(err)
 	}
 	h.audited(ctx, "alert_rule.created", "alert_rule", ids.Encode(alerts.IDPrefix, r.ID), map[string]any{"name": r.Name, "kind": r.Kind, "threshold": r.Threshold, "window_minutes": r.WindowMinutes, "enabled": r.Enabled})
-	return alertOut(r), nil
+	return alertOut(r, h.alertLive(ctx, r)), nil
 }
 
 func alertID(raw string) (uuid.UUID, error) {
@@ -159,7 +172,7 @@ func (h *Handlers) GetAlert(ctx *muzak.Context, in AlertPath) (AlertRuleOut, err
 	if err != nil {
 		return AlertRuleOut{}, alertFail(err)
 	}
-	return alertOut(r), nil
+	return alertOut(r, h.alertLive(ctx, r)), nil
 }
 
 // UpdateAlert replaces an alert rule.
@@ -181,7 +194,7 @@ func (h *Handlers) UpdateAlert(ctx *muzak.Context, in UpdateAlertIn) (AlertRuleO
 		return AlertRuleOut{}, alertFail(err)
 	}
 	h.audited(ctx, "alert_rule.updated", "alert_rule", ids.Encode(alerts.IDPrefix, r.ID), map[string]any{"name": r.Name, "kind": r.Kind, "threshold": r.Threshold, "window_minutes": r.WindowMinutes, "enabled": r.Enabled})
-	return alertOut(r), nil
+	return alertOut(r, h.alertLive(ctx, r)), nil
 }
 
 // DeleteAlert removes an alert rule.

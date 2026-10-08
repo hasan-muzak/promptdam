@@ -50,10 +50,6 @@ const (
 	FieldFiring = "firing"
 	// FieldFiringOn holds the string denoting the firing_on field in the database.
 	FieldFiringOn = "firing_on"
-	// FieldLastValue holds the string denoting the last_value field in the database.
-	FieldLastValue = "last_value"
-	// FieldEvaluatedAt holds the string denoting the evaluated_at field in the database.
-	FieldEvaluatedAt = "evaluated_at"
 	// FieldFiredAt holds the string denoting the fired_at field in the database.
 	FieldFiredAt = "fired_at"
 	// FieldResolvedAt holds the string denoting the resolved_at field in the database.
@@ -82,8 +78,6 @@ var Columns = []string{
 	FieldCooldownMinutes,
 	FieldFiring,
 	FieldFiringOn,
-	FieldLastValue,
-	FieldEvaluatedAt,
 	FieldFiredAt,
 	FieldResolvedAt,
 }
@@ -136,8 +130,6 @@ var (
 	DefaultFiring bool
 	// DefaultFiringOn holds the default value on creation for the "firing_on" field.
 	DefaultFiringOn []string
-	// DefaultLastValue holds the default value on creation for the "last_value" field.
-	DefaultLastValue float64
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() uuid.UUID
 )
@@ -248,16 +240,6 @@ func ByCooldownMinutes(opts ...sql.OrderTermOption) OrderOption {
 // ByFiring orders the results by the firing field.
 func ByFiring(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFiring, opts...).ToFunc()
-}
-
-// ByLastValue orders the results by the last_value field.
-func ByLastValue(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldLastValue, opts...).ToFunc()
-}
-
-// ByEvaluatedAt orders the results by the evaluated_at field.
-func ByEvaluatedAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldEvaluatedAt, opts...).ToFunc()
 }
 
 // ByFiredAt orders the results by the fired_at field.

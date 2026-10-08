@@ -105,10 +105,6 @@ func init() {
 	alertruleDescFiringOn := alertruleFields[12].Descriptor()
 	// alertrule.DefaultFiringOn holds the default value on creation for the firing_on field.
 	alertrule.DefaultFiringOn = alertruleDescFiringOn.Default.([]string)
-	// alertruleDescLastValue is the schema descriptor for last_value field.
-	alertruleDescLastValue := alertruleFields[13].Descriptor()
-	// alertrule.DefaultLastValue holds the default value on creation for the last_value field.
-	alertrule.DefaultLastValue = alertruleDescLastValue.Default.(float64)
 	// alertruleDescID is the schema descriptor for id field.
 	alertruleDescID := alertruleMixinFields0[0].Descriptor()
 	// alertrule.DefaultID holds the default value on creation for the id field.

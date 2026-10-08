@@ -12,7 +12,8 @@ import (
 // that spikes above its usual hour, provider errors, a provider that looks
 // down, slow answers. The worker evaluates enabled rules every minute; a
 // rule fires once on crossing, again after its cooldown while still firing,
-// and resolves when the condition clears.
+// and resolves when the condition clears. Its row changes only then: what
+// each minute measures is kept in Valkey.
 type AlertRule struct{ ent.Schema }
 
 // Mixin implements ent.Interface.
@@ -36,8 +37,6 @@ func (AlertRule) Fields() []ent.Field {
 		field.Int("cooldown_minutes").Default(60).Comment("While firing, it alerts again after this long"),
 		field.Bool("firing").Default(false),
 		field.Strings("firing_on").Default([]string{}).Comment("provider_down: the providers that look down"),
-		field.Float("last_value").Default(0).Comment("What the last evaluation measured, in the threshold's unit"),
-		field.Time("evaluated_at").Optional().Nillable(),
 		field.Time("fired_at").Optional().Nillable(),
 		field.Time("resolved_at").Optional().Nillable(),
 	}

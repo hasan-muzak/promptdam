@@ -6,12 +6,17 @@ package alerts
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/valkey-io/valkey-go"
+
+	"github.com/hasan-muzak/keel-core/pkg/kv"
 
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
@@ -136,10 +141,71 @@ func (in *Input) Check() error {
 // Service keeps alert rules.
 type Service struct {
 	ent *pdent.Client
+	kv  *kv.Store
 }
 
-// New returns a Service.
-func New(ent *pdent.Client) *Service { return &Service{ent: ent} }
+// New returns a Service; kv holds what evaluations measured.
+func New(ent *pdent.Client, store *kv.Store) *Service { return &Service{ent: ent, kv: store} }
+
+// Live is what a rule's last evaluation measured, in its threshold's unit.
+type Live struct {
+	Value float64   `json:"value"`
+	At    time.Time `json:"at"`
+}
+
+// liveTTL drops a measure no evaluation renewed: a rule the plan stopped
+// evaluating has none.
+const liveTTL = 10 * time.Minute
+
+func liveKey(store *kv.Store, rule uuid.UUID) string { return store.Key("alerts", "live", rule.String()) }
+
+// saveLive keeps the rules' measures, in one round trip.
+func saveLive(ctx context.Context, store *kv.Store, live map[uuid.UUID]Live) error {
+	if store == nil || len(live) == 0 {
+		return nil
+	}
+	c := store.Client
+	cmds := make(valkey.Commands, 0, len(live))
+	for id, l := range live {
+		raw, _ := json.Marshal(l)
+		cmds = append(cmds, c.B().Set().Key(liveKey(store, id)).Value(string(raw)).Ex(liveTTL).Build())
+	}
+	for _, r := range c.DoMulti(ctx, cmds...) {
+		if err := r.Error(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Live returns what the rules' last evaluations measured; rules not
+// evaluated lately are missing.
+func (s *Service) Live(ctx context.Context, rules ...uuid.UUID) map[uuid.UUID]Live {
+	out := map[uuid.UUID]Live{}
+	if s.kv == nil || len(rules) == 0 {
+		return out
+	}
+	keys := make([]string, len(rules))
+	for i, id := range rules {
+		keys[i] = liveKey(s.kv, id)
+	}
+	c := s.kv.Client
+	vals, err := c.Do(ctx, c.B().Mget().Key(keys...).Build()).ToArray()
+	if err != nil {
+		return out
+	}
+	for i, v := range vals {
+		raw, err := v.ToString()
+		if err != nil {
+			continue
+		}
+		var l Live
+		if json.Unmarshal([]byte(raw), &l) == nil {
+			out[rules[i]] = l
+		}
+	}
+	return out
+}
 
 // List returns a project's rules, by name.
 func (s *Service) List(ctx context.Context, project uuid.UUID) ([]*pdent.AlertRule, error) {

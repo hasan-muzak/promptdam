@@ -248,47 +248,6 @@ func (_u *AlertRuleUpdate) AppendFiringOn(v []string) *AlertRuleUpdate {
 	return _u
 }
 
-// SetLastValue sets the "last_value" field.
-func (_u *AlertRuleUpdate) SetLastValue(v float64) *AlertRuleUpdate {
-	_u.mutation.ResetLastValue()
-	_u.mutation.SetLastValue(v)
-	return _u
-}
-
-// SetNillableLastValue sets the "last_value" field if the given value is not nil.
-func (_u *AlertRuleUpdate) SetNillableLastValue(v *float64) *AlertRuleUpdate {
-	if v != nil {
-		_u.SetLastValue(*v)
-	}
-	return _u
-}
-
-// AddLastValue adds value to the "last_value" field.
-func (_u *AlertRuleUpdate) AddLastValue(v float64) *AlertRuleUpdate {
-	_u.mutation.AddLastValue(v)
-	return _u
-}
-
-// SetEvaluatedAt sets the "evaluated_at" field.
-func (_u *AlertRuleUpdate) SetEvaluatedAt(v time.Time) *AlertRuleUpdate {
-	_u.mutation.SetEvaluatedAt(v)
-	return _u
-}
-
-// SetNillableEvaluatedAt sets the "evaluated_at" field if the given value is not nil.
-func (_u *AlertRuleUpdate) SetNillableEvaluatedAt(v *time.Time) *AlertRuleUpdate {
-	if v != nil {
-		_u.SetEvaluatedAt(*v)
-	}
-	return _u
-}
-
-// ClearEvaluatedAt clears the value of the "evaluated_at" field.
-func (_u *AlertRuleUpdate) ClearEvaluatedAt() *AlertRuleUpdate {
-	_u.mutation.ClearEvaluatedAt()
-	return _u
-}
-
 // SetFiredAt sets the "fired_at" field.
 func (_u *AlertRuleUpdate) SetFiredAt(v time.Time) *AlertRuleUpdate {
 	_u.mutation.SetFiredAt(v)
@@ -479,18 +438,6 @@ func (_u *AlertRuleUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, alertrule.FieldFiringOn, value)
 		})
-	}
-	if value, ok := _u.mutation.LastValue(); ok {
-		_spec.SetField(alertrule.FieldLastValue, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedLastValue(); ok {
-		_spec.AddField(alertrule.FieldLastValue, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.EvaluatedAt(); ok {
-		_spec.SetField(alertrule.FieldEvaluatedAt, field.TypeTime, value)
-	}
-	if _u.mutation.EvaluatedAtCleared() {
-		_spec.ClearField(alertrule.FieldEvaluatedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.FiredAt(); ok {
 		_spec.SetField(alertrule.FieldFiredAt, field.TypeTime, value)
@@ -743,47 +690,6 @@ func (_u *AlertRuleUpdateOne) AppendFiringOn(v []string) *AlertRuleUpdateOne {
 	return _u
 }
 
-// SetLastValue sets the "last_value" field.
-func (_u *AlertRuleUpdateOne) SetLastValue(v float64) *AlertRuleUpdateOne {
-	_u.mutation.ResetLastValue()
-	_u.mutation.SetLastValue(v)
-	return _u
-}
-
-// SetNillableLastValue sets the "last_value" field if the given value is not nil.
-func (_u *AlertRuleUpdateOne) SetNillableLastValue(v *float64) *AlertRuleUpdateOne {
-	if v != nil {
-		_u.SetLastValue(*v)
-	}
-	return _u
-}
-
-// AddLastValue adds value to the "last_value" field.
-func (_u *AlertRuleUpdateOne) AddLastValue(v float64) *AlertRuleUpdateOne {
-	_u.mutation.AddLastValue(v)
-	return _u
-}
-
-// SetEvaluatedAt sets the "evaluated_at" field.
-func (_u *AlertRuleUpdateOne) SetEvaluatedAt(v time.Time) *AlertRuleUpdateOne {
-	_u.mutation.SetEvaluatedAt(v)
-	return _u
-}
-
-// SetNillableEvaluatedAt sets the "evaluated_at" field if the given value is not nil.
-func (_u *AlertRuleUpdateOne) SetNillableEvaluatedAt(v *time.Time) *AlertRuleUpdateOne {
-	if v != nil {
-		_u.SetEvaluatedAt(*v)
-	}
-	return _u
-}
-
-// ClearEvaluatedAt clears the value of the "evaluated_at" field.
-func (_u *AlertRuleUpdateOne) ClearEvaluatedAt() *AlertRuleUpdateOne {
-	_u.mutation.ClearEvaluatedAt()
-	return _u
-}
-
 // SetFiredAt sets the "fired_at" field.
 func (_u *AlertRuleUpdateOne) SetFiredAt(v time.Time) *AlertRuleUpdateOne {
 	_u.mutation.SetFiredAt(v)
@@ -1004,18 +910,6 @@ func (_u *AlertRuleUpdateOne) sqlSave(ctx context.Context) (_node *AlertRule, er
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, alertrule.FieldFiringOn, value)
 		})
-	}
-	if value, ok := _u.mutation.LastValue(); ok {
-		_spec.SetField(alertrule.FieldLastValue, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedLastValue(); ok {
-		_spec.AddField(alertrule.FieldLastValue, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.EvaluatedAt(); ok {
-		_spec.SetField(alertrule.FieldEvaluatedAt, field.TypeTime, value)
-	}
-	if _u.mutation.EvaluatedAtCleared() {
-		_spec.ClearField(alertrule.FieldEvaluatedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.FiredAt(); ok {
 		_spec.SetField(alertrule.FieldFiredAt, field.TypeTime, value)
