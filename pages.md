@@ -49,7 +49,8 @@ Their recurring jobs:
 - **Never the content, unless asked.** The dashboard shows metadata; prompts and answers only for projects that turn
   payload capture on, always masked. Firewall
   events show detector names and, only when the project turned excerpts on, masked excerpts. Say this where it
-  matters (request detail, firewall); it is part of why customers trust the product.
+  matters (request detail, firewall); it is part of why customers trust the product. An organization in payload-free
+  mode (§5.7) keeps no content at all: the settings that would keep some show locked, naming that page.
 - **Empty states teach.** An empty page says what will fill it and how: a code snippet, a button, a link to docs.
 - **Fresh enough.** Data pages refresh every 30 to 60 seconds while open and show "updated 20 s ago". Gateways apply
   configuration changes within seconds: say "Applied" after a save, not "Saved, deploy to apply".
@@ -96,7 +97,7 @@ Groups, in order. Items marked with a plan show the lock when the plan lacks the
 | | Routes | `/routes` | all | Fallbacks, retries, caching per path |
 | | Prices | `/prices` | all | The project's own prices (discounts, self-hosted models) |
 | | Project settings | `/settings` | all | Name, IDs, delete |
-| **Organization** (bottom) | Settings | `/org/*` | all | General, Members, Projects, Billing, Alert channels, Webhooks, Audit log |
+| **Organization** (bottom) | Settings | `/org/*` | all | General, Members, Projects, Billing, Alert channels, Webhooks, Privacy, Audit log |
 
 **Sidebar badges**: the few states worth a glance, each linking to its page:
 - Routers: a dot when a router is ready to activate (`router.ready`) or a tier was demoted.
@@ -534,7 +535,7 @@ the busiest first, each with a "Set price" button.
 **Payload capture:** off by default. On, the gateway keeps each call's request and answer (a share of calls with the
 sample rate; requests only if answers are off), always masked, sealed, and kept as long as the plan keeps logs. Say
 plainly what is stored and for how long; "Delete all payloads" empties them now. API: `GET/PUT …/payloads/settings`,
-`DELETE …/payloads`.
+`DELETE …/payloads`. In payload-free mode (§5.7) the switch is locked off; saving it on answers 409 `payload_free`.
 
 Name, project ID (copy), the gateway URL, and **Delete project**: everything Promptdam keeps of it goes (configuration
 now, logs and caches by a background purge); type the name to confirm.
@@ -591,13 +592,26 @@ status and **Replay**. Event types listed with their descriptions, Promptdam's i
 `budget.exceeded`, `router.ready`, `router.tier_demoted`, `firewall.blocked`, `alert.fired`, `alert.resolved`.
 API: `GET /v1/webhooks/events`, `…/webhooks` CRUD, secret, test, deliveries, replay.
 
-### 5.7 Audit log (Team)
+### 5.7 Privacy (Business)
+**Payload-free mode:** one switch for the whole organization, for teams whose security review says no prompt or answer
+may be stored. While it is on:
+- no project keeps payloads, firewall excerpts or cached answers, whatever its settings say (they stay saved, inert);
+- turning any of them on answers 409 `payload_free`: the project pages show those settings locked, with a link here.
+
+Turning it on **deletes what was kept**: every project's payloads and cached answers. Say so in the confirmation
+("Every project's kept prompts, answers and cached answers are deleted now"), with the organization's name to type. Show who
+turned it on and when. Turning it off needs no plan; a downgrade leaves it on. Admins and owners change it, every
+change is in the audit log (`privacy.updated`). Below Business, show what it guarantees and the upgrade (402
+`plan_required`).
+API: `GET/PUT /v1/orgs/{org}/privacy`.
+
+### 5.8 Audit log (Team)
 Who changed what and when, from where: members and keys (Keel), and every change to a project: providers, gateway
 key settings, routes, budgets, routing rules, routers (activations, restored tiers), the firewall, prices, family
 names, alert rules. Filters by actor and action prefix (`router.`). On plans without it the API answers 402: show the
 upsell. API: `GET /v1/orgs/{org}/audit`.
 
-### 5.8 Account (user menu)
+### 5.9 Account (user menu)
 Name, email, sign-in method; delete account (with a preview of what goes). API: `GET/PATCH/DELETE /v1/me`,
 `GET /v1/me/deletion`.
 
@@ -610,7 +624,7 @@ export, the request log's and firewall events' filters, the activity feed (and e
 one call, the routers' `watching` and `learned`, the plan checks (prompt caching, the cache doctor, per-developer keys,
 the ledger export, the audit log), alert rules, per-project usage, and the audit log of every project change.
 
-Since then: payload capture (§4.4 and §4.17).
+Since then: payload capture (§4.4 and §4.17), payload-free mode (§5.7).
 
 Left: nothing the pages above need.
 

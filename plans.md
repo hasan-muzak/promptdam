@@ -81,7 +81,7 @@ savings ledger proves what Promptdam saves; it doesn't set the invoice.
 | Feature | Free | Pro | Team | Business |
 |---|---|---|---|---|
 | Support | standard | standard | standard | priority |
-| Payload-free mode guarantees | | | | ✓ |
+| Payload-free mode: one switch for the organization; no project keeps payloads, firewall excerpts or cached answers, and what was kept is deleted when it's turned on | | | | ✓ |
 | DPA | | | | ✓ |
 | SLA | | | | ✓ |
 
@@ -157,6 +157,7 @@ Sized so the gateway holds a project's whole configuration in memory. Raise them
 | Per-developer keys | A developer already named stays; naming another needs the plan. |
 | Cache doctor | Findings and their value, without the fixes. |
 | Ledger export, audit log | 402 `plan_required` (the audit events are still written). |
+| Payload-free mode | **Stays on**, like the firewall: a downgrade never loosens it. Turning it off needs no plan. |
 | Logs, events and payloads | Each keeps the retention of the plan it was written under; new ones get the new plan's. |
 | Members past the seat limit | Stay; inviting more needs seats. |
 

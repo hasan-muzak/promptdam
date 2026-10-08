@@ -625,7 +625,46 @@ Model routers replace per-family savings experiments, and cross-format translati
     - Calls the firewall tokenized aren't kept.
 - [ ] S4.3 Docs: concepts (families, rules, routers, ledger, firewall), provider setup, migration guides (from OpenRouter, LiteLLM, Portkey, Helicone), security and data handling page, API reference, `llms.txt`.
 - [ ] S4.4 Load test at 1k req/s with streaming on the Promptdam VPS (2 gateway replicas behind Caddy); uptime checks; status page; documented client-side fallback to the provider for when the gateway is unreachable.
-- [ ] S4.5 Security pass: vault for provider keys, payload-free default, tenant isolation, SSRF guard on custom provider URLs, dependency audit, signed container images.
+- [x] S4.5 Security pass: vault for provider keys, payload-free default, tenant isolation, SSRF guard on custom provider URLs, dependency audit, signed container images.
+  - **Done 2026-10-08:** an audit of the gateway, the API and what is stored, then a commit per fix.
+  - Already sound:
+    - govulncheck is clean (the only advisory, `x/crypto/openpgp`, is unreachable and has no fix), and CI runs it
+      with gitleaks and golangci-lint.
+    - Provider keys are sealed by the vault at rest and in Valkey and opened only in gateway memory; production
+      refuses to start without vault keys.
+    - Custom provider URLs are https and public when saved, and re-checked at dial time against every private range.
+    - Every ClickHouse value is bound; every lookup by ID filters on the caller's project; no handler reaches an
+      unscoped query.
+  - Fixed:
+    - **The gateway:** a provider's answer nested beyond 10,000 levels is relayed unscanned instead of growing the
+      scanner's stack. A provider's 401 or 403, which can quote part of the project's key, becomes the gateway's own
+      `provider_auth_failed`; other error bodies pass with secrets and personal data masked. Providers' `X-Promptdam-*`
+      and account headers (`openai-organization`, `openai-project`, `anthropic-organization-id`) are dropped.
+    - **Routing:** the decision model's cache is keyed by project (it was shared by every project with the same
+      router name). The firewall's policies run before the decision model is asked, so a blocked or redirected
+      prompt never reaches its provider, and calls a policy decided aren't sampled for evaluation. The decision
+      model's and the judge's clients don't follow redirects, which would re-send a key to another host.
+    - **The firewall:** patterns are at most 1,000 characters and conditions 4,096. Excerpts mask every span any
+      detector finds in the whole text, cut ones included.
+    - **Smaller:** changing a route's cache or router, or deleting it, clears its cached answers. Tags from
+      `X-Promptdam-Tags` keep to a key's tag characters. A key budget's key must be one of the project's keys.
+  - **Payload-free mode** (Business, decided with the owner to build now): `GET`/`PUT /v1/orgs/{org}/privacy`, set by
+    admins and owners, audited.
+    - While it's on, projects can't turn on payload capture, firewall excerpts or a route's response cache (409
+      `payload_free`). The gateway keeps nothing either way: saved settings stay, inert.
+    - Turning it on deletes what was kept: the organization's payloads and cached answers.
+    - A downgrade keeps it on; turning it off needs no plan.
+  - **Signed images** (decided with the owner: GHCR, cosign keyless): base images pinned by digest. keel's
+    `promptdam-release` workflow builds the four commands on a `promptdam-v*` tag, pushes them to
+    `ghcr.io/hasan-muzak/promptdam-<command>`, signs each digest with the workflow's GitHub identity and attests an
+    SPDX SBOM. `deploy/README.md` shows how the VPS verifies before it pulls.
+  - Noted, not changed:
+    - Router evaluation features and the request log's `family_id` and `prefix_hash` are unsalted hashes: someone
+      who can read the project's data can confirm a guessed prompt. A per-project salt means retraining classifiers;
+      later.
+    - The response cache keeps answers in Valkey as plain JSON (opt-in, with a TTL; off in payload-free mode).
+    - Core `events`' `{tenant}` counts the `?`s before it to place its arguments: correct today, worth a comment in
+      the core.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
 - **Exit:** ≥ 5 design partners in production, ≥ 2 willing to pay for Team or Business. → **Beta Mon Apr 26**.
 
@@ -702,4 +741,6 @@ Model routers replace per-family savings experiments, and cross-format translati
 - [x] **Write-heavy data stays out of Postgres** (decided with the owner, 2026-10-08): payloads and other per-call content go to object storage (R2) with only their path kept; event logs go to ClickHouse; live per-minute state goes to Valkey, with Postgres written on transitions. Small configuration columns may stay jsonb.
 - [x] A firewall policy's `route_to` model **serves the call alone**, without the route's fallbacks, which may be the very provider the policy keeps the call from (decided 2026-10-08).
 - [x] Routers per plan (decided 2026-10-08): shadow mode with evaluation on every plan, active routers on Pro, learned placement (classifier, decision model) on Team (§5).
+- [x] Images: **GHCR, signed with cosign keyless**, an SPDX SBOM attested with each (decided 2026-10-08). No signing key to keep; the VPS verifies the release workflow's identity.
+- [x] Payload-free mode: **built before launch** (decided 2026-10-08), the Business plan's guarantee that nothing a call says is kept. Turning it on deletes what was kept; a downgrade keeps it on.
 - [x] Include OpenAI Responses API routing at MVP: **passthrough only** (auth, budgets, usage, cost, log; no model routing or caching), routing later (decided 2026-10-07).
