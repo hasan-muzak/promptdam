@@ -127,6 +127,7 @@ func (h *Handlers) PutPrice(ctx *muzak.Context, in PutPriceIn) (PriceOut, error)
 	if err != nil {
 		return PriceOut{}, err
 	}
+	h.audited(ctx, "price.set", "price", ids.Encode(PricePrefix, p.ID), map[string]any{"model": p.Model, "provider": p.Provider, "input": p.Input, "output": p.Output})
 	return priceOut(p, listPrice(p.Provider, p.Model)), nil
 }
 
@@ -199,7 +200,11 @@ func (h *Handlers) DeletePrice(ctx *muzak.Context, in PricePath) (muzak.Empty, e
 	if err != nil {
 		return muzak.Empty{}, httpx.NotFound("price")
 	}
-	return muzak.Empty{}, priceFail(h.Prices.Delete(ctx.Context(), pa.Project.ID, id))
+	if err := h.Prices.Delete(ctx.Context(), pa.Project.ID, id); err != nil {
+		return muzak.Empty{}, priceFail(err)
+	}
+	h.audited(ctx, "price.deleted", "price", in.Price, map[string]any{})
+	return muzak.Empty{}, nil
 }
 
 func priceFail(err error) error {

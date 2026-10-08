@@ -282,6 +282,7 @@ func (h *Handlers) CreateRouter(ctx *muzak.Context, in CreateRouterIn) (RouterOu
 	if err != nil {
 		return RouterOut{}, routerFail(err)
 	}
+	h.audited(ctx, "router.created", "router", ids.Encode(RouterPrefix, r.ID), map[string]any{"name": r.Name, "status": r.Status, "default_tier": r.DefaultTier})
 	return h.routerPlan(ctx)(routerOut(r)), nil
 }
 
@@ -318,6 +319,7 @@ func (h *Handlers) UpdateRouter(ctx *muzak.Context, in UpdateRouterIn) (RouterOu
 	if err := h.planAllows(ctx, input.Status); err != nil {
 		return RouterOut{}, err
 	}
+	activating := false
 	if input.Status == tiers.Active {
 		cur, err := h.Routers.Get(ctx.Context(), pa.Project.ID, id)
 		if err != nil {
@@ -327,12 +329,19 @@ func (h *Handlers) UpdateRouter(ctx *muzak.Context, in UpdateRouterIn) (RouterOu
 			if err := h.readyToServe(ctx, cur, in.Override); err != nil {
 				return RouterOut{}, err
 			}
+			activating = true
 		}
 	}
 	r, err := h.Routers.Update(ctx.Context(), pa.Project.ID, id, input)
 	if err != nil {
 		return RouterOut{}, routerFail(err)
 	}
+	action := "router.updated"
+	if activating {
+		action = "router.activated"
+	}
+	h.audited(ctx, action, "router", ids.Encode(RouterPrefix, r.ID), map[string]any{"name": r.Name, "status": r.Status,
+		"default_tier": r.DefaultTier, "override": in.Override})
 	return h.routerPlan(ctx)(routerOut(r)), nil
 }
 
@@ -343,7 +352,11 @@ func (h *Handlers) DeleteRouter(ctx *muzak.Context, in RouterPath) (muzak.Empty,
 	if err != nil {
 		return muzak.Empty{}, httpx.NotFound("router")
 	}
-	return muzak.Empty{}, routerFail(h.Routers.Delete(ctx.Context(), pa.Project.ID, id))
+	if err := h.Routers.Delete(ctx.Context(), pa.Project.ID, id); err != nil {
+		return muzak.Empty{}, routerFail(err)
+	}
+	h.audited(ctx, "router.deleted", "router", in.Router, map[string]any{})
+	return muzak.Empty{}, nil
 }
 
 // RestoreTierIn names a demoted tier to restore.
@@ -368,6 +381,7 @@ func (h *Handlers) RestoreTier(ctx *muzak.Context, in RestoreTierIn) (RouterOut,
 	if err != nil {
 		return RouterOut{}, routerFail(err)
 	}
+	h.audited(ctx, "router.tier_restored", "router", in.Router, map[string]any{"name": r.Name, "tier": in.Tier})
 	return h.routerPlan(ctx)(routerOut(r)), nil
 }
 

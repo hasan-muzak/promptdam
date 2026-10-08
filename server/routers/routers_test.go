@@ -939,6 +939,41 @@ func TestOverview(t *testing.T) {
 	}
 }
 
+// Changes to a project are audited; reading the audit log comes with Team.
+func TestAuditLog(t *testing.T) {
+	e := setup(t)
+	alice := e.as("alice")
+	org, prj, base := e.project("alice")
+	p := testclient.Decoded[handlers.ProviderOut](e.client.Post(base+"/providers", alice, testclient.JSON(map[string]any{
+		"name": "openai", "kind": "openai", "api_key": "sk-test-secret-abcd",
+	})).AssertStatus(http.StatusCreated))
+	e.client.Put(base+"/firewall", alice, testclient.JSON(map[string]any{"enabled": true, "secrets": "block", "pii": "alert"})).
+		AssertStatus(http.StatusOK)
+	e.client.Delete(base+"/providers/"+p.ID, alice).AssertStatus(http.StatusNoContent)
+	path := "/v1/orgs/" + org.ID + "/audit"
+	if res := e.client.Get(path, alice); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free reads the audit log: %d %s", res.Status, res.String())
+	}
+	e.plan(t, org.ID, catalog.AuditLog)
+	log := testclient.Decoded[httpx.List[platform.AuditEventOut]](e.client.Get(path, alice, testclient.Query("limit", "50")).
+		AssertStatus(http.StatusOK))
+	got := map[string]platform.AuditEventOut{}
+	for _, ev := range log.Data {
+		got[ev.Action] = ev
+	}
+	created, ok := got["provider.created"]
+	if !ok || created.TargetID != p.ID || created.ActorType != "user" || created.Meta["project"] != prj.ID ||
+		created.Meta["name"] != "openai" || created.Meta["api_key"] != nil {
+		t.Fatalf("provider.created %+v", created)
+	}
+	if fw, ok := got["firewall.updated"]; !ok || fw.Meta["pii"] != "alert" {
+		t.Fatalf("firewall.updated %+v", fw)
+	}
+	if _, ok := got["provider.deleted"]; !ok {
+		t.Fatalf("no provider.deleted in %v", got)
+	}
+}
+
 func TestBudgets(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()

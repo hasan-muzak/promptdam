@@ -134,6 +134,7 @@ func (h *Handlers) LabelFamily(ctx *muzak.Context, in LabelFamilyIn) (LabelFamil
 	if err := h.Families.SetLabel(ctx.Context(), pa.OrgID(), pa.Project.ID, in.Family, in.Label); err != nil {
 		return LabelFamilyOut{}, familyFail(err)
 	}
+	h.audited(ctx, "family.labeled", "family", in.Family, map[string]any{"label": in.Label})
 	return LabelFamilyOut{ID: in.Family, Label: in.Label}, nil
 }
 

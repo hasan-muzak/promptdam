@@ -136,6 +136,7 @@ func (h *Handlers) CreateAlert(ctx *muzak.Context, in CreateAlertIn) (AlertRuleO
 	if err != nil {
 		return AlertRuleOut{}, alertFail(err)
 	}
+	h.audited(ctx, "alert_rule.created", "alert_rule", ids.Encode(alerts.IDPrefix, r.ID), map[string]any{"name": r.Name, "kind": r.Kind, "threshold": r.Threshold, "window_minutes": r.WindowMinutes, "enabled": r.Enabled})
 	return alertOut(r), nil
 }
 
@@ -179,6 +180,7 @@ func (h *Handlers) UpdateAlert(ctx *muzak.Context, in UpdateAlertIn) (AlertRuleO
 	if err != nil {
 		return AlertRuleOut{}, alertFail(err)
 	}
+	h.audited(ctx, "alert_rule.updated", "alert_rule", ids.Encode(alerts.IDPrefix, r.ID), map[string]any{"name": r.Name, "kind": r.Kind, "threshold": r.Threshold, "window_minutes": r.WindowMinutes, "enabled": r.Enabled})
 	return alertOut(r), nil
 }
 
@@ -189,7 +191,11 @@ func (h *Handlers) DeleteAlert(ctx *muzak.Context, in AlertPath) (muzak.Empty, e
 	if err != nil {
 		return muzak.Empty{}, err
 	}
-	return muzak.Empty{}, alertFail(h.Alerts.Delete(ctx.Context(), pa.Project.ID, id))
+	if err := h.Alerts.Delete(ctx.Context(), pa.Project.ID, id); err != nil {
+		return muzak.Empty{}, alertFail(err)
+	}
+	h.audited(ctx, "alert_rule.deleted", "alert_rule", in.Alert, map[string]any{})
+	return muzak.Empty{}, nil
 }
 
 func alertFail(err error) error {

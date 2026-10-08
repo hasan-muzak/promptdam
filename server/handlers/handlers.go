@@ -3,8 +3,13 @@
 package handlers
 
 import (
+	"log/slog"
+
 	muzak "muzak.dev/framework"
 
+	"github.com/hasan-muzak/keel-core/pkg/audit"
+	"github.com/hasan-muzak/keel-core/pkg/ent"
+	"github.com/hasan-muzak/keel-core/pkg/ids"
 	"github.com/hasan-muzak/keel-core/pkg/notify"
 	"github.com/hasan-muzak/keel-core/pkg/platform"
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
@@ -44,6 +49,8 @@ type Handlers struct {
 	Firewall   *firewall.Service
 	Activity   *activity.Service
 	Alerts     *alerts.Service
+	// Audit is the core graph, where changes are audited.
+	Audit *ent.Client
 }
 
 // requires refuses with 402 plan_required, and where to upgrade, when the
@@ -65,4 +72,23 @@ func (h *Handlers) planHas(ctx *muzak.Context, feature string) bool {
 	pa := muzak.From[tenancy.ProjectAccess](ctx)
 	e, err := h.RouterDeps.Billing.Entitlements(ctx.Context(), pa.OrgID())
 	return err == nil && e.Has(feature)
+}
+
+// audited records a change to the project in the organization's audit
+// log, with who made it and from where. The change is made: an event that
+// can't be written is logged, not returned.
+func (h *Handlers) audited(ctx *muzak.Context, action, targetType, targetID string, meta map[string]any) {
+	if h.Audit == nil {
+		return
+	}
+	pa := muzak.From[tenancy.ProjectAccess](ctx)
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	meta["project"] = ids.Encode(ids.Project, pa.Project.ID)
+	err := audit.Record(audit.Request(ctx, pa.Actor()), h.Audit, audit.Event{OrgID: pa.OrgID(), Action: action,
+		TargetType: targetType, TargetID: targetID, Meta: meta})
+	if err != nil {
+		slog.Warn("handlers: a change wasn't audited", "action", action, "target", targetID, "err", err)
+	}
 }

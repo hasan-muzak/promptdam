@@ -175,5 +175,6 @@ func (h *Handlers) TrainRouter(ctx *muzak.Context, in RouterPath) (TrainRouterOu
 	if err := h.RouterDeps.Jobs.Enqueue(ctx.Context(), training.RouterArgs{Org: pa.OrgID(), Router: row.ID}, nil); err != nil {
 		return TrainRouterOut{}, err
 	}
+	h.audited(ctx, "router.training_requested", "router", in.Router, map[string]any{})
 	return TrainRouterOut{Queued: true}, nil
 }

@@ -137,6 +137,7 @@ func (h *Handlers) CreateRoute(ctx *muzak.Context, in CreateRouteIn) (RouteOut, 
 	if err != nil {
 		return RouteOut{}, routeFail(err)
 	}
+	h.audited(ctx, "route.created", "route", ids.Encode(RoutePrefix, r.ID), map[string]any{"name": r.Name, "fallbacks": r.Fallbacks, "cache_ttl_seconds": r.CacheTTLSeconds, "prompt_cache": r.PromptCache, "router": r.Router})
 	return routeOut(r), nil
 }
 
@@ -181,6 +182,7 @@ func (h *Handlers) UpdateRoute(ctx *muzak.Context, in UpdateRouteIn) (RouteOut, 
 	if err != nil {
 		return RouteOut{}, routeFail(err)
 	}
+	h.audited(ctx, "route.updated", "route", ids.Encode(RoutePrefix, r.ID), map[string]any{"name": r.Name, "fallbacks": r.Fallbacks, "cache_ttl_seconds": r.CacheTTLSeconds, "prompt_cache": r.PromptCache, "router": r.Router})
 	return routeOut(r), nil
 }
 
@@ -191,7 +193,11 @@ func (h *Handlers) DeleteRoute(ctx *muzak.Context, in RoutePath) (muzak.Empty, e
 	if err != nil {
 		return muzak.Empty{}, err
 	}
-	return muzak.Empty{}, routeFail(h.Routes.Delete(ctx.Context(), pa.Project.ID, id))
+	if err := h.Routes.Delete(ctx.Context(), pa.Project.ID, id); err != nil {
+		return muzak.Empty{}, routeFail(err)
+	}
+	h.audited(ctx, "route.deleted", "route", in.Route, map[string]any{})
+	return muzak.Empty{}, nil
 }
 
 func routeID(raw string) (uuid.UUID, error) {

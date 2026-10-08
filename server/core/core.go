@@ -65,6 +65,8 @@ var Product = keel.Product{
 	},
 	Events: []webhooks.EventType{budgets.EventThreshold, budgets.EventExceeded, routers.EventReady,
 		routers.EventTierDemoted, firewall.EventBlocked, alerts.EventFired, alerts.EventResolved},
+	// The audit log comes with Team.
+	AuditFeature:         catalog.AuditLog,
 	Migrations:           []db.MigrationSet{migrations.Postgres()},
 	ClickHouseMigrations: []events.MigrationSet{migrations.ClickHouse()},
 	Color:                "#0b7285",

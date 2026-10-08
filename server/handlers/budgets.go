@@ -205,6 +205,7 @@ func (h *Handlers) CreateBudget(ctx *muzak.Context, in CreateBudgetIn) (BudgetOu
 	if err != nil {
 		return BudgetOut{}, budgetFail(err)
 	}
+	h.audited(ctx, "budget.created", "budget", ids.Encode(budgets.IDPrefix, b.ID), map[string]any{"name": b.Name, "scope": b.Scope, "target": b.Target, "window": b.Window, "limit_micros": b.LimitMicros, "action": b.Action})
 	return h.budgetOut(ctx, b)
 }
 
@@ -246,6 +247,7 @@ func (h *Handlers) UpdateBudget(ctx *muzak.Context, in UpdateBudgetIn) (BudgetOu
 	if err != nil {
 		return BudgetOut{}, budgetFail(err)
 	}
+	h.audited(ctx, "budget.updated", "budget", ids.Encode(budgets.IDPrefix, b.ID), map[string]any{"name": b.Name, "scope": b.Scope, "target": b.Target, "window": b.Window, "limit_micros": b.LimitMicros, "action": b.Action})
 	return h.budgetOut(ctx, b)
 }
 
@@ -256,7 +258,11 @@ func (h *Handlers) DeleteBudget(ctx *muzak.Context, in BudgetPath) (muzak.Empty,
 	if err != nil {
 		return muzak.Empty{}, err
 	}
-	return muzak.Empty{}, budgetFail(h.Budgets.Delete(ctx.Context(), pa.Project.ID, id))
+	if err := h.Budgets.Delete(ctx.Context(), pa.Project.ID, id); err != nil {
+		return muzak.Empty{}, budgetFail(err)
+	}
+	h.audited(ctx, "budget.deleted", "budget", in.Budget, map[string]any{})
+	return muzak.Empty{}, nil
 }
 
 func budgetID(raw string) (uuid.UUID, error) {

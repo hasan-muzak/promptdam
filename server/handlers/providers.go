@@ -139,6 +139,7 @@ func (h *Handlers) CreateProvider(ctx *muzak.Context, in CreateProviderIn) (Prov
 	if err != nil {
 		return ProviderOut{}, providerFail(err)
 	}
+	h.audited(ctx, "provider.created", "provider", ids.Encode(ProviderPrefix, p.ID), map[string]any{"name": p.Name, "kind": p.Kind, "base_url": p.BaseURL})
 	return providerOut(p), nil
 }
 
@@ -167,6 +168,7 @@ func (h *Handlers) UpdateProvider(ctx *muzak.Context, in UpdateProviderIn) (Prov
 	if err != nil {
 		return ProviderOut{}, providerFail(err)
 	}
+	h.audited(ctx, "provider.updated", "provider", ids.Encode(ProviderPrefix, p.ID), map[string]any{"name": p.Name, "kind": p.Kind, "base_url": p.BaseURL, "enabled": p.Enabled, "key_replaced": in.APIKey != nil})
 	return providerOut(p), nil
 }
 
@@ -177,7 +179,11 @@ func (h *Handlers) DeleteProvider(ctx *muzak.Context, in ProviderPath) (muzak.Em
 	if err != nil {
 		return muzak.Empty{}, err
 	}
-	return muzak.Empty{}, providerFail(h.Providers.Delete(ctx.Context(), pa.Project.ID, id))
+	if err := h.Providers.Delete(ctx.Context(), pa.Project.ID, id); err != nil {
+		return muzak.Empty{}, providerFail(err)
+	}
+	h.audited(ctx, "provider.deleted", "provider", in.Provider, map[string]any{})
+	return muzak.Empty{}, nil
 }
 
 // CheckProvider checks a provider's key against the provider.

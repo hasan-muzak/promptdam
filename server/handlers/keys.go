@@ -91,6 +91,7 @@ func (h *Handlers) PutKeySettings(ctx *muzak.Context, in PutKeySettingsIn) (KeyS
 	if err != nil {
 		return KeySettings{}, keyFail(err)
 	}
+	h.audited(ctx, "api_key.gateway_updated", "api_key", in.Key, map[string]any{"allowed_models": s.AllowedModels, "developer": s.Developer, "rpm": s.RPM, "route": s.Route})
 	return keySettingsOut(s), nil
 }
 

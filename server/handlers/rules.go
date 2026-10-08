@@ -125,6 +125,7 @@ func (h *Handlers) CreateRule(ctx *muzak.Context, in CreateRuleIn) (RuleOut, err
 	if err != nil {
 		return RuleOut{}, ruleFail(err)
 	}
+	h.audited(ctx, "routing_rule.created", "routing_rule", ids.Encode(RulePrefix, r.ID), map[string]any{"name": r.Name, "when": r.When, "to_model": r.ToModel, "status": r.Status})
 	return ruleOut(r), nil
 }
 
@@ -153,6 +154,7 @@ func (h *Handlers) UpdateRule(ctx *muzak.Context, in UpdateRuleIn) (RuleOut, err
 	if err != nil {
 		return RuleOut{}, ruleFail(err)
 	}
+	h.audited(ctx, "routing_rule.updated", "routing_rule", ids.Encode(RulePrefix, r.ID), map[string]any{"name": r.Name, "when": r.When, "to_model": r.ToModel, "status": r.Status})
 	return ruleOut(r), nil
 }
 
@@ -163,7 +165,11 @@ func (h *Handlers) DeleteRule(ctx *muzak.Context, in RulePath) (muzak.Empty, err
 	if err != nil {
 		return muzak.Empty{}, err
 	}
-	return muzak.Empty{}, ruleFail(h.Rules.Delete(ctx.Context(), pa.Project.ID, id))
+	if err := h.Rules.Delete(ctx.Context(), pa.Project.ID, id); err != nil {
+		return muzak.Empty{}, ruleFail(err)
+	}
+	h.audited(ctx, "routing_rule.deleted", "routing_rule", in.Rule, map[string]any{})
+	return muzak.Empty{}, nil
 }
 
 // DryRunIn tries a rule, saved or not, on recent calls.

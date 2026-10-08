@@ -112,6 +112,7 @@ func (h *Handlers) PutFirewall(ctx *muzak.Context, in PutFirewallIn) (FirewallSe
 	if err != nil {
 		return FirewallSettings{}, firewallFail(err)
 	}
+	h.audited(ctx, "firewall.updated", "firewall", ids.Encode(ids.Project, pa.Project.ID), map[string]any{"enabled": saved.Enabled, "secrets": saved.Secrets, "pii": saved.PII, "custom_action": saved.CustomAction, "custom_patterns": len(saved.Custom), "policies": len(saved.Policies), "fail_mode": saved.FailMode, "scan_responses": saved.ScanResponses, "excerpts": saved.Excerpts})
 	return firewallOut(saved), nil
 }
 
