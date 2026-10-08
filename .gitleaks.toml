@@ -33,3 +33,10 @@ paths = ['''(^|/)atlas\.sum$''']
 [[allowlists]]
 description = "Test placeholder key"
 regexes = ['''sk_(live|test)_0123456789abcdef''']
+
+# The firewall's tests make up a customer's own identifier (BADGE-<digits>)
+# for custom patterns to find; next to a name like key.Excerpt it reads as
+# a generic API key.
+[[allowlists]]
+description = "Custom-pattern fixture"
+regexes = ['''BADGE-\d+''']
