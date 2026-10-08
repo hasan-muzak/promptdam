@@ -47,9 +47,9 @@ func check(base, cand Answer, wantJSON bool) (verdict, how string, ok bool) {
 		return Tie, CheckSame, true
 	case cand.Refused:
 		return Loss, CheckRefusal, true
-	case cand.empty() && base.empty():
+	case cand.Empty() && base.Empty():
 		return Tie, CheckSame, true
-	case cand.empty():
+	case cand.Empty():
 		return Loss, CheckEmpty, true
 	case wantJSON && !validJSON(cand.Text) && validJSON(base.Text) && len(base.Tools) == 0:
 		return Loss, CheckJSON, true
