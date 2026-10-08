@@ -590,40 +590,70 @@ func (r *Resolver) Models(ctx context.Context, c *gateway.Call) ([]gateway.Model
 		return nil, err
 	}
 	settings := snap.Keys[m.Key]
-	format := apiFormat(c.Format)
-	ordered := make([]snapshot.Opened, 0, len(snap.Providers))
+	served, _ := r.ServedModels(snap, apiFormat(c.Format))
+	var out []gateway.Model
+	for _, sm := range served {
+		if settings.Allows(sm.ID) {
+			out = append(out, gateway.Model{ID: sm.ID, Provider: sm.Providers[0].Name})
+		}
+	}
+	return out, nil
+}
+
+// ServedModel is a model the project's providers serve, Providers in the
+// order they are listed for it.
+type ServedModel struct {
+	ID        string
+	Providers []snapshot.Provider
+}
+
+// ServedModels are the models a snapshot's providers serve: their own
+// lists, else the catalog's models of their kind; the providers speaking
+// format first, then by priority. Providers that take any model (a custom
+// endpoint without a list, OpenRouter) come back in open: their models
+// can't be listed.
+func (r *Resolver) ServedModels(snap *snapshot.Snapshot, format string) (models []ServedModel, open []snapshot.Provider) {
+	ordered := make([]snapshot.Provider, 0, len(snap.Providers))
 	for _, p := range snap.Providers {
 		if p.Format == format {
-			ordered = append(ordered, p)
+			ordered = append(ordered, p.Provider)
 		}
 	}
 	for _, p := range snap.Providers {
 		if p.Format != format {
-			ordered = append(ordered, p)
+			ordered = append(ordered, p.Provider)
 		}
 	}
-	seen := map[string]bool{}
-	var out []gateway.Model
-	add := func(id, provider string) {
-		if !seen[id] && !strings.HasSuffix(id, "*") && settings.Allows(id) {
-			seen[id] = true
-			out = append(out, gateway.Model{ID: id, Provider: provider})
+	index := map[string]int{}
+	add := func(id string, p snapshot.Provider) {
+		if strings.HasSuffix(id, "*") {
+			return
 		}
+		i, ok := index[id]
+		if !ok {
+			i = len(models)
+			index[id] = i
+			models = append(models, ServedModel{ID: id})
+		}
+		models[i].Providers = append(models[i].Providers, p)
 	}
 	for _, p := range ordered {
 		if len(p.Models) > 0 {
 			for _, id := range p.Models {
-				add(id, p.Name)
+				add(id, p)
 			}
 			continue
 		}
-		if kind, ok := providers.LookupKind(p.Kind); ok && kind.Catalog != "" {
-			for _, cm := range r.cfg.Prices.Current().Models {
-				if cm.Provider == kind.Catalog {
-					add(cm.ID, p.Name)
-				}
+		kind, ok := providers.LookupKind(p.Kind)
+		if p.Kind == providers.Custom || p.Kind == "openrouter" || !ok {
+			open = append(open, p)
+			continue
+		}
+		for _, cm := range r.cfg.Prices.Current().Models {
+			if cm.Provider == kind.Catalog {
+				add(cm.ID, p)
 			}
 		}
 	}
-	return out, nil
+	return models, open
 }

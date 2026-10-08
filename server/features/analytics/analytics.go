@@ -400,3 +400,38 @@ func (s *Service) Savings(ctx context.Context, project uuid.UUID, from, to time.
 	}
 	return out, nil
 }
+
+// Unpriced is a model calls were served by without a price: their cost
+// is unknown, so spend and savings leave them out.
+type Unpriced struct {
+	Provider     string    `ch:"provider"`
+	Kind         string    `ch:"kind"`
+	Model        string    `ch:"served_model"`
+	Calls        uint64    `ch:"calls"`
+	InputTokens  uint64    `ch:"input"`
+	OutputTokens uint64    `ch:"output"`
+	LastSeen     time.Time `ch:"last_seen"`
+}
+
+// Unpriced lists the models of a project's calls over a range that cost
+// nothing though they used tokens (no cache answered them), the busiest
+// first: the candidates for a price. A price set since still shows them;
+// the caller checks the prices of now.
+func (s *Service) Unpriced(ctx context.Context, project uuid.UUID, from, to time.Time) ([]Unpriced, error) {
+	if err := checkRange(from, to, MaxLogRange); err != nil {
+		return nil, err
+	}
+	out := []Unpriced{}
+	if s.db == nil {
+		return out, nil
+	}
+	err := s.db.Select(ctx, &out, events.Project(project), `SELECT provider, kind, served_model, count() AS calls,
+		sum(input_tokens) AS input, sum(output_tokens) AS output, max(ts) AS last_seen
+		FROM requests WHERE {tenant} AND ts >= fromUnixTimestamp64Milli(?) AND ts < fromUnixTimestamp64Milli(?)
+		AND usage_known AND cost_micros = 0 AND cache != 'hit' AND input_tokens + output_tokens > 0 AND served_model != ''
+		GROUP BY provider, kind, served_model ORDER BY calls DESC LIMIT 200`, from.UnixMilli(), to.UnixMilli())
+	if err != nil {
+		return nil, fmt.Errorf("analytics: unpriced models: %w", err)
+	}
+	return out, nil
+}

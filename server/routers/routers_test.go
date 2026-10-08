@@ -648,6 +648,60 @@ func TestFirewall(t *testing.T) {
 	}
 }
 
+func TestModelsAndPrices(t *testing.T) {
+	e := setup(t)
+	alice := e.as("alice")
+	_, _, base := e.project("alice")
+	for _, p := range []map[string]any{
+		{"name": "openai", "kind": "openai", "api_key": "sk-test-secret-abcd"},
+		{"name": "router", "kind": "openrouter", "api_key": "sk-or-test-0000000000"},
+	} {
+		e.client.Post(base+"/providers", alice, testclient.JSON(p)).AssertStatus(http.StatusCreated)
+	}
+	models := testclient.Decoded[handlers.ModelsOut](e.client.Get(base+"/models", alice).AssertStatus(http.StatusOK))
+	var mini *handlers.ModelOut
+	for i := range models.Data {
+		if models.Data[i].ID == "gpt-5-mini" {
+			mini = &models.Data[i]
+		}
+	}
+	if mini == nil || mini.Providers[0] != "openai" || mini.APIFormat != "openai" || mini.ListPrice == nil || mini.Price != nil ||
+		len(models.OpenProviders) != 1 || models.OpenProviders[0].Provider != "router" {
+		t.Fatalf("models %d, gpt-5-mini %+v, open %+v", len(models.Data), mini, models.OpenProviders)
+	}
+	one := testclient.Decoded[handlers.ModelsOut](e.client.Get(base+"/models?q=GPT-5-MINI", alice).AssertStatus(http.StatusOK))
+	for _, m := range one.Data {
+		if !strings.Contains(m.ID, "gpt-5-mini") {
+			t.Fatalf("q kept %s", m.ID)
+		}
+	}
+	if none := testclient.Decoded[handlers.ModelsOut](e.client.Get(base+"/models?api_format=anthropic", alice)); len(none.Data) != 0 ||
+		len(none.OpenProviders) != 0 {
+		t.Fatalf("anthropic %+v", none)
+	}
+
+	// The project's own price shows on the model, and the list's beside it.
+	price := testclient.Decoded[handlers.PriceOut](e.client.Put(base+"/prices", alice, testclient.JSON(map[string]any{
+		"model": "gpt-5-mini", "provider": "openai", "input": 0.1, "output": 0.4,
+	})).AssertStatus(http.StatusOK))
+	if price.ListPrice == nil || price.ListPrice.Input == 0.1 {
+		t.Fatalf("price %+v", price)
+	}
+	if one = testclient.Decoded[handlers.ModelsOut](e.client.Get(base+"/models?q=gpt-5-mini", alice)); one.Data[0].Price == nil ||
+		one.Data[0].Price.Output != 0.4 {
+		t.Fatalf("own price %+v", one.Data[0])
+	}
+	list := testclient.Decoded[httpx.List[handlers.PriceOut]](e.client.Get(base+"/prices", alice).AssertStatus(http.StatusOK))
+	if len(list.Data) != 1 || list.Data[0].ListPrice == nil {
+		t.Fatalf("prices %+v", list)
+	}
+	// No request log here: nothing is missing.
+	missing := testclient.Decoded[httpx.List[handlers.MissingPriceOut]](e.client.Get(base+"/prices/missing", alice).AssertStatus(http.StatusOK))
+	if len(missing.Data) != 0 {
+		t.Fatalf("missing %+v", missing)
+	}
+}
+
 func TestBudgets(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()

@@ -135,3 +135,26 @@ func TestScanBudgets(t *testing.T) {
 		}
 	}
 }
+
+// Calls a model without a price served are listed until it gets one.
+func TestUnpricedModels(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true})
+	ctx := context.Background()
+	for _, model := range []string{"llama-local", "llama-local", "gpt-5-mini"} {
+		if status, _, body := w.Call("/v1/chat/completions", `{"model":"`+model+`","messages":[]}`); status != 200 {
+			t.Fatalf("%d %s", status, body)
+		}
+	}
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	rows, err := analytics.New(w.C.Events).Unpriced(ctx, w.Project, now.Add(-time.Hour), now.Add(time.Minute))
+	if err != nil || len(rows) != 1 || rows[0].Model != "llama-local" || rows[0].Calls != 2 || rows[0].Provider != "main" ||
+		rows[0].InputTokens == 0 {
+		t.Fatalf("unpriced %+v %v", rows, err)
+	}
+	if _, err := analytics.New(w.C.Events).Unpriced(ctx, w.Project, now.Add(-40*24*time.Hour), now); !errors.Is(err, analytics.ErrRange) {
+		t.Fatalf("40 days: %v", err)
+	}
+}

@@ -68,6 +68,13 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Description("Lists the provider's models with the key, which costs nothing, and records whether the "+
 			"provider accepted it (checked_at, check_error)."))
 
+	r.Get("/v1/orgs/{org}/projects/{project}/models", h.ListModels, prov, muzak.Title("List Models"),
+		project(tenancy.PermProjectsRead), muzak.Summary("The models the project's providers serve, for model pickers"),
+		muzak.Description("Each model with the providers serving it (those of api_format first, then by priority), what it "+
+			"takes (tools, images, files, JSON schema, reasoning; null when the price list doesn't say), its context and "+
+			"answer limits, the price list's price and the project's own. Providers that take any model name (a custom "+
+			"endpoint without a list, OpenRouter) are listed apart: type the model."))
+
 	keys := muzak.WithCategory("Gateway Keys")
 	kb := "/v1/orgs/{org}/projects/{project}/keys/{key}/gateway"
 	r.Get(kb, h.GetKeySettings, keys, muzak.Title("Get Key Settings"), project(tenancy.PermProjectsRead),
@@ -239,6 +246,10 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Description("For negotiated discounts and models the price list doesn't know (self-hosted ones, a "+
 			"host's own model names). USD per million tokens; replaces the project's price for the same model and "+
 			"provider. Applies to calls from a few seconds later."))
+	r.Get(pr+"/missing", h.MissingPrices, pcat, muzak.Title("List Missing Prices"), project(tenancy.PermProjectsRead),
+		muzak.Summary("Models the project's calls were served by without a price"),
+		muzak.Description("Their spend and savings are unknown: set the project's own price, or wait for the price list "+
+			"to price them. The busiest first; default the last 7 days, at most 31."))
 	r.Delete(pr+"/{price}", h.DeletePrice, pcat, muzak.Title("Delete Price"), project(tenancy.PermProjectsManage),
 		muzak.Status(http.StatusNoContent), muzak.Summary("Remove the project's own price: the price list's applies again"))
 
