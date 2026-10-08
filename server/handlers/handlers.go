@@ -22,6 +22,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/families"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
+	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
@@ -49,6 +50,7 @@ type Handlers struct {
 	Firewall   *firewall.Service
 	Activity   *activity.Service
 	Alerts     *alerts.Service
+	Payloads   *payloads.Service
 	// Audit is the core graph, where changes are audited.
 	Audit *ent.Client
 }

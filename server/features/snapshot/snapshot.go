@@ -30,6 +30,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
+	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
@@ -79,6 +80,9 @@ type Data struct {
 	// Firewall is the project's firewall; nil (a copy cached before it
 	// existed) is the defaults.
 	Firewall *firewall.Settings `json:"firewall,omitempty"`
+	// Capture is whether the project keeps its calls' payloads; nil keeps
+	// none.
+	Capture *payloads.Settings `json:"capture,omitempty"`
 }
 
 // Snapshot is a project's configuration as a gateway holds it in memory.
@@ -97,6 +101,8 @@ type Snapshot struct {
 	Routers map[string]*routers.Router
 	// Firewall inspects the project's calls; nil when it is off.
 	Firewall *firewall.Engine
+	// Capture keeps the project's calls' payloads; nil when it keeps none.
+	Capture *payloads.Capture
 }
 
 // Opened is a provider with its key's headers.
@@ -115,6 +121,7 @@ type Sources struct {
 	Rules     *rules.Service
 	Routers   *routers.Service
 	Firewall  *firewall.Service
+	Payloads  *payloads.Service
 }
 
 // Build reads a project's configuration from Postgres.
@@ -168,6 +175,15 @@ func (s Sources) Build(ctx context.Context, org, project uuid.UUID) (Data, error
 			return Data{}, fmt.Errorf("snapshot: firewall: %w", err)
 		}
 		d.Firewall = &fw
+	}
+	if s.Payloads != nil {
+		c, err := s.Payloads.Get(ctx, project)
+		if err != nil {
+			return Data{}, fmt.Errorf("snapshot: capture: %w", err)
+		}
+		if c.Enabled {
+			d.Capture = &c
+		}
 	}
 	return d, nil
 }
@@ -269,6 +285,9 @@ func assemble(project uuid.UUID, d Data, header func(Provider) (http.Header, err
 		fw = *d.Firewall
 	}
 	snap.Firewall = firewall.Load(fw)
+	if d.Capture != nil {
+		snap.Capture = payloads.Compile(*d.Capture, fw.Custom)
+	}
 	for i := range d.Routers {
 		if m := d.Routers[i].Classifier; m != nil {
 			m.Prepare() // before any call reads it

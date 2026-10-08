@@ -36,6 +36,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/activity"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
@@ -170,6 +171,7 @@ func deleteRows(ctx context.Context, c *pdent.Client, org uuid.UUID, projects []
 		c.Activity.Delete().Where(activity.OrgID(org), only(scoped, activity.ProjectIDIn(projects...))),
 		c.AlertRule.Delete().Where(alertrule.OrgID(org), only(scoped, alertrule.ProjectIDIn(projects...))),
 		c.Budget.Delete().Where(budget.OrgID(org), only(scoped, budget.ProjectIDIn(projects...))),
+		c.CaptureSetting.Delete().Where(capturesetting.OrgID(org), only(scoped, capturesetting.ProjectIDIn(projects...))),
 		c.FamilyLabel.Delete().Where(familylabel.OrgID(org), only(scoped, familylabel.ProjectIDIn(projects...))),
 		c.FirewallSetting.Delete().Where(firewallsetting.OrgID(org), only(scoped, firewallsetting.ProjectIDIn(projects...))),
 		c.KeySetting.Delete().Where(keysetting.OrgID(org), only(scoped, keysetting.ProjectIDIn(projects...))),

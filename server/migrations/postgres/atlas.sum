@@ -1,4 +1,4 @@
-h1:SdWdWVu9zBt/UyIXjIkSO3NsVS1/MIty75G7o1M0ons=
+h1:r3oRC1VNzY8K5NxS9VjbMkhIAMJacKBCMJNmf5LbHWM=
 20261007103513_init.sql h1:bVyQ6g9OmnroRSresfeNjfapdzWItSeWtS+hU8gXKag=
 20261007110117_key_settings.sql h1:0IhbZBSVxQ8bGE34nOm201ldybxwuXeg6GBHg1dLZD4=
 20261007110559_routes.sql h1:qT7mskL0wkHMlY7VDpj+jQQBgVQO98wZ1DfkOybjk/o=
@@ -15,3 +15,4 @@ h1:SdWdWVu9zBt/UyIXjIkSO3NsVS1/MIty75G7o1M0ons=
 20261008091018_firewall_settings.sql h1:nQECBqUQ3nFE4YJu3TLx5Plxo/mcsjGWb1P5IDNWe7o=
 20261008104353_activities.sql h1:dCpUbyeukrsHPyx4+W+rizEU+Lw1QMGSLu3k5fgGRn4=
 20261008105810_alert_rules.sql h1:pws/ktHuFF1onGFokZb/eC9CXAZjnCg/Ac0CIrqm7gQ=
+20261008114325_capture_settings.sql h1:S9/ljtiZVbEA3hdb+HYC8RwnJaPNzbInZdr0wPPo2DA=

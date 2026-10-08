@@ -135,6 +135,35 @@ var (
 			},
 		},
 	}
+	// CaptureSettingsColumns holds the columns for the "capture_settings" table.
+	CaptureSettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "enabled", Type: field.TypeBool, Default: false},
+		{Name: "sample_rate", Type: field.TypeFloat64, Default: 1},
+		{Name: "answers", Type: field.TypeBool, Default: true},
+	}
+	// CaptureSettingsTable holds the schema information for the "capture_settings" table.
+	CaptureSettingsTable = &schema.Table{
+		Name:       "capture_settings",
+		Columns:    CaptureSettingsColumns,
+		PrimaryKey: []*schema.Column{CaptureSettingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "capturesetting_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{CaptureSettingsColumns[3], CaptureSettingsColumns[4]},
+			},
+			{
+				Name:    "capturesetting_project_id",
+				Unique:  true,
+				Columns: []*schema.Column{CaptureSettingsColumns[4]},
+			},
+		},
+	}
 	// FamilyLabelsColumns holds the columns for the "family_labels" table.
 	FamilyLabelsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -459,6 +488,7 @@ var (
 		ActivitiesTable,
 		AlertRulesTable,
 		BudgetsTable,
+		CaptureSettingsTable,
 		FamilyLabelsTable,
 		FirewallSettingsTable,
 		KeySettingsTable,

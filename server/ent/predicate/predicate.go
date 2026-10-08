@@ -15,6 +15,9 @@ type AlertRule func(*sql.Selector)
 // Budget is the predicate function for budget builders.
 type Budget func(*sql.Selector)
 
+// CaptureSetting is the predicate function for capturesetting builders.
+type CaptureSetting func(*sql.Selector)
+
 // FamilyLabel is the predicate function for familylabel builders.
 type FamilyLabel func(*sql.Selector)
 

@@ -11,6 +11,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/activity"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
@@ -159,6 +160,33 @@ func (f TraverseBudget) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.BudgetQuery", q)
+}
+
+// The CaptureSettingFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CaptureSettingFunc func(context.Context, *ent.CaptureSettingQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CaptureSettingFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CaptureSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CaptureSettingQuery", q)
+}
+
+// The TraverseCaptureSetting type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCaptureSetting func(context.Context, *ent.CaptureSettingQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCaptureSetting) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCaptureSetting) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CaptureSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CaptureSettingQuery", q)
 }
 
 // The FamilyLabelFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -440,6 +468,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AlertRuleQuery, predicate.AlertRule, alertrule.OrderOption]{typ: ent.TypeAlertRule, tq: q}, nil
 	case *ent.BudgetQuery:
 		return &query[*ent.BudgetQuery, predicate.Budget, budget.OrderOption]{typ: ent.TypeBudget, tq: q}, nil
+	case *ent.CaptureSettingQuery:
+		return &query[*ent.CaptureSettingQuery, predicate.CaptureSetting, capturesetting.OrderOption]{typ: ent.TypeCaptureSetting, tq: q}, nil
 	case *ent.FamilyLabelQuery:
 		return &query[*ent.FamilyLabelQuery, predicate.FamilyLabel, familylabel.OrderOption]{typ: ent.TypeFamilyLabel, tq: q}, nil
 	case *ent.FirewallSettingQuery:

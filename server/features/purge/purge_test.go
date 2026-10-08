@@ -21,6 +21,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/activity"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
@@ -99,6 +100,9 @@ func seeds(c *pdent.Client) []seed {
 		{"AlertRule", alertrule.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.AlertRule.Create().SetOrgID(org).SetProjectID(p).SetName("errors").SetKind(alertrule.KindErrorRate).
 				SetThreshold(0.1).SetWindowMinutes(15).Exec(ctx)
+		}},
+		{"CaptureSetting", capturesetting.Table, func(ctx context.Context, org, p uuid.UUID) error {
+			return c.CaptureSetting.Create().SetOrgID(org).SetProjectID(p).SetEnabled(true).Exec(ctx)
 		}},
 		{"Budget", budget.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.Budget.Create().SetOrgID(org).SetProjectID(p).SetName("month").SetScope(budget.ScopeProject).

@@ -974,6 +974,27 @@ func TestAuditLog(t *testing.T) {
 	}
 }
 
+func TestPayloadCaptureSettings(t *testing.T) {
+	e := setup(t)
+	alice := e.as("alice")
+	_, _, base := e.project("alice")
+	path := base + "/payloads/settings"
+	got := testclient.Decoded[handlers.CaptureSettings](e.client.Get(path, alice).AssertStatus(http.StatusOK))
+	if got.Enabled || got.SampleRate != 1 || !got.Answers {
+		t.Fatalf("defaults %+v", got)
+	}
+	if res := e.client.Put(path, alice, testclient.JSON(map[string]any{"enabled": true, "sample_rate": 2})); res.Status !=
+		http.StatusUnprocessableEntity || res.Error().Error.Code != handlers.CodeInvalidCapture {
+		t.Fatalf("a rate of 2: %d %s", res.Status, res.String())
+	}
+	got = testclient.Decoded[handlers.CaptureSettings](e.client.Put(path, alice, testclient.JSON(map[string]any{
+		"enabled": true, "sample_rate": 0.5, "answers": false,
+	})).AssertStatus(http.StatusOK))
+	if !got.Enabled || got.SampleRate != 0.5 || got.Answers {
+		t.Fatalf("saved %+v", got)
+	}
+}
+
 func TestBudgets(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()

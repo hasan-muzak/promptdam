@@ -28,7 +28,7 @@ func Mount(a *muzak.App, app *core.App) {
 		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides, Families: families.NewService(app.Ent, c.Events),
 		CacheDoctor: cachedoctor.New(c.Events, app.Prices), Rules: app.Rules,
 		RuleDeps: handlers.RuleDeps{Env: app.RuleEnv, Events: c.Events, Prices: app.Prices},
-		Routers:  app.Routers, Firewall: app.Firewall, Activity: app.Activity, Alerts: app.Alerts, Audit: c.DB.Ent,
+		Routers:  app.Routers, Firewall: app.Firewall, Activity: app.Activity, Alerts: app.Alerts, Payloads: app.Payloads, Audit: c.DB.Ent,
 		RouterDeps: handlers.RouterDeps{Explainer: resolver.New(resolver.Config{Prices: app.Prices, Rules: app.RuleEnv}),
 			Sources: app.Sources(), Billing: c.Billing, AppURL: c.Config.AppURL, Events: c.Events, Prices: app.Prices, Jobs: c.Jobs},
 	}
@@ -142,6 +142,16 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Status(http.StatusNoContent), muzak.Summary("Remove an alert rule"))
 
 	log := muzak.WithCategory("Request Log")
+	pl := "/v1/orgs/{org}/projects/{project}/payloads"
+	r.Get(pl+"/settings", h.GetCapture, log, muzak.Title("Get Payload Capture"), project(tenancy.PermProjectsRead),
+		muzak.Summary("Whether the project keeps its calls' prompts and answers"),
+		muzak.Description("Off by default: the request log keeps metadata only. On, the gateway keeps each call's request as "+
+			"the provider got it and the answer the client got, with secrets, personal data and the project's own "+
+			"patterns always masked, sealed and kept as long as the plan keeps logs."))
+	r.Put(pl+"/settings", h.PutCapture, log, muzak.Title("Set Payload Capture"), project(tenancy.PermProjectsManage),
+		muzak.Summary("Turn the project's payload capture on or off"),
+		muzak.Description("Every plan. sample_rate keeps a share of calls; answers false keeps requests only. Gateways apply "+
+			"it within seconds. Payloads already kept stay until they expire or are deleted."))
 	lb := "/v1/orgs/{org}/projects/{project}/requests"
 	r.Get(lb, h.ListRequests, log, muzak.Title("List Requests"), project(tenancy.PermProjectsRead),
 		muzak.Summary("List a project's gateway calls, newest first"),

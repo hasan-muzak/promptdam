@@ -45,6 +45,18 @@ func (f BudgetFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, erro
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BudgetMutation", m)
 }
 
+// The CaptureSettingFunc type is an adapter to allow the use of ordinary
+// function as CaptureSetting mutator.
+type CaptureSettingFunc func(context.Context, *ent.CaptureSettingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CaptureSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CaptureSettingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CaptureSettingMutation", m)
+}
+
 // The FamilyLabelFunc type is an adapter to allow the use of ordinary
 // function as FamilyLabel mutator.
 type FamilyLabelFunc func(context.Context, *ent.FamilyLabelMutation) (ent.Value, error)

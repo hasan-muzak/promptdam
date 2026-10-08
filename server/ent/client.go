@@ -18,6 +18,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/activity"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
@@ -43,6 +44,8 @@ type Client struct {
 	AlertRule *AlertRuleClient
 	// Budget is the client for interacting with the Budget builders.
 	Budget *BudgetClient
+	// CaptureSetting is the client for interacting with the CaptureSetting builders.
+	CaptureSetting *CaptureSettingClient
 	// FamilyLabel is the client for interacting with the FamilyLabel builders.
 	FamilyLabel *FamilyLabelClient
 	// FirewallSetting is the client for interacting with the FirewallSetting builders.
@@ -77,6 +80,7 @@ func (c *Client) init() {
 	c.Activity = NewActivityClient(c.config)
 	c.AlertRule = NewAlertRuleClient(c.config)
 	c.Budget = NewBudgetClient(c.config)
+	c.CaptureSetting = NewCaptureSettingClient(c.config)
 	c.FamilyLabel = NewFamilyLabelClient(c.config)
 	c.FirewallSetting = NewFirewallSettingClient(c.config)
 	c.KeySetting = NewKeySettingClient(c.config)
@@ -182,6 +186,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Activity:         NewActivityClient(cfg),
 		AlertRule:        NewAlertRuleClient(cfg),
 		Budget:           NewBudgetClient(cfg),
+		CaptureSetting:   NewCaptureSettingClient(cfg),
 		FamilyLabel:      NewFamilyLabelClient(cfg),
 		FirewallSetting:  NewFirewallSettingClient(cfg),
 		KeySetting:       NewKeySettingClient(cfg),
@@ -214,6 +219,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Activity:         NewActivityClient(cfg),
 		AlertRule:        NewAlertRuleClient(cfg),
 		Budget:           NewBudgetClient(cfg),
+		CaptureSetting:   NewCaptureSettingClient(cfg),
 		FamilyLabel:      NewFamilyLabelClient(cfg),
 		FirewallSetting:  NewFirewallSettingClient(cfg),
 		KeySetting:       NewKeySettingClient(cfg),
@@ -253,9 +259,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Activity, c.AlertRule, c.Budget, c.FamilyLabel, c.FirewallSetting,
-		c.KeySetting, c.ModelRouter, c.PriceList, c.PriceOverride, c.Provider, c.Route,
-		c.RouterClassifier, c.RoutingRule,
+		c.Activity, c.AlertRule, c.Budget, c.CaptureSetting, c.FamilyLabel,
+		c.FirewallSetting, c.KeySetting, c.ModelRouter, c.PriceList, c.PriceOverride,
+		c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -265,9 +271,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Activity, c.AlertRule, c.Budget, c.FamilyLabel, c.FirewallSetting,
-		c.KeySetting, c.ModelRouter, c.PriceList, c.PriceOverride, c.Provider, c.Route,
-		c.RouterClassifier, c.RoutingRule,
+		c.Activity, c.AlertRule, c.Budget, c.CaptureSetting, c.FamilyLabel,
+		c.FirewallSetting, c.KeySetting, c.ModelRouter, c.PriceList, c.PriceOverride,
+		c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -282,6 +288,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AlertRule.mutate(ctx, m)
 	case *BudgetMutation:
 		return c.Budget.mutate(ctx, m)
+	case *CaptureSettingMutation:
+		return c.CaptureSetting.mutate(ctx, m)
 	case *FamilyLabelMutation:
 		return c.FamilyLabel.mutate(ctx, m)
 	case *FirewallSettingMutation:
@@ -709,6 +717,141 @@ func (c *BudgetClient) mutate(ctx context.Context, m *BudgetMutation) (Value, er
 		return (&BudgetDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Budget mutation op: %q", m.Op())
+	}
+}
+
+// CaptureSettingClient is a client for the CaptureSetting schema.
+type CaptureSettingClient struct {
+	config
+}
+
+// NewCaptureSettingClient returns a client for the CaptureSetting from the given config.
+func NewCaptureSettingClient(c config) *CaptureSettingClient {
+	return &CaptureSettingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `capturesetting.Hooks(f(g(h())))`.
+func (c *CaptureSettingClient) Use(hooks ...Hook) {
+	c.hooks.CaptureSetting = append(c.hooks.CaptureSetting, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `capturesetting.Intercept(f(g(h())))`.
+func (c *CaptureSettingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CaptureSetting = append(c.inters.CaptureSetting, interceptors...)
+}
+
+// Create returns a builder for creating a CaptureSetting entity.
+func (c *CaptureSettingClient) Create() *CaptureSettingCreate {
+	mutation := newCaptureSettingMutation(c.config, OpCreate)
+	return &CaptureSettingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CaptureSetting entities.
+func (c *CaptureSettingClient) CreateBulk(builders ...*CaptureSettingCreate) *CaptureSettingCreateBulk {
+	return &CaptureSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CaptureSettingClient) MapCreateBulk(slice any, setFunc func(*CaptureSettingCreate, int)) *CaptureSettingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CaptureSettingCreateBulk{err: fmt.Errorf("calling to CaptureSettingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CaptureSettingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CaptureSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CaptureSetting.
+func (c *CaptureSettingClient) Update() *CaptureSettingUpdate {
+	mutation := newCaptureSettingMutation(c.config, OpUpdate)
+	return &CaptureSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CaptureSettingClient) UpdateOne(_m *CaptureSetting) *CaptureSettingUpdateOne {
+	mutation := newCaptureSettingMutation(c.config, OpUpdateOne, withCaptureSetting(_m))
+	return &CaptureSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CaptureSettingClient) UpdateOneID(id uuid.UUID) *CaptureSettingUpdateOne {
+	mutation := newCaptureSettingMutation(c.config, OpUpdateOne, withCaptureSettingID(id))
+	return &CaptureSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CaptureSetting.
+func (c *CaptureSettingClient) Delete() *CaptureSettingDelete {
+	mutation := newCaptureSettingMutation(c.config, OpDelete)
+	return &CaptureSettingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CaptureSettingClient) DeleteOne(_m *CaptureSetting) *CaptureSettingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CaptureSettingClient) DeleteOneID(id uuid.UUID) *CaptureSettingDeleteOne {
+	builder := c.Delete().Where(capturesetting.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CaptureSettingDeleteOne{builder}
+}
+
+// Query returns a query builder for CaptureSetting.
+func (c *CaptureSettingClient) Query() *CaptureSettingQuery {
+	return &CaptureSettingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCaptureSetting},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CaptureSetting entity by its id.
+func (c *CaptureSettingClient) Get(ctx context.Context, id uuid.UUID) (*CaptureSetting, error) {
+	return c.Query().Where(capturesetting.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CaptureSettingClient) GetX(ctx context.Context, id uuid.UUID) *CaptureSetting {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CaptureSettingClient) Hooks() []Hook {
+	hooks := c.hooks.CaptureSetting
+	return append(hooks[:len(hooks):len(hooks)], capturesetting.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *CaptureSettingClient) Interceptors() []Interceptor {
+	inters := c.inters.CaptureSetting
+	return append(inters[:len(inters):len(inters)], capturesetting.Interceptors[:]...)
+}
+
+func (c *CaptureSettingClient) mutate(ctx context.Context, m *CaptureSettingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CaptureSettingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CaptureSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CaptureSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CaptureSettingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CaptureSetting mutation op: %q", m.Op())
 	}
 }
 
@@ -2063,14 +2206,14 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Activity, AlertRule, Budget, FamilyLabel, FirewallSetting, KeySetting,
-		ModelRouter, PriceList, PriceOverride, Provider, Route, RouterClassifier,
-		RoutingRule []ent.Hook
+		Activity, AlertRule, Budget, CaptureSetting, FamilyLabel, FirewallSetting,
+		KeySetting, ModelRouter, PriceList, PriceOverride, Provider, Route,
+		RouterClassifier, RoutingRule []ent.Hook
 	}
 	inters struct {
-		Activity, AlertRule, Budget, FamilyLabel, FirewallSetting, KeySetting,
-		ModelRouter, PriceList, PriceOverride, Provider, Route, RouterClassifier,
-		RoutingRule []ent.Interceptor
+		Activity, AlertRule, Budget, CaptureSetting, FamilyLabel, FirewallSetting,
+		KeySetting, ModelRouter, PriceList, PriceOverride, Provider, Route,
+		RouterClassifier, RoutingRule []ent.Interceptor
 	}
 )
 

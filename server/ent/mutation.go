@@ -16,6 +16,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/activity"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
@@ -43,6 +44,7 @@ const (
 	TypeActivity         = "Activity"
 	TypeAlertRule        = "AlertRule"
 	TypeBudget           = "Budget"
+	TypeCaptureSetting   = "CaptureSetting"
 	TypeFamilyLabel      = "FamilyLabel"
 	TypeFirewallSetting  = "FirewallSetting"
 	TypeKeySetting       = "KeySetting"
@@ -3787,6 +3789,698 @@ func (m *BudgetMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *BudgetMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Budget edge %s", name)
+}
+
+// CaptureSettingMutation represents an operation that mutates the CaptureSetting nodes in the graph.
+type CaptureSettingMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	created_at     *time.Time
+	updated_at     *time.Time
+	org_id         *uuid.UUID
+	project_id     *uuid.UUID
+	enabled        *bool
+	sample_rate    *float64
+	addsample_rate *float64
+	answers        *bool
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*CaptureSetting, error)
+	predicates     []predicate.CaptureSetting
+}
+
+var _ ent.Mutation = (*CaptureSettingMutation)(nil)
+
+// capturesettingOption allows management of the mutation configuration using functional options.
+type capturesettingOption func(*CaptureSettingMutation)
+
+// newCaptureSettingMutation creates new mutation for the CaptureSetting entity.
+func newCaptureSettingMutation(c config, op Op, opts ...capturesettingOption) *CaptureSettingMutation {
+	m := &CaptureSettingMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCaptureSetting,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCaptureSettingID sets the ID field of the mutation.
+func withCaptureSettingID(id uuid.UUID) capturesettingOption {
+	return func(m *CaptureSettingMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CaptureSetting
+		)
+		m.oldValue = func(ctx context.Context) (*CaptureSetting, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CaptureSetting.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCaptureSetting sets the old CaptureSetting of the mutation.
+func withCaptureSetting(node *CaptureSetting) capturesettingOption {
+	return func(m *CaptureSettingMutation) {
+		m.oldValue = func(context.Context) (*CaptureSetting, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CaptureSettingMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CaptureSettingMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of CaptureSetting entities.
+func (m *CaptureSettingMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CaptureSettingMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CaptureSettingMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CaptureSetting.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CaptureSettingMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CaptureSettingMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CaptureSetting entity.
+// If the CaptureSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CaptureSettingMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CaptureSettingMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CaptureSettingMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CaptureSettingMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CaptureSetting entity.
+// If the CaptureSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CaptureSettingMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CaptureSettingMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *CaptureSettingMutation) SetOrgID(u uuid.UUID) {
+	m.org_id = &u
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *CaptureSettingMutation) OrgID() (r uuid.UUID, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the CaptureSetting entity.
+// If the CaptureSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CaptureSettingMutation) OldOrgID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *CaptureSettingMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetProjectID sets the "project_id" field.
+func (m *CaptureSettingMutation) SetProjectID(u uuid.UUID) {
+	m.project_id = &u
+}
+
+// ProjectID returns the value of the "project_id" field in the mutation.
+func (m *CaptureSettingMutation) ProjectID() (r uuid.UUID, exists bool) {
+	v := m.project_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProjectID returns the old "project_id" field's value of the CaptureSetting entity.
+// If the CaptureSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CaptureSettingMutation) OldProjectID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProjectID: %w", err)
+	}
+	return oldValue.ProjectID, nil
+}
+
+// ResetProjectID resets all changes to the "project_id" field.
+func (m *CaptureSettingMutation) ResetProjectID() {
+	m.project_id = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *CaptureSettingMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *CaptureSettingMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the CaptureSetting entity.
+// If the CaptureSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CaptureSettingMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *CaptureSettingMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetSampleRate sets the "sample_rate" field.
+func (m *CaptureSettingMutation) SetSampleRate(f float64) {
+	m.sample_rate = &f
+	m.addsample_rate = nil
+}
+
+// SampleRate returns the value of the "sample_rate" field in the mutation.
+func (m *CaptureSettingMutation) SampleRate() (r float64, exists bool) {
+	v := m.sample_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSampleRate returns the old "sample_rate" field's value of the CaptureSetting entity.
+// If the CaptureSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CaptureSettingMutation) OldSampleRate(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSampleRate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSampleRate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSampleRate: %w", err)
+	}
+	return oldValue.SampleRate, nil
+}
+
+// AddSampleRate adds f to the "sample_rate" field.
+func (m *CaptureSettingMutation) AddSampleRate(f float64) {
+	if m.addsample_rate != nil {
+		*m.addsample_rate += f
+	} else {
+		m.addsample_rate = &f
+	}
+}
+
+// AddedSampleRate returns the value that was added to the "sample_rate" field in this mutation.
+func (m *CaptureSettingMutation) AddedSampleRate() (r float64, exists bool) {
+	v := m.addsample_rate
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSampleRate resets all changes to the "sample_rate" field.
+func (m *CaptureSettingMutation) ResetSampleRate() {
+	m.sample_rate = nil
+	m.addsample_rate = nil
+}
+
+// SetAnswers sets the "answers" field.
+func (m *CaptureSettingMutation) SetAnswers(b bool) {
+	m.answers = &b
+}
+
+// Answers returns the value of the "answers" field in the mutation.
+func (m *CaptureSettingMutation) Answers() (r bool, exists bool) {
+	v := m.answers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAnswers returns the old "answers" field's value of the CaptureSetting entity.
+// If the CaptureSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CaptureSettingMutation) OldAnswers(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAnswers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAnswers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAnswers: %w", err)
+	}
+	return oldValue.Answers, nil
+}
+
+// ResetAnswers resets all changes to the "answers" field.
+func (m *CaptureSettingMutation) ResetAnswers() {
+	m.answers = nil
+}
+
+// Where appends a list predicates to the CaptureSettingMutation builder.
+func (m *CaptureSettingMutation) Where(ps ...predicate.CaptureSetting) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CaptureSettingMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CaptureSettingMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CaptureSetting, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CaptureSettingMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CaptureSettingMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CaptureSetting).
+func (m *CaptureSettingMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CaptureSettingMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.created_at != nil {
+		fields = append(fields, capturesetting.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, capturesetting.FieldUpdatedAt)
+	}
+	if m.org_id != nil {
+		fields = append(fields, capturesetting.FieldOrgID)
+	}
+	if m.project_id != nil {
+		fields = append(fields, capturesetting.FieldProjectID)
+	}
+	if m.enabled != nil {
+		fields = append(fields, capturesetting.FieldEnabled)
+	}
+	if m.sample_rate != nil {
+		fields = append(fields, capturesetting.FieldSampleRate)
+	}
+	if m.answers != nil {
+		fields = append(fields, capturesetting.FieldAnswers)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CaptureSettingMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case capturesetting.FieldCreatedAt:
+		return m.CreatedAt()
+	case capturesetting.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case capturesetting.FieldOrgID:
+		return m.OrgID()
+	case capturesetting.FieldProjectID:
+		return m.ProjectID()
+	case capturesetting.FieldEnabled:
+		return m.Enabled()
+	case capturesetting.FieldSampleRate:
+		return m.SampleRate()
+	case capturesetting.FieldAnswers:
+		return m.Answers()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CaptureSettingMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case capturesetting.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case capturesetting.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case capturesetting.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case capturesetting.FieldProjectID:
+		return m.OldProjectID(ctx)
+	case capturesetting.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case capturesetting.FieldSampleRate:
+		return m.OldSampleRate(ctx)
+	case capturesetting.FieldAnswers:
+		return m.OldAnswers(ctx)
+	}
+	return nil, fmt.Errorf("unknown CaptureSetting field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CaptureSettingMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case capturesetting.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case capturesetting.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case capturesetting.FieldOrgID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case capturesetting.FieldProjectID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProjectID(v)
+		return nil
+	case capturesetting.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case capturesetting.FieldSampleRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSampleRate(v)
+		return nil
+	case capturesetting.FieldAnswers:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAnswers(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CaptureSetting field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CaptureSettingMutation) AddedFields() []string {
+	var fields []string
+	if m.addsample_rate != nil {
+		fields = append(fields, capturesetting.FieldSampleRate)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CaptureSettingMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case capturesetting.FieldSampleRate:
+		return m.AddedSampleRate()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CaptureSettingMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case capturesetting.FieldSampleRate:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSampleRate(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CaptureSetting numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CaptureSettingMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CaptureSettingMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CaptureSettingMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown CaptureSetting nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CaptureSettingMutation) ResetField(name string) error {
+	switch name {
+	case capturesetting.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case capturesetting.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case capturesetting.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case capturesetting.FieldProjectID:
+		m.ResetProjectID()
+		return nil
+	case capturesetting.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case capturesetting.FieldSampleRate:
+		m.ResetSampleRate()
+		return nil
+	case capturesetting.FieldAnswers:
+		m.ResetAnswers()
+		return nil
+	}
+	return fmt.Errorf("unknown CaptureSetting field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CaptureSettingMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CaptureSettingMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CaptureSettingMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CaptureSettingMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CaptureSettingMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CaptureSettingMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CaptureSettingMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CaptureSetting unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CaptureSettingMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CaptureSetting edge %s", name)
 }
 
 // FamilyLabelMutation represents an operation that mutates the FamilyLabel nodes in the graph.

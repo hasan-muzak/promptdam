@@ -20,6 +20,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
+	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/purge"
@@ -49,6 +50,8 @@ type App struct {
 	// Training trains their classifiers on their judged calls.
 	Routers  *routers.Service
 	Training *training.Service
+	// Payloads keeps whether projects keep their calls' payloads.
+	Payloads *payloads.Service
 	// Activity keeps what happened to each project that was worth telling.
 	Activity *activity.Service
 	// Alerts keeps alert rules; AlertsEval evaluates them every minute.
@@ -124,6 +127,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.Rules = rules.New(a.Ent, env, a.configChanged)
 	a.Routers = routers.New(a.Ent, env, a.Prices, a.configChanged)
 	a.Activity = activity.New(a.Ent)
+	a.Payloads = payloads.NewService(a.Ent, a.configChanged)
 	a.Alerts = alerts.New(a.Ent)
 	a.AlertsEval = alerts.NewEvaluator(alerts.EvalConfig{Ent: a.Ent, Events: c.Events, Notifier: c.Notifier, Webhooks: c.Webhooks,
 		Activity: a.Activity, Entitlements: c.Metering.Entitlements, AppURL: c.Config.AppURL})
@@ -174,5 +178,5 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 // Sources are where the gateway's snapshots are built from.
 func (a *App) Sources() snapshot.Sources {
 	return snapshot.Sources{Providers: a.Providers, Keys: a.Keys, Routes: a.Routes, Budgets: a.Budgets, Prices: a.PriceOverrides,
-		Rules: a.Rules, Routers: a.Routers, Firewall: a.Firewall}
+		Rules: a.Rules, Routers: a.Routers, Firewall: a.Firewall, Payloads: a.Payloads}
 }

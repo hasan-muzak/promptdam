@@ -9,6 +9,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/activity"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
@@ -254,6 +255,41 @@ func init() {
 	budgetDescID := budgetMixinFields0[0].Descriptor()
 	// budget.DefaultID holds the default value on creation for the id field.
 	budget.DefaultID = budgetDescID.Default.(func() uuid.UUID)
+	capturesettingMixin := schema.CaptureSetting{}.Mixin()
+	capturesettingMixinHooks1 := capturesettingMixin[1].Hooks()
+	capturesetting.Hooks[0] = capturesettingMixinHooks1[0]
+	capturesettingMixinInters1 := capturesettingMixin[1].Interceptors()
+	capturesetting.Interceptors[0] = capturesettingMixinInters1[0]
+	capturesettingMixinFields0 := capturesettingMixin[0].Fields()
+	_ = capturesettingMixinFields0
+	capturesettingFields := schema.CaptureSetting{}.Fields()
+	_ = capturesettingFields
+	// capturesettingDescCreatedAt is the schema descriptor for created_at field.
+	capturesettingDescCreatedAt := capturesettingMixinFields0[1].Descriptor()
+	// capturesetting.DefaultCreatedAt holds the default value on creation for the created_at field.
+	capturesetting.DefaultCreatedAt = capturesettingDescCreatedAt.Default.(func() time.Time)
+	// capturesettingDescUpdatedAt is the schema descriptor for updated_at field.
+	capturesettingDescUpdatedAt := capturesettingMixinFields0[2].Descriptor()
+	// capturesetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	capturesetting.DefaultUpdatedAt = capturesettingDescUpdatedAt.Default.(func() time.Time)
+	// capturesetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	capturesetting.UpdateDefaultUpdatedAt = capturesettingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// capturesettingDescEnabled is the schema descriptor for enabled field.
+	capturesettingDescEnabled := capturesettingFields[0].Descriptor()
+	// capturesetting.DefaultEnabled holds the default value on creation for the enabled field.
+	capturesetting.DefaultEnabled = capturesettingDescEnabled.Default.(bool)
+	// capturesettingDescSampleRate is the schema descriptor for sample_rate field.
+	capturesettingDescSampleRate := capturesettingFields[1].Descriptor()
+	// capturesetting.DefaultSampleRate holds the default value on creation for the sample_rate field.
+	capturesetting.DefaultSampleRate = capturesettingDescSampleRate.Default.(float64)
+	// capturesettingDescAnswers is the schema descriptor for answers field.
+	capturesettingDescAnswers := capturesettingFields[2].Descriptor()
+	// capturesetting.DefaultAnswers holds the default value on creation for the answers field.
+	capturesetting.DefaultAnswers = capturesettingDescAnswers.Default.(bool)
+	// capturesettingDescID is the schema descriptor for id field.
+	capturesettingDescID := capturesettingMixinFields0[0].Descriptor()
+	// capturesetting.DefaultID holds the default value on creation for the id field.
+	capturesetting.DefaultID = capturesettingDescID.Default.(func() uuid.UUID)
 	familylabelMixin := schema.FamilyLabel{}.Mixin()
 	familylabelMixinHooks1 := familylabelMixin[1].Hooks()
 	familylabel.Hooks[0] = familylabelMixinHooks1[0]
