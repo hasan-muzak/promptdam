@@ -186,9 +186,17 @@ func (r *Resolver) placeCall(ctx context.Context, snap *snapshot.Snapshot, rt *r
 func (r *Resolver) place(ctx context.Context, snap *snapshot.Snapshot, rt *routers.Router, pin string, named bool, c *gateway.Call,
 	m *Meta,
 ) ([]gateway.Target, http.Header, error) {
+	// An active router serves traffic on plans with model routers; on
+	// another (a downgrade), it only watches, as in shadow mode, until the
+	// plan has them again.
+	if rt.Status == tiers.Active && !r.planHas(ctx, m.Org, catalog.Routers) {
+		watching := *rt
+		watching.Status = tiers.Shadow
+		rt = &watching
+	}
 	// The classifier places calls of active routers on plans with learned
 	// routing; a shadow router's only say what it would do.
-	learned := rt.Status == tiers.Shadow || r.learnedAllowed(ctx, m.Org)
+	learned := rt.Status == tiers.Shadow || r.planHas(ctx, m.Org, catalog.RoutingLearned)
 	pl, err := r.placeCall(ctx, snap, rt, pin, c, m, learned, false)
 	if err != nil {
 		return nil, nil, err
@@ -260,12 +268,12 @@ func (r *Resolver) decide(ctx context.Context, snap *snapshot.Snapshot, rt *rout
 	return tier
 }
 
-// learnedAllowed reports whether the organization's plan has learned
-// routing; when it can't be read, the router keeps to its rules.
-func (r *Resolver) learnedAllowed(ctx context.Context, org uuid.UUID) bool {
+// planHas reports whether the organization's plan has a feature; when the
+// plan can't be read, it hasn't (routers then watch and keep to rules).
+func (r *Resolver) planHas(ctx context.Context, org uuid.UUID, feature string) bool {
 	if r.cfg.Entitlements == nil {
 		return true
 	}
 	e, err := r.cfg.Entitlements(ctx, org)
-	return err == nil && e.Has(catalog.RoutingLearned)
+	return err == nil && e.Has(feature)
 }

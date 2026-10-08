@@ -12,6 +12,7 @@ import (
 
 	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
 	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/evaluate"
 	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
@@ -118,6 +119,7 @@ func TestEvaluation(t *testing.T) {
 func TestEvaluationWithoutJudge(t *testing.T) {
 	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true, Sample: func() float64 { return 0 },
 		Upstream: fakeupstream.Options{Reply: func(model string, _ []byte) string { return "Answered by " + model }}})
+	w.Grant(catalog.Routers)
 	w.Serves("main", "gpt-5-mini", "gpt-5")
 	if _, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
 		EvalBudgetMicros: 1, Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-mini"}, {Name: "smart", Model: "gpt-5"}}}}); err != nil {

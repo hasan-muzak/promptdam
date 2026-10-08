@@ -7,9 +7,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/hasan-muzak/keel-core/pkg/billing"
 	"github.com/hasan-muzak/keel-core/pkg/llm"
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
+	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
@@ -132,5 +134,30 @@ func BenchmarkPlace(b *testing.B) {
 		if _, _, err := r.place(context.Background(), snap, rt, "", true, c, &Meta{}); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// On a plan without model routers (Free, or after a downgrade), an active
+// router only watches, as in shadow mode; without learned routing, its
+// classifier places nothing.
+func TestPlansGateActiveRouters(t *testing.T) {
+	r, snap, rt := placing(t, tiers.Active)
+	features := []string{}
+	r.cfg.Entitlements = func(context.Context, uuid.UUID) (billing.Entitlements, error) {
+		return billing.Entitlements{Features: features}, nil
+	}
+	one := `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`
+	m := &Meta{}
+	if _, _, err := r.place(context.Background(), snap, rt, "", true, call(t, one), m); err != nil || !m.Shadow ||
+		m.Decided != "fast" || m.Tier != "top" {
+		t.Fatalf("without routers: %+v, %v", m, err)
+	}
+	features = []string{catalog.Routers}
+	m = &Meta{}
+	if _, _, err := r.place(context.Background(), snap, rt, "", true, call(t, one), m); err != nil || m.Shadow || m.Tier != "fast" {
+		t.Fatalf("with routers: %+v, %v", m, err)
+	}
+	if rt.Status != tiers.Active {
+		t.Fatal("the snapshot's router changed")
 	}
 }

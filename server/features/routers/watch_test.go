@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
@@ -83,6 +84,7 @@ func TestWatcherAnnouncesReadyRouters(t *testing.T) {
 // project restores it.
 func TestWatcherDemotesDriftingTiers(t *testing.T) {
 	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true, Sample: func() float64 { return 1 }})
+	w.Grant(catalog.Routers)
 	ctx := context.Background()
 	row, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active, Spec: spec()})
 	if err != nil {

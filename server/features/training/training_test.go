@@ -2,13 +2,10 @@ package training_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/rand/v2"
 	"testing"
 	"time"
-
-	"github.com/hasan-muzak/keel-core/pkg/entx"
 
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/catalog"
@@ -31,9 +28,7 @@ func TestTrainedRoutersPlaceCalls(t *testing.T) {
 	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true, Sample: func() float64 { return 1 }})
 	ctx := context.Background()
 	// Learned routing comes with Team.
-	w.C.DB.Ent.OrgFlag.Create().SetOrgID(w.Org).SetKey("feature." + catalog.RoutingLearned).SetValue(json.RawMessage(`true`)).
-		SaveX(entx.SkipTenant(ctx))
-	w.C.Billing.BustEntitlements(ctx, w.Org)
+	w.Grant(catalog.Routers, catalog.RoutingLearned)
 	rt, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
 		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-mini"}, {Name: "smart", Model: "gpt-5"}}}})
 	if err != nil {

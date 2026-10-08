@@ -158,7 +158,7 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 
 | Plan | Price/mo | Requests/mo | Logs | Key features |
 |---|---|---|---|---|
-| Free | $0 | 50k (hard) | 7 days | Gateway, fallbacks, exact cache, **secrets blocking**, savings report (read-only), one router in shadow mode (the report shows what routing would save) |
+| Free | $0 | 50k (hard) | 7 days | Gateway, fallbacks, exact cache, **secrets blocking**, savings report (read-only), model routers in shadow mode (the report shows what routing would save) |
 | Pro | $49 | 500k | 30 days | Auto prompt caching + cache doctor, routing rules, active routers with explicit tiers and rules, budgets and alerts, PII redaction, ledger export |
 | Team | $199 | 3M | 90 days | Learned routing (evaluation, classifier, decision model) + auto-demotion, CEL firewall policies, per-developer keys, audit log |
 | Business | $499+ | 10M | 1 year | Custom policies, payload-free mode guarantees, DPA, SLA, SSO, priority support |
@@ -168,7 +168,11 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
   - a $500/mo base price that covers 15% of the first $3,333 saved
   - a metered `savings_share` (USD cents) Stripe meter, reported monthly from the verified ledger as `max(0, 0.15 × savings − 500)`
   - the customer approves the monthly savings report before invoicing, with a dispute window of 7 days.
-- **Router tiers per plan (my proposal, 2026-10-08; change freely):** Free gets one router in shadow mode, so the report shows the savings before any upgrade; Pro serves traffic through routers with explicit tiers and rules; Team adds the learned parts (evaluation, classifier, decision model, auto-demotion).
+- **Routers per plan (decided 2026-10-08):**
+  - Every plan runs routers in shadow mode, evaluation included: the report shows the savings on the customer's own traffic before any upgrade, at no cost to us (the evaluation runs on their keys, within their budget).
+  - Pro (`routing.routers`) makes routers active: they serve traffic with the client's tiers, rules and the default tier, and the canary watches them.
+  - Team (`routing.learned`) adds the learned placement: the classifier and the decision model.
+  - A downgrade below Pro turns active routers into watchers (shadow behaviour) until the plan has routers again; nothing is deleted.
 - **Evaluation cost:** a router's evaluation (replays, judge and decision-model calls) runs on the **customer's own provider keys** (decided 2026-10-08). Every router has a visible monthly budget cap (default $100), and the cost is subtracted in the savings ledger.
   - Later, if customers ask: a Promptdam-paid judge on Promptdam's own keys, charged at what the provider charges us.
 - **Path to $10–15k MRR:** for example, 60 Pro ($2.9k) + 30 Team ($6k) + 8 Business ($4k) ≈ $12.9k, before request overage.
@@ -638,5 +642,5 @@ Model routers replace per-family savings experiments, and cross-format translati
 - [x] Model routing: **routers with customer-described tiers are a core MVP feature** (decided 2026-10-08): the cascade, evaluation and learning of §6.2, with cross-format translation, replacing per-family experiments. ADR 0001.
 - [x] Judge: **the customer's own provider keys only** (decided 2026-10-08). The project picks the judge model, `claude-sonnet-5-5` by default when it has an Anthropic provider. Later, maybe: Promptdam's own keys, charging the customer what the provider charges us.
 - [x] Firewall default for `block` policies when the scanner itself fails: **closed for secrets, open for everything else**, configurable per project (decided 2026-10-08).
-- [ ] `DECISION NEEDED:` which plans get routers (my proposal in §5: one shadow router on Free, active routers with explicit tiers and rules on Pro, learned routing on Team).
+- [x] Routers per plan (decided 2026-10-08): shadow mode with evaluation on every plan, active routers on Pro, learned placement (classifier, decision model) on Team (§5).
 - [x] Include OpenAI Responses API routing at MVP: **passthrough only** (auth, budgets, usage, cost, log; no model routing or caching), routing later (decided 2026-10-07).

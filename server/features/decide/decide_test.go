@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hasan-muzak/keel-core/pkg/entx"
 	"github.com/hasan-muzak/keel-core/pkg/events"
 	"github.com/hasan-muzak/keel-core/pkg/safehttp"
 
@@ -108,9 +107,7 @@ func TestRoutersAskTheDecisionModel(t *testing.T) {
 			return "Answered by " + model
 		}}})
 	ctx := context.Background()
-	w.C.DB.Ent.OrgFlag.Create().SetOrgID(w.Org).SetKey("feature." + catalog.RoutingLearned).SetValue(json.RawMessage(`true`)).
-		SaveX(entx.SkipTenant(ctx))
-	w.C.Billing.BustEntitlements(ctx, w.Org)
+	w.Grant(catalog.Routers, catalog.RoutingLearned)
 	if _, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
 		DecisionModel: "gpt-5-mini", DecisionTimeoutMS: 2000,
 		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-mini", Description: "Simple questions"},

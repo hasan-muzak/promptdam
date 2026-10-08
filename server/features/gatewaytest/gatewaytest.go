@@ -6,6 +6,7 @@ package gatewaytest
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -166,6 +167,20 @@ func (w *World) Provider(name, format string, models []string) {
 	if err != nil {
 		w.T.Fatal(err)
 	}
+}
+
+// Grant gives the organization plan features (catalog's), as an upgrade
+// would.
+func (w *World) Grant(features ...string) {
+	w.T.Helper()
+	ctx := entx.SkipTenant(w.Ctx)
+	for _, f := range features {
+		if err := w.C.DB.Ent.OrgFlag.Create().SetOrgID(w.Org).SetKey("feature." + f).SetValue(json.RawMessage(`true`)).
+			Exec(ctx); err != nil {
+			w.T.Fatal(err)
+		}
+	}
+	w.C.Billing.BustEntitlements(w.Ctx, w.Org)
 }
 
 // Serves makes a provider of the World serve only models: "main" serves

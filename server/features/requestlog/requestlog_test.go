@@ -13,6 +13,7 @@ import (
 
 	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
 	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/analytics"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
@@ -274,6 +275,7 @@ func TestSavingsLedger(t *testing.T) {
 // that chose it, and its savings count against the router's default tier.
 func TestRouterCalls(t *testing.T) {
 	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true})
+	w.Grant(catalog.Routers)
 	ctx := context.Background()
 	if _, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
 		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-mini"}, {Name: "smart", Model: "gpt-5"}},

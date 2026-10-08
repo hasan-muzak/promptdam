@@ -10,6 +10,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/apikeys"
 
 	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
@@ -244,6 +245,7 @@ func TestCallsCrossFormats(t *testing.T) {
 // stronger ones. In shadow mode it decides but serves its default tier.
 func TestRouters(t *testing.T) {
 	w := gatewaytest.New(t, gatewaytest.Options{})
+	w.Grant(catalog.Routers)
 	w.Serves("main", "gpt-5-nano", "gpt-5-mini")
 	w.Provider("claude", providers.FormatAnthropic, []string{"claude-opus-5-5"})
 	rt, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
@@ -254,6 +256,7 @@ func TestRouters(t *testing.T) {
 	}
 	one := `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`
 	two := `{"model":"auto","messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"yes?"},{"role":"user","content":"and?"}]}`
+
 	placed := func(body string, header ...string) (tier, source, served string) {
 		t.Helper()
 		status, h, out := w.Call("/v1/chat/completions", body, header...)
