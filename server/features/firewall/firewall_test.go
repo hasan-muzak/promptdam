@@ -124,19 +124,35 @@ func TestPolicies(t *testing.T) {
 		}
 	})
 	o, _ := e.Inspect(chat("Mail ada@example.com"))
-	e.Decide(o, rules.Request{}, Target{Kind: "deepseek"})
+	e.Decide(o, rules.Request{}, Call{Target: Target{Kind: "deepseek"}})
 	if !o.Blocked || o.BlockedBy != "policy:no pii to deepseek" || !strings.Contains(o.BlockMessage(), "no pii to deepseek") {
 		t.Fatalf("%+v", o)
 	}
 	o, _ = e.Inspect(chat("Use " + awsKey))
-	e.Decide(o, rules.Request{Tags: []string{"trusted"}}, Target{Kind: "openai"})
+	e.Decide(o, rules.Request{Tags: []string{"trusted"}}, Call{Target: Target{Kind: "openai"}})
 	if o.Blocked || o.Policy != "trusted" {
 		t.Fatalf("allowed: %+v", o)
 	}
 	o, _ = e.Inspect(chat("Card 4111 1111 1111 1111"))
-	e.Decide(o, rules.Request{}, Target{Kind: "openai"})
+	e.Decide(o, rules.Request{}, Call{Target: Target{Kind: "openai"}})
 	if o.RouteTo != "local/llama" {
 		t.Fatalf("routed: %+v", o)
+	}
+
+	// Who calls, where the findings are, the plan.
+	e = engine(t, func(s *Settings) {
+		s.PII = Alert
+		s.Policies = []Policy{{Name: "ci keys keep pii out of tools", Action: PolicyBlock,
+			When: `principal.key == "key_ci" && locations.tools > 0 && org.plan != "business"`}}
+	})
+	body := []byte(`{"model":"m","messages":[],"tools":[{"name":"mail","description":"writes to ada@example.com"}]}`)
+	o, _ = e.Inspect(body)
+	if e.Decide(o, rules.Request{}, Call{Key: "key_ci", Plan: "team"}); !o.Blocked {
+		t.Fatalf("not blocked: %+v", o)
+	}
+	o, _ = e.Inspect(body)
+	if e.Decide(o, rules.Request{}, Call{Key: "key_ci", Plan: "business"}); o.Blocked {
+		t.Fatalf("blocked on business: %+v", o)
 	}
 }
 

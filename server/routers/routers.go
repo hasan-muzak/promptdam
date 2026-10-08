@@ -195,6 +195,11 @@ func Mount(a *muzak.App, app *core.App) {
 			"providers and models the gateway would try, in order."))
 
 	fwcat := muzak.WithCategory("Firewall")
+	r.Get("/v1/firewall/presets", h.FirewallPresets, fwcat, muzak.Title("List Firewall Presets"),
+		muzak.Summary("What the firewall looks for: each class's detectors"),
+		muzak.Description("The source code preset is the secret class's detectors, the customer data preset the personal "+
+			"data's. Detector names are what pii_detectors, events and policies' findings use; a project's own patterns "+
+			"are the custom class."))
 	fw := "/v1/orgs/{org}/projects/{project}/firewall"
 	r.Get(fw, h.GetFirewall, fwcat, muzak.Title("Get Firewall"), project(tenancy.PermProjectsRead),
 		muzak.Summary("What the firewall does with the secrets and personal data a project's calls carry"),

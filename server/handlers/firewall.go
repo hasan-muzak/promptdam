@@ -28,7 +28,7 @@ const CodeInvalidFirewall = "invalid_firewall"
 // FirewallPolicy is a CEL condition and what it does to a call.
 type FirewallPolicy struct {
 	Name   string `json:"name"`
-	When   string `json:"when" doc:"CEL over request (as routing rules see it), findings (detector → count), classes (secret, pii, custom → count) and target (provider, kind, model)"`
+	When   string `json:"when" doc:"CEL over request (as routing rules see it), findings (detector → count), classes (secret, pii, custom → count), locations (messages, system, tools… → count), target (provider, kind, model), principal (key, developer, user) and org (plan)"`
 	Action string `json:"action" doc:"block, allow (cancels a class's block) or route_to"`
 	Model  string `json:"model,omitempty" doc:"route_to's model: model, or provider/model. The call goes there only, without fallbacks"`
 }
@@ -122,6 +122,7 @@ type TestFirewallIn struct {
 	Request   json.RawMessage `json:"request" doc:"A request body, as a client would send it"`
 	// Settings try settings before saving them.
 	Settings  *FirewallSettings `json:"settings,omitempty" doc:"Settings to try instead of the saved ones; no plan needed"`
+	Key       string            `json:"key" doc:"For policies: the call's API key (key_…)"`
 	Route     string            `json:"route" doc:"For policies: the call's route"`
 	User      string            `json:"user"`
 	Developer string            `json:"developer"`
@@ -208,7 +209,11 @@ func (h *Handlers) TestFirewall(ctx *muzak.Context, in TestFirewallIn) (TestFire
 		}
 		call := &gateway.Call{Format: format, Request: req, Shape: families.Of(req.Prefix, ""), BodyBytes: len(in.Request), Body: in.Request}
 		meta := &resolver.Meta{Route: in.Route, User: in.User, Developer: in.Developer, Tags: in.Tags}
-		e.Decide(o, resolver.RuleRequest(call, meta), t)
+		var plan string
+		if ent, err := h.RouterDeps.Billing.Entitlements(ctx.Context(), pa.OrgID()); err == nil {
+			plan = ent.Plan
+		}
+		e.Decide(o, resolver.RuleRequest(call, meta), firewall.Call{Target: t, Key: in.Key, Plan: plan})
 		out.Target.Provider, out.Target.Kind, out.Target.Model = t.Provider, t.Kind, t.Model
 	}
 	out.Action, out.Blocked, out.BlockedBy, out.Policy, out.RouteTo = o.Action(), o.Blocked, o.BlockedBy, o.Policy, o.RouteTo
@@ -408,4 +413,14 @@ func firewallQueryFail(err error) error {
 		return muzak.UnprocessableEntity("the cursor is invalid").WithCode(CodeInvalidQuery)
 	}
 	return err
+}
+
+// FirewallPresetsOut lists the firewall's presets.
+type FirewallPresetsOut struct {
+	Data []firewall.Preset `json:"data"`
+}
+
+// FirewallPresets lists the firewall's presets: each class's detectors.
+func (h *Handlers) FirewallPresets(*muzak.Context, muzak.Empty) (FirewallPresetsOut, error) {
+	return FirewallPresetsOut{Data: firewall.Presets}, nil
 }

@@ -531,6 +531,18 @@ func TestFirewall(t *testing.T) {
 	}
 	put := func(s map[string]any) *testclient.Response { return e.client.Put(path, alice, testclient.JSON(s)) }
 
+	presets := testclient.Decoded[handlers.FirewallPresetsOut](e.client.Get("/v1/firewall/presets", alice).AssertStatus(http.StatusOK))
+	if len(presets.Data) != 2 || presets.Data[0].Class != "secret" || len(presets.Data[1].Detectors) != 7 {
+		t.Fatalf("presets %+v", presets)
+	}
+	for _, p := range presets.Data {
+		for _, d := range p.Detectors {
+			if d.Description == "" {
+				t.Errorf("%s isn't described", d.Name)
+			}
+		}
+	}
+
 	// Until it saves its own, a project blocks secrets and scans answers.
 	fw := testclient.Decoded[handlers.FirewallSettings](e.client.Get(path, alice).AssertStatus(http.StatusOK))
 	if !fw.Enabled || fw.Secrets != "block" || fw.PII != "off" || !fw.ScanResponses || fw.FailMode != "secrets_closed" ||

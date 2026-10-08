@@ -21,6 +21,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/apikeys"
 	"github.com/hasan-muzak/keel-core/pkg/billing"
 	"github.com/hasan-muzak/keel-core/pkg/counter"
+	"github.com/hasan-muzak/keel-core/pkg/ids"
 	"github.com/hasan-muzak/keel-core/pkg/llm"
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 	"github.com/hasan-muzak/keel-core/pkg/memcache"
@@ -337,7 +338,13 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		if len(targets) > 0 {
 			t = firewall.Target{Provider: targets[0].Provider, Kind: targets[0].Kind, Model: targets[0].Model}
 		}
-		snap.Firewall.Decide(o, RuleRequest(c, m), t)
+		var plan string
+		if snap.Firewall.HasPolicies() && r.cfg.Entitlements != nil {
+			if e, err := r.cfg.Entitlements(ctx, m.Org); err == nil {
+				plan = e.Plan
+			}
+		}
+		snap.Firewall.Decide(o, RuleRequest(c, m), firewall.Call{Target: t, Key: ids.Encode(ids.APIKey, m.Key), Plan: plan})
 		if o.Blocked {
 			return nil, blocked(m, o)
 		}

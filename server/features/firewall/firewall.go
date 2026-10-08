@@ -101,10 +101,13 @@ func Defaults() Settings {
 
 // Policy is a CEL condition and what it does to a call:
 //
-//	request   the call as routing rules see it (request.model, .tags…)
-//	findings  map of detector → count of findings in the request
-//	classes   map of class (secret, pii, custom) → count
-//	target    map: provider, kind and model the call goes to
+//	request    the call as routing rules see it (request.model, .tags…)
+//	findings   map of detector → count of findings in the request
+//	classes    map of class (secret, pii, custom) → count
+//	locations  map of the request's part (messages, system, tools…) → count
+//	target     map: provider, kind and model the call goes to
+//	principal  map: key (key_…), developer and user of the call
+//	org        map: plan, the organization's
 type Policy struct {
 	Name string `json:"name"`
 	When string `json:"when"`
@@ -139,7 +142,10 @@ func NewEnv() (*policy.Env, error) {
 		cel.Variable("request", cel.ObjectType(reflect.TypeFor[rules.Request]().String())),
 		cel.Variable("findings", cel.MapType(cel.StringType, cel.IntType)),
 		cel.Variable("classes", cel.MapType(cel.StringType, cel.IntType)),
-		cel.Variable("target", cel.MapType(cel.StringType, cel.StringType)))
+		cel.Variable("locations", cel.MapType(cel.StringType, cel.IntType)),
+		cel.Variable("target", cel.MapType(cel.StringType, cel.StringType)),
+		cel.Variable("principal", cel.MapType(cel.StringType, cel.StringType)),
+		cel.Variable("org", cel.MapType(cel.StringType, cel.StringType)))
 }
 
 // Check validates settings and fills their defaults; policies are
@@ -462,27 +468,42 @@ type Target struct {
 	Provider, Kind, Model string
 }
 
+// Call is what policies know of a call beside its request.
+type Call struct {
+	Target Target
+	// Key is the call's API key (key_…), Plan its organization's plan.
+	Key, Plan string
+}
+
+// HasPolicies reports whether Decide has anything to run.
+func (e *Engine) HasPolicies() bool { return len(e.s.Policies) > 0 }
+
 // Decide runs the policies on a call the scan let through or blocked:
 // the first that holds blocks it, allows it (cancelling a class's block)
 // or sends it to another model. A policy that fails to evaluate doesn't
 // hold; a request that couldn't be scanned stays as fail mode left it.
-func (e *Engine) Decide(o *Outcome, req rules.Request, t Target) {
+func (e *Engine) Decide(o *Outcome, req rules.Request, c Call) {
 	if len(e.s.Policies) == 0 || o.BlockedBy == "scan" || o.Failed {
 		return
 	}
 	findings, classes := map[string]int64{}, map[string]int64{ClassSecret: 0, ClassPII: 0, ClassCustom: 0}
+	locations := map[string]int64{}
 	for d := range e.class {
 		findings[d] = 0
 	}
 	for _, h := range o.Hits {
 		findings[h.Detector] += int64(h.Count)
 		classes[h.Class] += int64(h.Count)
+		locations[h.Location] += int64(h.Count)
 	}
 	if req.Tags == nil {
 		req.Tags = []string{}
 	}
-	vars := map[string]any{"request": req, "findings": findings, "classes": classes,
-		"target": map[string]string{"provider": t.Provider, "kind": t.Kind, "model": t.Model}}
+	t := c.Target
+	vars := map[string]any{"request": req, "findings": findings, "classes": classes, "locations": locations,
+		"target":    map[string]string{"provider": t.Provider, "kind": t.Kind, "model": t.Model},
+		"principal": map[string]string{"key": c.Key, "developer": req.Developer, "user": req.User},
+		"org":       map[string]string{"plan": c.Plan}}
 	for _, p := range e.s.Policies {
 		prg, err := e.env.Compile(p.When)
 		if err != nil {
