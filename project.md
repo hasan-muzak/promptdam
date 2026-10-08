@@ -329,7 +329,7 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
   - `firewall_events` holds one row per detector and part of a call, or the policy that decided, with masked excerpts only when the project keeps them.
   - API: `GET …/firewall/events`, `GET …/firewall/stats`, and `POST …/firewall/test`, a dry-run that also takes unsaved settings.
 - **Alerts (worker):**
-  - Every minute, `firewall.blocked` per refused call (at most 100 a minute per project), and an alert to the organization's channels at most hourly per project.
+  - Every minute, one `firewall.blocked` per project listing the calls it refused (up to 100, the rest counted), and an alert to the organization's channels at most hourly per project.
   - A weekly digest per organization: what was refused, tokenized, redacted and alerted on, and what was found most.
 
 ### 6.5 Data model
@@ -347,14 +347,14 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
 | `firewall_settings` | settings jsonb (classes' actions, PII detectors, custom patterns, CEL policies, fail mode, response scan, excerpts); one per project |
 | `budgets` | scope (org/project/key/developer/route), scope_id, window (day/month), limit_micros, action (alert/block), thresholds[] |
 | `savings_reports` | period, verified_savings_micros, share_micros, status (draft/approved/disputed/invoiced), approved_by |
-| `alert_rules` | name, kind (spend_spike, error_rate, provider_down, latency), threshold, window_minutes, min_calls, min_micros, provider, model, channel_ids[], enabled, cooldown_minutes, firing, firing_on[], last_value, evaluated/fired/resolved_at |
-| `activities` | kind (as its webhook event), severity, title, body, subject (bdg_…, rtr_…, alr_…), url, data jsonb; kept 90 days |
+| `alert_rules` | name, kind (spend_spike, error_rate, provider_down, latency), threshold, window_minutes, min_calls, min_micros, provider, model, channel_ids[], enabled, cooldown_minutes, firing, firing_on[], fired/resolved_at; written only on transitions (each minute's measure is in Valkey) |
 | `capture_settings` | enabled, sample_rate, answers (one per project; payload capture) |
 | `payload_segments` | key (the object in R2 holding many sealed payloads), bytes, payloads, expires_at; never payload content |
 
 **ClickHouse:**
 - `requests(org_id, project_id, key_id, route, family_id, provider, requested_model, served_model, api_format, stream, status, http_status, ttfb_ms, latency_ms, upstream_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_micros, counterfactual_micros, savings_micros, savings_reason, response_cache_hit, router, tier, tier_source, tier_confidence, router_micros, firewall_action, firewall_kinds Array(LowCardinality(String)), payload_ref (segment key#offset+length), developer, tags Array(String), error_code, payload_ref, ts, retention_days)`
 - `firewall_events(project_id, ts, trace, org_id, key_id, developer, route, requested_model, provider, detector, class, action, location, count, blocked, blocked_by, policy, excerpt, retention_days)`
+- `activities(project_id, ts, id, org_id, kind, severity, title, body, subject, url, data)`: the activity feed, TTL 90 days (moved from Postgres: it grows with traffic)
 - `router_evals(project_id, ts, router, trace, family_id, served_tier, tier_source, baseline_model, candidate_tier, candidate_model, verdict, check, judge_model, candidate_micros, baseline_micros, judge_micros, features Array(UInt32), retention_days)`
 
 All tables have TTL by plan, and `ORDER BY` starts with `(project_id, ts)`.
@@ -699,6 +699,7 @@ Model routers replace per-family savings experiments, and cross-format translati
 - [x] Judge: **the customer's own provider keys only** (decided 2026-10-08). The project picks the judge model, `claude-sonnet-5-5` by default when it has an Anthropic provider. Later, maybe: Promptdam's own keys, charging the customer what the provider charges us.
 - [x] Firewall default for `block` policies when the scanner itself fails: **closed for secrets, open for everything else**, configurable per project (decided 2026-10-08).
 - [x] Firewall after a downgrade: **it never loosens** (decided 2026-10-08). Saved settings keep applying; changing a part to what the plan lacks needs the plan, keeping or removing it doesn't.
+- [x] **Write-heavy data stays out of Postgres** (decided with the owner, 2026-10-08): payloads and other per-call content go to object storage (R2) with only their path kept; event logs go to ClickHouse; live per-minute state goes to Valkey, with Postgres written on transitions. Small configuration columns may stay jsonb.
 - [x] A firewall policy's `route_to` model **serves the call alone**, without the route's fallbacks, which may be the very provider the policy keeps the call from (decided 2026-10-08).
 - [x] Routers per plan (decided 2026-10-08): shadow mode with evaluation on every plan, active routers on Pro, learned placement (classifier, decision model) on Team (§5).
 - [x] Include OpenAI Responses API routing at MVP: **passthrough only** (auth, budgets, usage, cost, log; no model routing or caching), routing later (decided 2026-10-07).
