@@ -2,6 +2,8 @@ package firewall
 
 import (
 	"bytes"
+	"maps"
+	"slices"
 
 	"github.com/hasan-muzak/keel-core/pkg/redact"
 )
@@ -16,9 +18,12 @@ type Response struct {
 	// restorers hold, per place in a stream's events (choices.0.delta
 	// .content…), a token cut between two events.
 	restorers map[string]*redact.Restorer
-	scan      *redact.Stream
-	hits      map[string]*Hit
-	order     []string
+	// scans read a stream's text per place too: pieces of one value
+	// arrive at one place, between the other places' strings.
+	scan  bool
+	scans map[string]*redact.Stream
+	hits  map[string]*Hit
+	order []string
 }
 
 // Response returns the filter of a call's answer; nil when it has nothing
@@ -31,11 +36,7 @@ func (e *Engine) Response(o *Outcome) *Response {
 	if tokens == nil && !e.s.ScanResponses {
 		return nil
 	}
-	r := &Response{e: e, tokens: tokens, hits: map[string]*Hit{}}
-	if e.s.ScanResponses {
-		r.scan = e.r.Stream(redact.StreamOptions{})
-	}
-	return r
+	return &Response{e: e, tokens: tokens, scan: e.s.ScanResponses, hits: map[string]*Hit{}}
 }
 
 var tokenMark = []byte("⟦")
@@ -46,7 +47,7 @@ func (r *Response) Body(doc []byte) []byte {
 		if skipped[w.Key()] {
 			return "", false
 		}
-		if r.scan != nil {
+		if r.scan {
 			r.found(r.e.r.Find(s))
 		}
 		if r.tokens != nil && bytes.Contains([]byte(s), tokenMark) {
@@ -66,20 +67,32 @@ func (r *Response) Body(doc []byte) []byte {
 // unchanged.
 func (r *Response) Event(data []byte) []byte {
 	restore := r.tokens != nil && (bytes.Contains(data, tokenMark) || r.holding())
-	if !restore && r.scan == nil {
+	if !restore && !r.scan {
 		return nil
 	}
 	out, changed, err := rewrite(data, func(w *Walker, s string) (string, bool) {
 		if skipped[w.Key()] {
 			return "", false
 		}
-		if r.scan != nil {
-			r.found(r.scan.Write(s))
+		path := ""
+		if r.scan {
+			path = w.Path()
+			st := r.scans[path]
+			if st == nil {
+				if r.scans == nil {
+					r.scans = map[string]*redact.Stream{}
+				}
+				st = r.e.r.Stream(redact.StreamOptions{})
+				r.scans[path] = st
+			}
+			r.found(st.Write(s))
 		}
 		if !restore {
 			return "", false
 		}
-		path := w.Path()
+		if path == "" {
+			path = w.Path()
+		}
 		rs := r.restorers[path]
 		if rs == nil {
 			if !bytes.Contains([]byte(s), tokenMark) {
@@ -107,10 +120,10 @@ func (r *Response) holding() bool { return len(r.restorers) > 0 }
 
 // End finishes the scan of a streamed answer.
 func (r *Response) End() {
-	if r.scan != nil {
-		r.found(r.scan.Close())
-		r.scan = nil
+	for _, path := range slices.Sorted(maps.Keys(r.scans)) {
+		r.found(r.scans[path].Close())
 	}
+	r.scans = nil
 }
 
 func (r *Response) found(fs []redact.Finding) {

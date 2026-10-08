@@ -52,6 +52,8 @@ type call struct {
 	// evaluation) until it grows past MaxSampledAnswer.
 	sample, overflow bool
 	answer           []byte
+	// filter rewrites the provider's answer (Route.Response).
+	filter ResponseFilter
 }
 
 // keep adds bytes the client got to a sampled call's answer.
@@ -102,12 +104,24 @@ func (c *call) serve() {
 		Shape: c.rec.Shape, BodyBytes: len(body), Body: body,
 	})
 	if err != nil {
+		if e, ok := errors.AsType[*Error](err); ok && e.Meta != nil {
+			c.rec.Meta = e.Meta
+		}
 		c.fail(err)
 		return
 	}
 	c.rec.Meta = route.Meta
 	for k, v := range route.Header {
 		c.w.Header()[k] = v
+	}
+	if route.Body != nil {
+		if masked, err := wire.ParseRequest(c.ep.format, route.Body); err == nil {
+			body, req = route.Body, masked
+		}
+	}
+	c.filter = route.Response
+	if c.filter != nil {
+		defer c.filter.End()
 	}
 	if route.Sample {
 		// The request as the client sent it; buf goes back to its pool.
@@ -277,7 +291,7 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	h.Set(brand.HeaderTrace, c.rec.Trace)
 	h.Set(brand.HeaderProvider, t.Provider)
 	h.Set(brand.HeaderServedModel, t.Model)
-	if translating {
+	if translating || c.filter != nil {
 		h.Del("Content-Length") // the answer is rewritten
 	}
 	if len(dropped) > 0 {
@@ -313,6 +327,7 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 		for s.Next() {
 			ev := s.Event()
 			usage := meter.Event(ev)
+			ev = c.filterEvent(ev)
 			if st != nil {
 				if out = st.Event(out[:0], ev); len(out) > 0 {
 					if gone = !c.write(out); gone {
@@ -339,6 +354,8 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 		}
 	case translating:
 		readErr = c.relayTranslated(res, t, body, meter, format)
+	case c.filter != nil:
+		readErr = c.relayFiltered(res, t, body, meter)
 	default:
 		c.w.WriteHeader(res.StatusCode)
 		keep := res.StatusCode < 300
@@ -424,10 +441,86 @@ func (c *call) relayTranslated(res *http.Response, t Target, body io.Reader, met
 	} else {
 		out = translate.ErrorBody(c.ep.format, res.StatusCode, kept)
 	}
+	out = c.filterBody(out)
 	c.w.Header().Set("Content-Type", "application/json")
 	c.w.WriteHeader(res.StatusCode)
 	c.write(out)
 	return nil
+}
+
+// relayFiltered answers with the provider's whole answer, through the
+// route's response filter. An answer too large to hold is relayed as it
+// comes, unfiltered and unmetered: what it can hold back is placeholders,
+// never the values behind them.
+func (c *call) relayFiltered(res *http.Response, t Target, body io.Reader, meter *wire.Meter) error {
+	kept, err := io.ReadAll(io.LimitReader(body, maxMeteredBody+1))
+	if err != nil {
+		c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_stream_broken", Message: "the provider's answer broke off"})
+		return err
+	}
+	if len(kept) > maxMeteredBody {
+		c.w.WriteHeader(res.StatusCode)
+		if !c.write(kept) {
+			return nil
+		}
+		buf := make([]byte, 32<<10)
+		for {
+			n, err := body.Read(buf)
+			if n > 0 && !c.write(buf[:n]) {
+				return nil
+			}
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+				return err
+			}
+		}
+	}
+	if res.StatusCode < 300 {
+		meter.Body(kept)
+		if c.cacheKey != "" && res.StatusCode == http.StatusOK {
+			c.store(res.StatusCode, res.Header.Get("Content-Type"), t, meter, kept)
+		}
+	}
+	c.w.WriteHeader(res.StatusCode)
+	c.write(c.filterBody(kept))
+	return nil
+}
+
+// filterBody passes a whole answer through the route's response filter.
+func (c *call) filterBody(doc []byte) []byte {
+	if c.filter != nil {
+		if out := c.filter.Body(doc); out != nil {
+			return out
+		}
+	}
+	return doc
+}
+
+// filterEvent passes a provider's event through the route's response
+// filter; a partial event (longer than the scanner holds) goes as it is.
+func (c *call) filterEvent(ev wire.Event) wire.Event {
+	if c.filter == nil || ev.Partial || len(ev.Data) == 0 {
+		return ev
+	}
+	data := c.filter.Event(ev.Data)
+	if data == nil {
+		return ev
+	}
+	return wire.Event{Name: ev.Name, Data: data, Raw: frame(ev.Name, data)}
+}
+
+// frame writes an event as a stream carries it.
+func frame(name string, data []byte) []byte {
+	b := make([]byte, 0, len(name)+len(data)+16)
+	if name != "" {
+		b = append(append(append(b, "event: "...), name...), '\n')
+	}
+	for line := range bytes.SplitSeq(data, []byte("\n")) {
+		b = append(append(append(b, "data: "...), line...), '\n')
+	}
+	return append(b, '\n')
 }
 
 // serveCached answers from the response cache.
@@ -439,7 +532,7 @@ func (c *call) serveCached(e *responsecache.Entry) {
 	h.Set(brand.HeaderServedModel, e.Model)
 	h.Set(brand.HeaderCache, "hit")
 	c.w.WriteHeader(e.Status)
-	c.write(e.Body)
+	c.write(c.filterBody(e.Body))
 	c.rec.Status, c.rec.Cache = e.Status, "hit"
 	c.rec.Provider, c.rec.Kind, c.rec.ServedModel, c.rec.TargetModel = e.Provider, e.Kind, e.Model, c.rec.RequestedModel
 	c.rec.Usage, c.rec.UsageKnown = e.Usage, true

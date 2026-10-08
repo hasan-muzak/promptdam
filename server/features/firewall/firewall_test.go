@@ -209,3 +209,14 @@ func BenchmarkInspect(b *testing.B) {
 		}
 	}
 }
+
+// One streamed chunk, as answers are scanned by default.
+func BenchmarkResponseEvent(b *testing.B) {
+	r := engine(b, nil).Response(&Outcome{})
+	ev := []byte(`{"id":"chatcmpl-1","object":"chat.completion.chunk","created":1790000000,"model":"gpt-5-mini",` +
+		`"choices":[{"index":0,"delta":{"content":"tok42 "},"finish_reason":null,"logprobs":null}]}`)
+	b.ReportAllocs()
+	for b.Loop() {
+		r.Event(ev)
+	}
+}

@@ -34,6 +34,9 @@ type Error struct {
 	Message string
 	// RetryAfter is sent as Retry-After when set.
 	RetryAfter time.Duration
+	// Meta is the resolver's data about a call it refused once it knew
+	// the caller (a firewall block), handed back in the Record.
+	Meta any
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }

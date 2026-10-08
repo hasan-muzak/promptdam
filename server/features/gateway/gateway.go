@@ -64,9 +64,26 @@ type Route struct {
 	// Sample keeps the call's request and answer in its Record (Body,
 	// Answer), in memory, for a router's evaluation.
 	Sample bool
+	// Body, when set, is sent instead of the client's request body (the
+	// firewall's, findings masked): for the response cache's key and
+	// a sample too.
+	Body []byte
+	// Response, when set, rewrites what the provider answers before the
+	// client gets it.
+	Response ResponseFilter
 	// Meta is the resolver's own data about the call (the caller, its
 	// project…), handed back in the Record.
 	Meta any
+}
+
+// ResponseFilter rewrites a provider's answer: a whole one (Body), or a
+// stream's events one by one (Event, each event's data), in the
+// provider's API format; nil returns leave them as they are. End follows
+// the last. A filter serves one call.
+type ResponseFilter interface {
+	Body(doc []byte) []byte
+	Event(data []byte) []byte
+	End()
 }
 
 // Target is one provider and model to send a call to.

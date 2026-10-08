@@ -252,6 +252,9 @@ func (r *Resolver) Explain(snap *snapshot.Snapshot, rt *routers.Router, pin stri
 // decide asks the router's decision model, on the project's own key, which
 // tier the call needs ("" when it can't say in time).
 func (r *Resolver) decide(ctx context.Context, snap *snapshot.Snapshot, rt *routers.Router, c *gateway.Call, m *Meta) string {
+	if m.Firewall != nil && m.Firewall.Blocked {
+		return "" // what the firewall blocks goes to no provider
+	}
 	ts := r.fallback(snap, wire.OpenAIChat, rt.DecisionModel, nil)
 	if len(ts) == 0 {
 		return ""

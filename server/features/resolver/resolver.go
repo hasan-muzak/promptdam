@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"log/slog"
 	"math/rand/v2"
 	"net/http"
 	"slices"
@@ -29,6 +30,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
@@ -77,6 +79,10 @@ type Meta struct {
 	Sampled bool
 	Placed  *routers.Router
 	Snap    *snapshot.Snapshot
+	// Firewall is what the firewall made of the call's request (nil when
+	// it is off), Answer what it found in the answer.
+	Firewall *firewall.Outcome
+	Answer   *firewall.Response
 }
 
 // Who is what the call's spend counts against.
@@ -289,6 +295,15 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		e.RetryAfter = time.Until(until)
 		return nil, e
 	}
+	// The firewall reads the call before it goes anywhere, the decision
+	// model included: nothing past it sees what it masks. A call it
+	// blocks is placed without the decision model, for the policies that
+	// may let it through to see where it would go.
+	if e := snap.Firewall; e != nil {
+		if err := r.inspect(e, c, m); err != nil {
+			return nil, err
+		}
+	}
 	format := c.Format
 	var targets []gateway.Target
 	var header http.Header
@@ -316,11 +331,33 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 			}
 		}
 	}
+	fallbacks := route.Fallbacks
+	if o := m.Firewall; o != nil {
+		var t firewall.Target
+		if len(targets) > 0 {
+			t = firewall.Target{Provider: targets[0].Provider, Kind: targets[0].Kind, Model: targets[0].Model}
+		}
+		snap.Firewall.Decide(o, RuleRequest(c, m), t)
+		if o.Blocked {
+			return nil, blocked(m, o)
+		}
+		// A policy's model serves the call alone: a fallback could be the
+		// provider the policy keeps it from.
+		if o.RouteTo != "" {
+			if targets = r.fallback(snap, format, o.RouteTo, nil); len(targets) == 0 {
+				e := refuse(http.StatusServiceUnavailable, gateway.TypeAPI, "firewall_no_provider",
+					"the firewall's policy "+o.Policy+" sends the call to "+o.RouteTo+", which no provider of the project serves")
+				e.Meta = m
+				return nil, e
+			}
+			fallbacks = nil
+		}
+	}
 	if len(targets) == 0 {
 		return nil, refuse(http.StatusNotFound, gateway.TypeNotFound, "no_provider",
 			"no provider of the project serves model "+model+" for "+format.String()+" calls: add one, or list the model on a provider")
 	}
-	for _, f := range route.Fallbacks {
+	for _, f := range fallbacks {
 		targets = append(targets, r.fallback(snap, format, f, targets)...)
 	}
 	// The plan's requests, counted once a call can go somewhere: hard on
@@ -331,13 +368,57 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		e.RetryAfter = time.Hour
 		return nil, e
 	}
+	// An answer that gets tokenized values back isn't sampled: its judge
+	// would read them.
+	if o := m.Firewall; o != nil && o.Tokens != nil && o.Tokens.Len() > 0 {
+		m.Sampled = false
+	}
 	out := &gateway.Route{Targets: targets, Retries: route.Retries, PromptCache: route.PromptCache, Header: header, Meta: m,
 		Sample: m.Sampled}
+	if o := m.Firewall; o != nil {
+		out.Body = o.Body
+		if a := snap.Firewall.Response(o); a != nil {
+			m.Answer, out.Response = a, a
+		}
+	}
 	if route.CacheTTL > 0 {
 		out.CacheTTL = time.Duration(route.CacheTTL) * time.Second
 		out.CacheScope = m.Project.String() + ":" + route.Name
 	}
 	return out, nil
+}
+
+// inspect runs the firewall over a call's request. A request it masked
+// replaces the client's for everything that reads it next; one it
+// couldn't scan is refused or let through as its fail mode says.
+func (r *Resolver) inspect(e *firewall.Engine, c *gateway.Call, m *Meta) error {
+	o, err := e.Inspect(c.Body)
+	m.Firewall = o
+	if err != nil {
+		slog.Warn("resolver: the firewall couldn't scan a request", "trace", c.Trace, "project", m.Project, "blocked", o.Blocked, "err", err)
+		if o.Blocked {
+			return blocked(m, o)
+		}
+		return nil
+	}
+	if o.Body != nil {
+		req, err := wire.ParseRequest(c.Format, o.Body)
+		if err != nil {
+			// What the firewall wrote is JSON the gateway reads: never.
+			o.Blocked, o.BlockedBy, o.Body = true, "scan", nil
+			return blocked(m, o)
+		}
+		c.Body, c.Request = o.Body, req
+	}
+	return nil
+}
+
+// blocked refuses a call the firewall blocked, the call's Meta with it
+// for the request log.
+func blocked(m *Meta, o *firewall.Outcome) *gateway.Error {
+	e := refuse(http.StatusBadRequest, gateway.TypeInvalidRequest, "firewall_blocked", o.BlockMessage())
+	e.Meta = m
+	return e
 }
 
 // pickRoute is the route a call takes: the one it names, else its key's,

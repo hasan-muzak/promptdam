@@ -36,6 +36,27 @@ type Options struct {
 	// Reply, when set, writes the text of whole (not streamed) Chat
 	// Completions and Messages answers, from the model and the request.
 	Reply func(model string, body []byte) string
+	// StreamReply streams Reply's text too, three characters a chunk.
+	StreamReply bool
+}
+
+// pieces are a streamed answer's chunks: Reply's text cut in three
+// characters, else tok0 tok1….
+func (s *Server) pieces(model string, body []byte) []string {
+	if s.opts.Reply == nil || !s.opts.StreamReply {
+		out := make([]string, s.opts.Chunks)
+		for i := range out {
+			out[i] = fmt.Sprintf("tok%d ", i)
+		}
+		return out
+	}
+	var out []string
+	runes := []rune(s.opts.Reply(model, body))
+	for len(runes) > 0 {
+		n := min(3, len(runes))
+		out, runes = append(out, string(runes[:n])), runes[n:]
+	}
+	return out
 }
 
 // Request is a call the server received.
@@ -112,7 +133,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch path {
 	case "/chat/completions":
 		if req.Stream {
-			s.chatStream(w, r, req.Model, req.StreamOptions != nil && req.StreamOptions.IncludeUsage)
+			s.chatStream(w, r, req.Model, s.pieces(req.Model, body), req.StreamOptions != nil && req.StreamOptions.IncludeUsage)
 		} else {
 			c := chatCompletion(req.Model, s.opts.Chunks)
 			if s.opts.Reply != nil {
@@ -134,7 +155,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case "/messages":
 		if req.Stream {
-			s.messagesStream(w, r, req.Model)
+			s.messagesStream(w, r, req.Model, s.pieces(req.Model, body))
 		} else {
 			m := message(req.Model, s.opts.Chunks)
 			if s.opts.Reply != nil {
@@ -230,7 +251,7 @@ func chatCompletion(model string, chunks int) map[string]any {
 	}
 }
 
-func (s *Server) chatStream(w http.ResponseWriter, r *http.Request, model string, usage bool) {
+func (s *Server) chatStream(w http.ResponseWriter, r *http.Request, model string, pieces []string, usage bool) {
 	e := s.stream(w, r)
 	chunk := func(delta map[string]any, finish any) map[string]any {
 		c := map[string]any{
@@ -245,8 +266,8 @@ func (s *Server) chatStream(w http.ResponseWriter, r *http.Request, model string
 	if !e.send("", chunk(map[string]any{"role": "assistant", "content": ""}, nil)) {
 		return
 	}
-	for i := range s.opts.Chunks {
-		if !e.send("", chunk(map[string]any{"content": fmt.Sprintf("tok%d ", i)}, nil)) {
+	for _, p := range pieces {
+		if !e.send("", chunk(map[string]any{"content": p}, nil)) {
 			return
 		}
 	}
@@ -316,7 +337,7 @@ func message(model string, chunks int) map[string]any {
 	}
 }
 
-func (s *Server) messagesStream(w http.ResponseWriter, r *http.Request, model string) {
+func (s *Server) messagesStream(w http.ResponseWriter, r *http.Request, model string, pieces []string) {
 	e := s.stream(w, r)
 	start := message(model, 0)
 	start["content"], start["stop_reason"], start["usage"] = []any{}, nil, anthropicUsage(1)
@@ -334,9 +355,9 @@ func (s *Server) messagesStream(w http.ResponseWriter, r *http.Request, model st
 			return
 		}
 	}
-	for i := range s.opts.Chunks {
+	for _, p := range pieces {
 		if !e.send("content_block_delta", map[string]any{"type": "content_block_delta", "index": 0,
-			"delta": map[string]any{"type": "text_delta", "text": fmt.Sprintf("tok%d ", i)}}) {
+			"delta": map[string]any{"type": "text_delta", "text": p}}) {
 			return
 		}
 	}

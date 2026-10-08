@@ -327,7 +327,8 @@ func (o *Outcome) Action() string {
 var skipped = map[string]bool{
 	"model": true, "role": true, "type": true, "id": true, "tool_call_id": true, "tool_use_id": true, "call_id": true,
 	"media_type": true, "signature": true, "encrypted_content": true, "previous_response_id": true, "service_tier": true,
-	"reasoning_effort": true, "effort": true, "detail": true, "format": true,
+	"reasoning_effort": true, "effort": true, "detail": true, "format": true, "object": true, "finish_reason": true,
+	"stop_reason": true,
 }
 
 // blob reports a string that holds data, not text: a data URL or a long
