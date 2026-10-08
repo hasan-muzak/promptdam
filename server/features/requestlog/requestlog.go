@@ -23,6 +23,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/families"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/resolver"
@@ -50,6 +51,7 @@ type Row struct {
 	RouterMicros                                            int64
 	FirewallAction                                          string
 	FirewallKinds                                           []string
+	PayloadRef                                              string
 	Tags                                                    []string
 	APIFormat, Provider, Kind, RequestedModel, ServedModel  string
 	Stream, Translated                                      bool
@@ -70,7 +72,7 @@ var columns = []string{
 	"project_id", "ts", "trace", "org_id", "key_id", "developer", "end_user", "tags", "route", "family_id", "prefix_hash",
 	"prefix_flags", "prefix_tokens", "est_input_tokens", "messages", "max_tokens", "has_tools", "json_output", "rule",
 	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "router_micros", "firewall_action",
-	"firewall_kinds", "api_format", "provider",
+	"firewall_kinds", "payload_ref", "api_format", "provider",
 	"kind", "requested_model", "served_model", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
 	"upstream_ms", "usage_known", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
 	"reasoning_tokens", "cost_micros", "counterfactual_micros", "savings_micros", "savings_reason", "cache",
@@ -82,7 +84,7 @@ func values(r Row) []any {
 		r.ProjectID, r.TS, r.Trace, r.OrgID, r.KeyID, r.Developer, r.User, r.Tags, r.Route, r.FamilyID, r.PrefixHash,
 		r.PrefixFlags, r.PrefixTokens, r.EstInput, r.Messages, r.MaxTokens, r.HasTools, r.JSONOutput, r.Rule,
 		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.RouterMicros, r.FirewallAction,
-		r.FirewallKinds, r.APIFormat, r.Provider,
+		r.FirewallKinds, r.PayloadRef, r.APIFormat, r.Provider,
 		r.Kind, r.RequestedModel, r.ServedModel, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
 		r.UpstreamMs, r.UsageKnown, r.InputTokens, r.OutputTokens, r.CacheRead, r.CacheWrite, r.Think, r.CostMicros,
 		r.Counterfactual, r.Savings, r.SavingsReason, r.Cache, r.RequestBytes, r.ResponseBytes, r.RetentionDays,
@@ -99,6 +101,9 @@ type Config struct {
 	// Entitlements says how long the organization's plan keeps logs
 	// (metering.Service.Entitlements, cached in process).
 	Entitlements func(ctx context.Context, org uuid.UUID) (billing.Entitlements, error)
+	// Payloads keeps the payloads of the calls projects capture (nil:
+	// none are kept).
+	Payloads *payloads.Store
 }
 
 // Log records finished calls.
@@ -218,7 +223,12 @@ func (l *Log) Record(r *gateway.Record) {
 		fw = firewall.Events(firewall.Event{ProjectID: m.Project, TS: row.TS, Trace: r.Trace, OrgID: m.Org, KeyID: m.Key,
 			Developer: m.Developer, Route: m.Route, RequestedModel: r.RequestedModel, Provider: r.Provider}, o, answer)
 	}
-	l.writing.Go(func() { l.write(m.Org, row, fw) })
+	var keep *payloads.Entry
+	if m.Capture != nil && r.Body != nil {
+		keep = &payloads.Entry{Org: m.Org, Project: m.Project, At: row.TS, Capture: m.Capture, Format: r.Format,
+			Stream: r.Stream, Status: r.Status, Request: r.Body, Answer: r.Answer}
+	}
+	l.writing.Go(func() { l.write(m.Org, row, fw, keep) })
 }
 
 // kinds are the detectors of hits, sorted, each once.
@@ -285,7 +295,7 @@ func (l *Log) ledger(r *gateway.Record, m *resolver.Meta, cost int64) Ledger {
 	return led
 }
 
-func (l *Log) write(org uuid.UUID, row Row, fw []firewall.Event) {
+func (l *Log) write(org uuid.UUID, row Row, fw []firewall.Event, keep *payloads.Entry) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	row.RetentionDays = defaultRetention
@@ -293,6 +303,12 @@ func (l *Log) write(org uuid.UUID, row Row, fw []firewall.Event) {
 		if days, ok := e.Limit(catalog.RetentionDays); ok && days > 0 {
 			row.RetentionDays = uint16(min(days, 3650))
 		}
+	}
+	if keep != nil {
+		// Masked and sealed here, off the call's path; kept as long as
+		// the plan keeps the row.
+		keep.RetentionDays = int(row.RetentionDays)
+		row.PayloadRef = l.cfg.Payloads.Add(ctx, *keep)
 	}
 	if err := l.w.Write(ctx, row); err != nil {
 		if n := l.dropped.Add(1); n == 1 || n%1000 == 0 {

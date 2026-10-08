@@ -41,11 +41,13 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
+	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
+	"github.com/hasan-muzak/promptdam/server/features/payloads"
 )
 
 // LateWrites is how long after a deletion its data can still be written,
@@ -70,6 +72,8 @@ type Config struct {
 	Events   *events.DB
 	KV       *kv.Store
 	Metering *metering.Service
+	// Payloads deletes the payloads kept in object storage.
+	Payloads *payloads.Store
 }
 
 // Service deletes deleted organizations' and projects' data.
@@ -146,6 +150,14 @@ func (s *Service) Purge(ctx context.Context, a Args) error {
 	if _, err := s.cfg.KV.DeleteMatching(ctx, keysOf(a).match); err != nil {
 		return fmt.Errorf("purge: valkey: %w", err)
 	}
+	// Payloads, those written after their segments' rows went too.
+	if a.Whole {
+		if _, err := s.cfg.Payloads.PurgeOrg(ctx, a.Org); err != nil {
+			return fmt.Errorf("purge: payloads: %w", err)
+		}
+	} else if _, err := s.cfg.Payloads.PurgeProjects(ctx, a.Org, a.Projects); err != nil {
+		return fmt.Errorf("purge: payloads: %w", err)
+	}
 	if s.cfg.Events == nil || len(a.Projects) == 0 {
 		return nil
 	}
@@ -172,6 +184,7 @@ func deleteRows(ctx context.Context, c *pdent.Client, org uuid.UUID, projects []
 		c.AlertRule.Delete().Where(alertrule.OrgID(org), only(scoped, alertrule.ProjectIDIn(projects...))),
 		c.Budget.Delete().Where(budget.OrgID(org), only(scoped, budget.ProjectIDIn(projects...))),
 		c.CaptureSetting.Delete().Where(capturesetting.OrgID(org), only(scoped, capturesetting.ProjectIDIn(projects...))),
+		c.PayloadSegment.Delete().Where(payloadsegment.OrgID(org), only(scoped, payloadsegment.ProjectIDIn(projects...))),
 		c.FamilyLabel.Delete().Where(familylabel.OrgID(org), only(scoped, familylabel.ProjectIDIn(projects...))),
 		c.FirewallSetting.Delete().Where(firewallsetting.OrgID(org), only(scoped, firewallsetting.ProjectIDIn(projects...))),
 		c.KeySetting.Delete().Where(keysetting.OrgID(org), only(scoped, keysetting.ProjectIDIn(projects...))),

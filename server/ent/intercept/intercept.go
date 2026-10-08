@@ -16,6 +16,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
+	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/predicate"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
@@ -297,6 +298,33 @@ func (f TraverseModelRouter) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.ModelRouterQuery", q)
 }
 
+// The PayloadSegmentFunc type is an adapter to allow the use of ordinary function as a Querier.
+type PayloadSegmentFunc func(context.Context, *ent.PayloadSegmentQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f PayloadSegmentFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.PayloadSegmentQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.PayloadSegmentQuery", q)
+}
+
+// The TraversePayloadSegment type is an adapter to allow the use of ordinary function as Traverser.
+type TraversePayloadSegment func(context.Context, *ent.PayloadSegmentQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraversePayloadSegment) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraversePayloadSegment) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PayloadSegmentQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.PayloadSegmentQuery", q)
+}
+
 // The PriceListFunc type is an adapter to allow the use of ordinary function as a Querier.
 type PriceListFunc func(context.Context, *ent.PriceListQuery) (ent.Value, error)
 
@@ -478,6 +506,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.KeySettingQuery, predicate.KeySetting, keysetting.OrderOption]{typ: ent.TypeKeySetting, tq: q}, nil
 	case *ent.ModelRouterQuery:
 		return &query[*ent.ModelRouterQuery, predicate.ModelRouter, modelrouter.OrderOption]{typ: ent.TypeModelRouter, tq: q}, nil
+	case *ent.PayloadSegmentQuery:
+		return &query[*ent.PayloadSegmentQuery, predicate.PayloadSegment, payloadsegment.OrderOption]{typ: ent.TypePayloadSegment, tq: q}, nil
 	case *ent.PriceListQuery:
 		return &query[*ent.PriceListQuery, predicate.PriceList, pricelist.OrderOption]{typ: ent.TypePriceList, tq: q}, nil
 	case *ent.PriceOverrideQuery:

@@ -73,7 +73,7 @@ func run() error {
 		Scope: core.ScopeGateway, Rules: app.RuleEnv, Entitlements: c.Metering.Entitlements, Decider: decide.New(transport),
 	})
 	log := requestlog.New(requestlog.Config{
-		Events: c.Events, Prices: app.Prices, Spend: app.Spend, Entitlements: c.Metering.Entitlements,
+		Events: c.Events, Prices: app.Prices, Spend: app.Spend, Entitlements: c.Metering.Entitlements, Payloads: app.PayloadStore,
 	})
 	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})
 	eval := evaluate.New(evaluate.Config{
@@ -96,7 +96,10 @@ func run() error {
 	// Prices are loaded and kept current, usage, spend and rate counters
 	// flushed in the background, key last-used times and log rows batched,
 	// sampled calls evaluated, and configuration changes listened for.
-	for _, l := range []lifecycle{app.Prices, c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, evalSpend, snapshots, log, eval} {
+	// The payload store starts before the log and stops after it: the
+	// log's last rows add the last payloads.
+	for _, l := range []lifecycle{app.Prices, c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, evalSpend, snapshots,
+		app.PayloadStore, log, eval} {
 		if err := l.Start(ctx); err != nil {
 			return err
 		}

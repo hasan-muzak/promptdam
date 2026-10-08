@@ -21,6 +21,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
+	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/predicate"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
@@ -49,6 +50,7 @@ const (
 	TypeFirewallSetting  = "FirewallSetting"
 	TypeKeySetting       = "KeySetting"
 	TypeModelRouter      = "ModelRouter"
+	TypePayloadSegment   = "PayloadSegment"
 	TypePriceList        = "PriceList"
 	TypePriceOverride    = "PriceOverride"
 	TypeProvider         = "Provider"
@@ -8007,6 +8009,731 @@ func (m *ModelRouterMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *ModelRouterMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ModelRouter edge %s", name)
+}
+
+// PayloadSegmentMutation represents an operation that mutates the PayloadSegment nodes in the graph.
+type PayloadSegmentMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	created_at    *time.Time
+	org_id        *uuid.UUID
+	project_id    *uuid.UUID
+	key           *string
+	bytes         *int64
+	addbytes      *int64
+	payloads      *int
+	addpayloads   *int
+	expires_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*PayloadSegment, error)
+	predicates    []predicate.PayloadSegment
+}
+
+var _ ent.Mutation = (*PayloadSegmentMutation)(nil)
+
+// payloadsegmentOption allows management of the mutation configuration using functional options.
+type payloadsegmentOption func(*PayloadSegmentMutation)
+
+// newPayloadSegmentMutation creates new mutation for the PayloadSegment entity.
+func newPayloadSegmentMutation(c config, op Op, opts ...payloadsegmentOption) *PayloadSegmentMutation {
+	m := &PayloadSegmentMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePayloadSegment,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPayloadSegmentID sets the ID field of the mutation.
+func withPayloadSegmentID(id uuid.UUID) payloadsegmentOption {
+	return func(m *PayloadSegmentMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PayloadSegment
+		)
+		m.oldValue = func(ctx context.Context) (*PayloadSegment, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PayloadSegment.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPayloadSegment sets the old PayloadSegment of the mutation.
+func withPayloadSegment(node *PayloadSegment) payloadsegmentOption {
+	return func(m *PayloadSegmentMutation) {
+		m.oldValue = func(context.Context) (*PayloadSegment, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PayloadSegmentMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PayloadSegmentMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of PayloadSegment entities.
+func (m *PayloadSegmentMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PayloadSegmentMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PayloadSegmentMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PayloadSegment.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *PayloadSegmentMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *PayloadSegmentMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the PayloadSegment entity.
+// If the PayloadSegment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PayloadSegmentMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *PayloadSegmentMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *PayloadSegmentMutation) SetOrgID(u uuid.UUID) {
+	m.org_id = &u
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *PayloadSegmentMutation) OrgID() (r uuid.UUID, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the PayloadSegment entity.
+// If the PayloadSegment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PayloadSegmentMutation) OldOrgID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *PayloadSegmentMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetProjectID sets the "project_id" field.
+func (m *PayloadSegmentMutation) SetProjectID(u uuid.UUID) {
+	m.project_id = &u
+}
+
+// ProjectID returns the value of the "project_id" field in the mutation.
+func (m *PayloadSegmentMutation) ProjectID() (r uuid.UUID, exists bool) {
+	v := m.project_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProjectID returns the old "project_id" field's value of the PayloadSegment entity.
+// If the PayloadSegment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PayloadSegmentMutation) OldProjectID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProjectID: %w", err)
+	}
+	return oldValue.ProjectID, nil
+}
+
+// ResetProjectID resets all changes to the "project_id" field.
+func (m *PayloadSegmentMutation) ResetProjectID() {
+	m.project_id = nil
+}
+
+// SetKey sets the "key" field.
+func (m *PayloadSegmentMutation) SetKey(s string) {
+	m.key = &s
+}
+
+// Key returns the value of the "key" field in the mutation.
+func (m *PayloadSegmentMutation) Key() (r string, exists bool) {
+	v := m.key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKey returns the old "key" field's value of the PayloadSegment entity.
+// If the PayloadSegment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PayloadSegmentMutation) OldKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKey: %w", err)
+	}
+	return oldValue.Key, nil
+}
+
+// ResetKey resets all changes to the "key" field.
+func (m *PayloadSegmentMutation) ResetKey() {
+	m.key = nil
+}
+
+// SetBytes sets the "bytes" field.
+func (m *PayloadSegmentMutation) SetBytes(i int64) {
+	m.bytes = &i
+	m.addbytes = nil
+}
+
+// Bytes returns the value of the "bytes" field in the mutation.
+func (m *PayloadSegmentMutation) Bytes() (r int64, exists bool) {
+	v := m.bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBytes returns the old "bytes" field's value of the PayloadSegment entity.
+// If the PayloadSegment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PayloadSegmentMutation) OldBytes(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBytes: %w", err)
+	}
+	return oldValue.Bytes, nil
+}
+
+// AddBytes adds i to the "bytes" field.
+func (m *PayloadSegmentMutation) AddBytes(i int64) {
+	if m.addbytes != nil {
+		*m.addbytes += i
+	} else {
+		m.addbytes = &i
+	}
+}
+
+// AddedBytes returns the value that was added to the "bytes" field in this mutation.
+func (m *PayloadSegmentMutation) AddedBytes() (r int64, exists bool) {
+	v := m.addbytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBytes resets all changes to the "bytes" field.
+func (m *PayloadSegmentMutation) ResetBytes() {
+	m.bytes = nil
+	m.addbytes = nil
+}
+
+// SetPayloads sets the "payloads" field.
+func (m *PayloadSegmentMutation) SetPayloads(i int) {
+	m.payloads = &i
+	m.addpayloads = nil
+}
+
+// Payloads returns the value of the "payloads" field in the mutation.
+func (m *PayloadSegmentMutation) Payloads() (r int, exists bool) {
+	v := m.payloads
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayloads returns the old "payloads" field's value of the PayloadSegment entity.
+// If the PayloadSegment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PayloadSegmentMutation) OldPayloads(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayloads is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayloads requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayloads: %w", err)
+	}
+	return oldValue.Payloads, nil
+}
+
+// AddPayloads adds i to the "payloads" field.
+func (m *PayloadSegmentMutation) AddPayloads(i int) {
+	if m.addpayloads != nil {
+		*m.addpayloads += i
+	} else {
+		m.addpayloads = &i
+	}
+}
+
+// AddedPayloads returns the value that was added to the "payloads" field in this mutation.
+func (m *PayloadSegmentMutation) AddedPayloads() (r int, exists bool) {
+	v := m.addpayloads
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPayloads resets all changes to the "payloads" field.
+func (m *PayloadSegmentMutation) ResetPayloads() {
+	m.payloads = nil
+	m.addpayloads = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *PayloadSegmentMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *PayloadSegmentMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the PayloadSegment entity.
+// If the PayloadSegment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PayloadSegmentMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *PayloadSegmentMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// Where appends a list predicates to the PayloadSegmentMutation builder.
+func (m *PayloadSegmentMutation) Where(ps ...predicate.PayloadSegment) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PayloadSegmentMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PayloadSegmentMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PayloadSegment, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PayloadSegmentMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PayloadSegmentMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PayloadSegment).
+func (m *PayloadSegmentMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PayloadSegmentMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.created_at != nil {
+		fields = append(fields, payloadsegment.FieldCreatedAt)
+	}
+	if m.org_id != nil {
+		fields = append(fields, payloadsegment.FieldOrgID)
+	}
+	if m.project_id != nil {
+		fields = append(fields, payloadsegment.FieldProjectID)
+	}
+	if m.key != nil {
+		fields = append(fields, payloadsegment.FieldKey)
+	}
+	if m.bytes != nil {
+		fields = append(fields, payloadsegment.FieldBytes)
+	}
+	if m.payloads != nil {
+		fields = append(fields, payloadsegment.FieldPayloads)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, payloadsegment.FieldExpiresAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PayloadSegmentMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case payloadsegment.FieldCreatedAt:
+		return m.CreatedAt()
+	case payloadsegment.FieldOrgID:
+		return m.OrgID()
+	case payloadsegment.FieldProjectID:
+		return m.ProjectID()
+	case payloadsegment.FieldKey:
+		return m.Key()
+	case payloadsegment.FieldBytes:
+		return m.Bytes()
+	case payloadsegment.FieldPayloads:
+		return m.Payloads()
+	case payloadsegment.FieldExpiresAt:
+		return m.ExpiresAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PayloadSegmentMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case payloadsegment.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case payloadsegment.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case payloadsegment.FieldProjectID:
+		return m.OldProjectID(ctx)
+	case payloadsegment.FieldKey:
+		return m.OldKey(ctx)
+	case payloadsegment.FieldBytes:
+		return m.OldBytes(ctx)
+	case payloadsegment.FieldPayloads:
+		return m.OldPayloads(ctx)
+	case payloadsegment.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown PayloadSegment field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PayloadSegmentMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case payloadsegment.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case payloadsegment.FieldOrgID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case payloadsegment.FieldProjectID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProjectID(v)
+		return nil
+	case payloadsegment.FieldKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKey(v)
+		return nil
+	case payloadsegment.FieldBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBytes(v)
+		return nil
+	case payloadsegment.FieldPayloads:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayloads(v)
+		return nil
+	case payloadsegment.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PayloadSegment field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PayloadSegmentMutation) AddedFields() []string {
+	var fields []string
+	if m.addbytes != nil {
+		fields = append(fields, payloadsegment.FieldBytes)
+	}
+	if m.addpayloads != nil {
+		fields = append(fields, payloadsegment.FieldPayloads)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PayloadSegmentMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case payloadsegment.FieldBytes:
+		return m.AddedBytes()
+	case payloadsegment.FieldPayloads:
+		return m.AddedPayloads()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PayloadSegmentMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case payloadsegment.FieldBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBytes(v)
+		return nil
+	case payloadsegment.FieldPayloads:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPayloads(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PayloadSegment numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PayloadSegmentMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PayloadSegmentMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PayloadSegmentMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown PayloadSegment nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PayloadSegmentMutation) ResetField(name string) error {
+	switch name {
+	case payloadsegment.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case payloadsegment.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case payloadsegment.FieldProjectID:
+		m.ResetProjectID()
+		return nil
+	case payloadsegment.FieldKey:
+		m.ResetKey()
+		return nil
+	case payloadsegment.FieldBytes:
+		m.ResetBytes()
+		return nil
+	case payloadsegment.FieldPayloads:
+		m.ResetPayloads()
+		return nil
+	case payloadsegment.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PayloadSegment field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PayloadSegmentMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PayloadSegmentMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PayloadSegmentMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PayloadSegmentMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PayloadSegmentMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PayloadSegmentMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PayloadSegmentMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown PayloadSegment unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PayloadSegmentMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown PayloadSegment edge %s", name)
 }
 
 // PriceListMutation represents an operation that mutates the PriceList nodes in the graph.

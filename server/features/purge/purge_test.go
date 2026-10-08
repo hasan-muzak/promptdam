@@ -26,6 +26,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
+	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
@@ -103,6 +104,10 @@ func seeds(c *pdent.Client) []seed {
 		}},
 		{"CaptureSetting", capturesetting.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.CaptureSetting.Create().SetOrgID(org).SetProjectID(p).SetEnabled(true).Exec(ctx)
+		}},
+		{"PayloadSegment", payloadsegment.Table, func(ctx context.Context, org, p uuid.UUID) error {
+			return c.PayloadSegment.Create().SetOrgID(org).SetProjectID(p).SetKey("r30/" + org.String() + "/promptdam/k." + p.String()).
+				SetBytes(1).SetPayloads(1).SetExpiresAt(time.Now().Add(time.Hour)).Exec(ctx)
 		}},
 		{"Budget", budget.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.Budget.Create().SetOrgID(org).SetProjectID(p).SetName("month").SetScope(budget.ScopeProject).

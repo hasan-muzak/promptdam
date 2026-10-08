@@ -14,6 +14,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
+	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
@@ -514,6 +515,41 @@ func init() {
 	modelrouterDescID := modelrouterMixinFields0[0].Descriptor()
 	// modelrouter.DefaultID holds the default value on creation for the id field.
 	modelrouter.DefaultID = modelrouterDescID.Default.(func() uuid.UUID)
+	payloadsegmentMixin := schema.PayloadSegment{}.Mixin()
+	payloadsegmentMixinHooks1 := payloadsegmentMixin[1].Hooks()
+	payloadsegment.Hooks[0] = payloadsegmentMixinHooks1[0]
+	payloadsegmentMixinInters1 := payloadsegmentMixin[1].Interceptors()
+	payloadsegment.Interceptors[0] = payloadsegmentMixinInters1[0]
+	payloadsegmentMixinFields0 := payloadsegmentMixin[0].Fields()
+	_ = payloadsegmentMixinFields0
+	payloadsegmentFields := schema.PayloadSegment{}.Fields()
+	_ = payloadsegmentFields
+	// payloadsegmentDescCreatedAt is the schema descriptor for created_at field.
+	payloadsegmentDescCreatedAt := payloadsegmentMixinFields0[1].Descriptor()
+	// payloadsegment.DefaultCreatedAt holds the default value on creation for the created_at field.
+	payloadsegment.DefaultCreatedAt = payloadsegmentDescCreatedAt.Default.(func() time.Time)
+	// payloadsegmentDescKey is the schema descriptor for key field.
+	payloadsegmentDescKey := payloadsegmentFields[0].Descriptor()
+	// payloadsegment.KeyValidator is a validator for the "key" field. It is called by the builders before save.
+	payloadsegment.KeyValidator = func() func(string) error {
+		validators := payloadsegmentDescKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(key string) error {
+			for _, fn := range fns {
+				if err := fn(key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// payloadsegmentDescID is the schema descriptor for id field.
+	payloadsegmentDescID := payloadsegmentMixinFields0[0].Descriptor()
+	// payloadsegment.DefaultID holds the default value on creation for the id field.
+	payloadsegment.DefaultID = payloadsegmentDescID.Default.(func() uuid.UUID)
 	pricelistMixin := schema.PriceList{}.Mixin()
 	pricelistMixinFields0 := pricelistMixin[0].Fields()
 	_ = pricelistMixinFields0

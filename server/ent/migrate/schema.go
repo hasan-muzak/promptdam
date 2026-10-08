@@ -291,6 +291,40 @@ var (
 			},
 		},
 	}
+	// PayloadSegmentsColumns holds the columns for the "payload_segments" table.
+	PayloadSegmentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "key", Type: field.TypeString, Unique: true, Size: 300},
+		{Name: "bytes", Type: field.TypeInt64},
+		{Name: "payloads", Type: field.TypeInt},
+		{Name: "expires_at", Type: field.TypeTime},
+	}
+	// PayloadSegmentsTable holds the schema information for the "payload_segments" table.
+	PayloadSegmentsTable = &schema.Table{
+		Name:       "payload_segments",
+		Columns:    PayloadSegmentsColumns,
+		PrimaryKey: []*schema.Column{PayloadSegmentsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "payloadsegment_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{PayloadSegmentsColumns[2], PayloadSegmentsColumns[3]},
+			},
+			{
+				Name:    "payloadsegment_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{PayloadSegmentsColumns[7]},
+			},
+			{
+				Name:    "payloadsegment_project_id_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{PayloadSegmentsColumns[3], PayloadSegmentsColumns[7]},
+			},
+		},
+	}
 	// PriceListsColumns holds the columns for the "price_lists" table.
 	PriceListsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -493,6 +527,7 @@ var (
 		FirewallSettingsTable,
 		KeySettingsTable,
 		ModelRoutersTable,
+		PayloadSegmentsTable,
 		PriceListsTable,
 		PriceOverridesTable,
 		ProvidersTable,

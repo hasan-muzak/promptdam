@@ -17,12 +17,14 @@ import (
 
 	"github.com/hasan-muzak/keel-core/pkg/apikeys"
 	"github.com/hasan-muzak/keel-core/pkg/config"
+	"github.com/hasan-muzak/keel-core/pkg/ent/auditevent"
 	"github.com/hasan-muzak/keel-core/pkg/ent/orgflag"
 	"github.com/hasan-muzak/keel-core/pkg/entx"
 	"github.com/hasan-muzak/keel-core/pkg/httpx"
 	"github.com/hasan-muzak/keel-core/pkg/ids"
 	"github.com/hasan-muzak/keel-core/pkg/jobs"
 	"github.com/hasan-muzak/keel-core/pkg/keel"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 	"github.com/hasan-muzak/keel-core/pkg/platform"
 	"github.com/hasan-muzak/keel-core/pkg/testkit"
 
@@ -30,6 +32,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/core"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/handlers"
 	"github.com/hasan-muzak/promptdam/server/migrations"
 	"github.com/hasan-muzak/promptdam/server/routers"
@@ -45,8 +48,9 @@ type env struct {
 
 func setup(t *testing.T) *env { t.Helper(); return setupWith(t, false) }
 
-// setupWith starts the API, with a test ClickHouse when events is set.
-func setupWith(t *testing.T, events bool) *env {
+// setupWith starts the API, with a test ClickHouse when events is set,
+// and a test bucket too when blob is.
+func setupWith(t *testing.T, events bool, blob ...bool) *env {
 	t.Helper()
 	cfg := keel.Config{Base: config.Base{Env: config.Development, APIKeyPepper: strings.Repeat("p", 32)}, MailURL: "smtp://localhost:1025"}
 	d := testkit.Postgres(t, migrations.Postgres())
@@ -59,6 +63,9 @@ func setupWith(t *testing.T, events bool) *env {
 	}
 	if events {
 		c.Events = testkit.ClickHouse(t, migrations.ClickHouse())
+	}
+	if len(blob) > 0 && blob[0] {
+		c.Blob = testkit.Blob(t, core.Product.Key)
 	}
 	iss := testkit.NewFirebaseIssuer(t, "demo-keel")
 	c.Verifier = iss.Verifier()
@@ -992,6 +999,51 @@ func TestPayloadCaptureSettings(t *testing.T) {
 	})).AssertStatus(http.StatusOK))
 	if !got.Enabled || got.SampleRate != 0.5 || got.Answers {
 		t.Fatalf("saved %+v", got)
+	}
+}
+
+func TestPayloads(t *testing.T) {
+	e := setupWith(t, true, true)
+	ctx := context.Background()
+	alice := e.as("alice")
+	org, prj, base := e.project("alice")
+	orgID, prjID := mustID(t, ids.Org, org.ID), mustID(t, ids.Project, prj.ID)
+	keep := payloads.Compile(payloads.Settings{Enabled: true, SampleRate: 1, Answers: true}, nil)
+	ref := e.app.PayloadStore.Add(ctx, payloads.Entry{Org: orgID, Project: prjID, RetentionDays: 7, At: time.Now(), Capture: keep,
+		Format: wire.OpenAIChat, Status: 200, Request: []byte(`{"model":"gpt-5-mini","messages":[{"role":"user","content":"mail ada@example.com"}]}`),
+		Answer: []byte(`{"choices":[{"message":{"content":"Sent to ada@example.com."}}]}`)})
+	e.app.PayloadStore.Flush(ctx, time.Time{})
+	for _, r := range []string{ref, ""} {
+		err := e.c.Events.Unscoped().Exec(ctx, `INSERT INTO requests (project_id, ts, trace, org_id, payload_ref, retention_days)
+			VALUES (?, now64(3), ?, ?, ?, 7)`, prjID, ids.Encode("req", ids.New()), orgID, r)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var rows []struct {
+		Trace string `ch:"trace"`
+	}
+	if err := e.c.Events.Unscoped().Select(ctx, &rows, `SELECT trace FROM requests WHERE project_id = ? ORDER BY payload_ref DESC`, prjID); err != nil {
+		t.Fatal(err)
+	}
+	traces := []string{rows[0].Trace, rows[1].Trace}
+	got := testclient.Decoded[handlers.PayloadOut](e.client.Get(base+"/requests/"+traces[0]+"/payload", alice).AssertStatus(http.StatusOK))
+	if !strings.Contains(string(got.Body), "[REDACTED:email]") || got.Answer == nil || got.Answer.Text != "Sent to [REDACTED:email]." ||
+		got.APIFormat != "openai.chat" || got.Truncated == nil {
+		t.Fatalf("payload %+v %s", got, got.Body)
+	}
+	if n := e.c.DB.Ent.AuditEvent.Query().Where(auditevent.Action("payload.viewed")).CountX(entx.SkipTenant(ctx)); n != 1 {
+		t.Fatalf("%d reads audited", n)
+	}
+	e.client.Get(base+"/requests/"+traces[1]+"/payload", alice).AssertStatus(http.StatusNotFound)
+
+	deleted := testclient.Decoded[handlers.DeletedPayloadsOut](e.client.Delete(base+"/payloads", alice).AssertStatus(http.StatusOK))
+	if deleted.Segments != 1 {
+		t.Fatalf("deleted %+v", deleted)
+	}
+	if res := e.client.Get(base+"/requests/"+traces[0]+"/payload", alice); res.Status != http.StatusNotFound ||
+		res.Error().Error.Code != handlers.CodePayloadGone {
+		t.Fatalf("after deleting: %d %s", res.Status, res.String())
 	}
 }
 

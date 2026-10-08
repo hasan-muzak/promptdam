@@ -28,7 +28,7 @@ func Mount(a *muzak.App, app *core.App) {
 		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides, Families: families.NewService(app.Ent, c.Events),
 		CacheDoctor: cachedoctor.New(c.Events, app.Prices), Rules: app.Rules,
 		RuleDeps: handlers.RuleDeps{Env: app.RuleEnv, Events: c.Events, Prices: app.Prices},
-		Routers:  app.Routers, Firewall: app.Firewall, Activity: app.Activity, Alerts: app.Alerts, Payloads: app.Payloads, Audit: c.DB.Ent,
+		Routers:  app.Routers, Firewall: app.Firewall, Activity: app.Activity, Alerts: app.Alerts, Payloads: app.Payloads, PayloadStore: app.PayloadStore, Audit: c.DB.Ent,
 		RouterDeps: handlers.RouterDeps{Explainer: resolver.New(resolver.Config{Prices: app.Prices, Rules: app.RuleEnv}),
 			Sources: app.Sources(), Billing: c.Billing, AppURL: c.Config.AppURL, Events: c.Events, Prices: app.Prices, Jobs: c.Jobs},
 	}
@@ -157,6 +157,16 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Summary("List a project's gateway calls, newest first"),
 		muzak.Description("Metadata only, never prompts or answers: models, provider, status, tokens, cost, timings. "+
 			"Covers at most 31 days per query (default the last 24 hours) and what the plan keeps."))
+	r.Get(lb+"/{request}/payload", h.GetPayload, log, muzak.Title("Get Request Payload"), project(tenancy.PermProjectsManage),
+		muzak.Summary("What was kept of a call: its request and answer, masked"),
+		muzak.Description("For projects that keep payloads (…/payloads/settings): the request as the provider got it and "+
+			"the answer the client got (its text and tool calls; a failed call's error), with secrets, personal data and "+
+			"the project's own patterns masked. Developers and up; every read is audited. 404 payload_gone once the "+
+			"plan's retention ended or the payloads were deleted."))
+	r.Delete(pl, h.DeletePayloads, log, muzak.Title("Delete Payloads"), project(tenancy.PermProjectsManage),
+		muzak.Summary("Delete every payload the project kept, now"),
+		muzak.Description("Payloads a gateway is still gathering are written within a minute, then kept as their plan says: "+
+			"turn capture off first to keep none. Audited."))
 	r.Get(lb+"/{request}", h.GetRequest, log, muzak.Title("Get Request"), project(tenancy.PermProjectsRead),
 		muzak.Summary("Get one gateway call by its trace (X-Promptdam-Trace)"))
 

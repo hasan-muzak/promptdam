@@ -49,6 +49,8 @@ type Options struct {
 	// Sample draws whether a router call is evaluated (the resolver's;
 	// default random).
 	Sample func() float64
+	// Payloads keeps captured calls' payloads in a test bucket.
+	Payloads bool
 }
 
 // World is the gateway serving one project, with one provider ("main", a
@@ -89,6 +91,9 @@ func New(t *testing.T, opts Options) *World {
 	if opts.ClickHouse {
 		c.Events = testkit.ClickHouse(t, migrations.ClickHouse())
 	}
+	if opts.Payloads {
+		c.Blob = testkit.Blob(t, core.Product.Key)
+	}
 	w := &World{T: t, Ctx: ctx, C: c, App: core.NewApp(c)}
 	u, err := c.Tenancy.SignIn(ctx, identity.Claims{UID: "fb-acme", Email: "acme@example.com", EmailVerified: true})
 	if err != nil {
@@ -119,6 +124,7 @@ func New(t *testing.T, opts Options) *World {
 	rates := counter.New(c.KV, "rpm", counter.Options{})
 	w.Log = requestlog.New(requestlog.Config{
 		Events: c.Events, Prices: w.App.Prices, Spend: w.App.Spend, Entitlements: c.Metering.Entitlements,
+		Payloads: w.App.PayloadStore,
 	})
 	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true})
 	res := resolver.New(resolver.Config{
@@ -132,7 +138,7 @@ func New(t *testing.T, opts Options) *World {
 	for _, l := range []interface {
 		Start(context.Context) error
 		Stop(context.Context) error
-	}{snaps, rates, w.App.SpendCounters, evalSpend, w.Log, w.Eval} {
+	}{snaps, rates, w.App.SpendCounters, evalSpend, w.App.PayloadStore, w.Log, w.Eval} {
 		if err := l.Start(ctx); err != nil {
 			t.Fatal(err)
 		}

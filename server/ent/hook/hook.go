@@ -105,6 +105,18 @@ func (f ModelRouterFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ModelRouterMutation", m)
 }
 
+// The PayloadSegmentFunc type is an adapter to allow the use of ordinary
+// function as PayloadSegment mutator.
+type PayloadSegmentFunc func(context.Context, *ent.PayloadSegmentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PayloadSegmentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PayloadSegmentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PayloadSegmentMutation", m)
+}
+
 // The PriceListFunc type is an adapter to allow the use of ordinary
 // function as PriceList mutator.
 type PriceListFunc func(context.Context, *ent.PriceListMutation) (ent.Value, error)

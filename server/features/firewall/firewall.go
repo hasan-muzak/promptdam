@@ -265,6 +265,13 @@ func Compile(s Settings, env *policy.Env) (*Engine, error) {
 // Settings are the engine's settings.
 func (e *Engine) Settings() Settings { return e.s }
 
+// MaskText masks every finding in plain text (an answer's), whatever the
+// classes' actions: [REDACTED:email].
+func (e *Engine) MaskText(s string) string {
+	masked, _ := e.r.Mask(s)
+	return masked
+}
+
 func (e *Engine) action(class string) string {
 	switch class {
 	case ClassSecret:

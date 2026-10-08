@@ -51,6 +51,9 @@ type Handlers struct {
 	Activity   *activity.Service
 	Alerts     *alerts.Service
 	Payloads   *payloads.Service
+	// PayloadStore reads and deletes kept payloads (nil without object
+	// storage: none are kept).
+	PayloadStore *payloads.Store
 	// Audit is the core graph, where changes are audited.
 	Audit *ent.Client
 }

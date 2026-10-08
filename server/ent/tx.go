@@ -30,6 +30,8 @@ type Tx struct {
 	KeySetting *KeySettingClient
 	// ModelRouter is the client for interacting with the ModelRouter builders.
 	ModelRouter *ModelRouterClient
+	// PayloadSegment is the client for interacting with the PayloadSegment builders.
+	PayloadSegment *PayloadSegmentClient
 	// PriceList is the client for interacting with the PriceList builders.
 	PriceList *PriceListClient
 	// PriceOverride is the client for interacting with the PriceOverride builders.
@@ -181,6 +183,7 @@ func (tx *Tx) init() {
 	tx.FirewallSetting = NewFirewallSettingClient(tx.config)
 	tx.KeySetting = NewKeySettingClient(tx.config)
 	tx.ModelRouter = NewModelRouterClient(tx.config)
+	tx.PayloadSegment = NewPayloadSegmentClient(tx.config)
 	tx.PriceList = NewPriceListClient(tx.config)
 	tx.PriceOverride = NewPriceOverrideClient(tx.config)
 	tx.Provider = NewProviderClient(tx.config)

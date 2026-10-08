@@ -23,6 +23,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
+	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
@@ -54,6 +55,8 @@ type Client struct {
 	KeySetting *KeySettingClient
 	// ModelRouter is the client for interacting with the ModelRouter builders.
 	ModelRouter *ModelRouterClient
+	// PayloadSegment is the client for interacting with the PayloadSegment builders.
+	PayloadSegment *PayloadSegmentClient
 	// PriceList is the client for interacting with the PriceList builders.
 	PriceList *PriceListClient
 	// PriceOverride is the client for interacting with the PriceOverride builders.
@@ -85,6 +88,7 @@ func (c *Client) init() {
 	c.FirewallSetting = NewFirewallSettingClient(c.config)
 	c.KeySetting = NewKeySettingClient(c.config)
 	c.ModelRouter = NewModelRouterClient(c.config)
+	c.PayloadSegment = NewPayloadSegmentClient(c.config)
 	c.PriceList = NewPriceListClient(c.config)
 	c.PriceOverride = NewPriceOverrideClient(c.config)
 	c.Provider = NewProviderClient(c.config)
@@ -191,6 +195,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		FirewallSetting:  NewFirewallSettingClient(cfg),
 		KeySetting:       NewKeySettingClient(cfg),
 		ModelRouter:      NewModelRouterClient(cfg),
+		PayloadSegment:   NewPayloadSegmentClient(cfg),
 		PriceList:        NewPriceListClient(cfg),
 		PriceOverride:    NewPriceOverrideClient(cfg),
 		Provider:         NewProviderClient(cfg),
@@ -224,6 +229,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		FirewallSetting:  NewFirewallSettingClient(cfg),
 		KeySetting:       NewKeySettingClient(cfg),
 		ModelRouter:      NewModelRouterClient(cfg),
+		PayloadSegment:   NewPayloadSegmentClient(cfg),
 		PriceList:        NewPriceListClient(cfg),
 		PriceOverride:    NewPriceOverrideClient(cfg),
 		Provider:         NewProviderClient(cfg),
@@ -260,8 +266,8 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Activity, c.AlertRule, c.Budget, c.CaptureSetting, c.FamilyLabel,
-		c.FirewallSetting, c.KeySetting, c.ModelRouter, c.PriceList, c.PriceOverride,
-		c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
+		c.FirewallSetting, c.KeySetting, c.ModelRouter, c.PayloadSegment, c.PriceList,
+		c.PriceOverride, c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -272,8 +278,8 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Activity, c.AlertRule, c.Budget, c.CaptureSetting, c.FamilyLabel,
-		c.FirewallSetting, c.KeySetting, c.ModelRouter, c.PriceList, c.PriceOverride,
-		c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
+		c.FirewallSetting, c.KeySetting, c.ModelRouter, c.PayloadSegment, c.PriceList,
+		c.PriceOverride, c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -298,6 +304,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.KeySetting.mutate(ctx, m)
 	case *ModelRouterMutation:
 		return c.ModelRouter.mutate(ctx, m)
+	case *PayloadSegmentMutation:
+		return c.PayloadSegment.mutate(ctx, m)
 	case *PriceListMutation:
 		return c.PriceList.mutate(ctx, m)
 	case *PriceOverrideMutation:
@@ -1395,6 +1403,141 @@ func (c *ModelRouterClient) mutate(ctx context.Context, m *ModelRouterMutation) 
 	}
 }
 
+// PayloadSegmentClient is a client for the PayloadSegment schema.
+type PayloadSegmentClient struct {
+	config
+}
+
+// NewPayloadSegmentClient returns a client for the PayloadSegment from the given config.
+func NewPayloadSegmentClient(c config) *PayloadSegmentClient {
+	return &PayloadSegmentClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `payloadsegment.Hooks(f(g(h())))`.
+func (c *PayloadSegmentClient) Use(hooks ...Hook) {
+	c.hooks.PayloadSegment = append(c.hooks.PayloadSegment, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `payloadsegment.Intercept(f(g(h())))`.
+func (c *PayloadSegmentClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PayloadSegment = append(c.inters.PayloadSegment, interceptors...)
+}
+
+// Create returns a builder for creating a PayloadSegment entity.
+func (c *PayloadSegmentClient) Create() *PayloadSegmentCreate {
+	mutation := newPayloadSegmentMutation(c.config, OpCreate)
+	return &PayloadSegmentCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PayloadSegment entities.
+func (c *PayloadSegmentClient) CreateBulk(builders ...*PayloadSegmentCreate) *PayloadSegmentCreateBulk {
+	return &PayloadSegmentCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PayloadSegmentClient) MapCreateBulk(slice any, setFunc func(*PayloadSegmentCreate, int)) *PayloadSegmentCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PayloadSegmentCreateBulk{err: fmt.Errorf("calling to PayloadSegmentClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PayloadSegmentCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PayloadSegmentCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PayloadSegment.
+func (c *PayloadSegmentClient) Update() *PayloadSegmentUpdate {
+	mutation := newPayloadSegmentMutation(c.config, OpUpdate)
+	return &PayloadSegmentUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PayloadSegmentClient) UpdateOne(_m *PayloadSegment) *PayloadSegmentUpdateOne {
+	mutation := newPayloadSegmentMutation(c.config, OpUpdateOne, withPayloadSegment(_m))
+	return &PayloadSegmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PayloadSegmentClient) UpdateOneID(id uuid.UUID) *PayloadSegmentUpdateOne {
+	mutation := newPayloadSegmentMutation(c.config, OpUpdateOne, withPayloadSegmentID(id))
+	return &PayloadSegmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PayloadSegment.
+func (c *PayloadSegmentClient) Delete() *PayloadSegmentDelete {
+	mutation := newPayloadSegmentMutation(c.config, OpDelete)
+	return &PayloadSegmentDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PayloadSegmentClient) DeleteOne(_m *PayloadSegment) *PayloadSegmentDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PayloadSegmentClient) DeleteOneID(id uuid.UUID) *PayloadSegmentDeleteOne {
+	builder := c.Delete().Where(payloadsegment.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PayloadSegmentDeleteOne{builder}
+}
+
+// Query returns a query builder for PayloadSegment.
+func (c *PayloadSegmentClient) Query() *PayloadSegmentQuery {
+	return &PayloadSegmentQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePayloadSegment},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PayloadSegment entity by its id.
+func (c *PayloadSegmentClient) Get(ctx context.Context, id uuid.UUID) (*PayloadSegment, error) {
+	return c.Query().Where(payloadsegment.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PayloadSegmentClient) GetX(ctx context.Context, id uuid.UUID) *PayloadSegment {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PayloadSegmentClient) Hooks() []Hook {
+	hooks := c.hooks.PayloadSegment
+	return append(hooks[:len(hooks):len(hooks)], payloadsegment.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *PayloadSegmentClient) Interceptors() []Interceptor {
+	inters := c.inters.PayloadSegment
+	return append(inters[:len(inters):len(inters)], payloadsegment.Interceptors[:]...)
+}
+
+func (c *PayloadSegmentClient) mutate(ctx context.Context, m *PayloadSegmentMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PayloadSegmentCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PayloadSegmentUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PayloadSegmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PayloadSegmentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PayloadSegment mutation op: %q", m.Op())
+	}
+}
+
 // PriceListClient is a client for the PriceList schema.
 type PriceListClient struct {
 	config
@@ -2207,13 +2350,13 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 type (
 	hooks struct {
 		Activity, AlertRule, Budget, CaptureSetting, FamilyLabel, FirewallSetting,
-		KeySetting, ModelRouter, PriceList, PriceOverride, Provider, Route,
-		RouterClassifier, RoutingRule []ent.Hook
+		KeySetting, ModelRouter, PayloadSegment, PriceList, PriceOverride, Provider,
+		Route, RouterClassifier, RoutingRule []ent.Hook
 	}
 	inters struct {
 		Activity, AlertRule, Budget, CaptureSetting, FamilyLabel, FirewallSetting,
-		KeySetting, ModelRouter, PriceList, PriceOverride, Provider, Route,
-		RouterClassifier, RoutingRule []ent.Interceptor
+		KeySetting, ModelRouter, PayloadSegment, PriceList, PriceOverride, Provider,
+		Route, RouterClassifier, RoutingRule []ent.Interceptor
 	}
 )
 

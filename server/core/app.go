@@ -50,8 +50,10 @@ type App struct {
 	// Training trains their classifiers on their judged calls.
 	Routers  *routers.Service
 	Training *training.Service
-	// Payloads keeps whether projects keep their calls' payloads.
-	Payloads *payloads.Service
+	// Payloads keeps whether projects keep their calls' payloads;
+	// PayloadStore keeps the payloads, in object storage (nil without it).
+	Payloads     *payloads.Service
+	PayloadStore *payloads.Store
 	// Activity keeps what happened to each project that was worth telling.
 	Activity *activity.Service
 	// Alerts keeps alert rules; AlertsEval evaluates them every minute.
@@ -128,6 +130,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.Routers = routers.New(a.Ent, env, a.Prices, a.configChanged)
 	a.Activity = activity.New(a.Ent)
 	a.Payloads = payloads.NewService(a.Ent, a.configChanged)
+	a.PayloadStore = payloads.NewStore(payloads.StoreConfig{Ent: a.Ent, Blob: c.Blob, Vault: c.Vault})
 	a.Alerts = alerts.New(a.Ent)
 	a.AlertsEval = alerts.NewEvaluator(alerts.EvalConfig{Ent: a.Ent, Events: c.Events, Notifier: c.Notifier, Webhooks: c.Webhooks,
 		Activity: a.Activity, Entitlements: c.Metering.Entitlements, AppURL: c.Config.AppURL})
@@ -169,7 +172,8 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	// No foreign keys cross the graphs (ADR 0004): deleting an organization
 	// or a project deletes Promptdam's rows in the deletion's transaction,
 	// and enqueues the purge of its ClickHouse rows and Valkey keys with it.
-	a.Purge = purge.New(purge.Config{Ent: a.Ent, Jobs: c.Jobs, Events: c.Events, KV: c.KV, Metering: c.Metering})
+	a.Purge = purge.New(purge.Config{Ent: a.Ent, Jobs: c.Jobs, Events: c.Events, KV: c.KV, Metering: c.Metering,
+		Payloads: a.PayloadStore})
 	c.Tenancy.OnOrgDeleted(a.Purge.OrgDeleted)
 	c.Tenancy.OnProjectDeleted(a.Purge.ProjectDeleted)
 	return a

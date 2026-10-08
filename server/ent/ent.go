@@ -20,6 +20,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
 	"github.com/hasan-muzak/promptdam/server/ent/keysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
+	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
@@ -94,6 +95,7 @@ func checkColumn(t, c string) error {
 			firewallsetting.Table:  firewallsetting.ValidColumn,
 			keysetting.Table:       keysetting.ValidColumn,
 			modelrouter.Table:      modelrouter.ValidColumn,
+			payloadsegment.Table:   payloadsegment.ValidColumn,
 			pricelist.Table:        pricelist.ValidColumn,
 			priceoverride.Table:    priceoverride.ValidColumn,
 			provider.Table:         provider.ValidColumn,

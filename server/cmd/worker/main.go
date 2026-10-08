@@ -16,6 +16,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/alerts"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
+	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/purge"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
@@ -49,5 +50,6 @@ func run() error {
 	firewall.RegisterWorkers(c.Jobs, app.FirewallWatch)
 	activity.RegisterWorkers(c.Jobs, app.Activity)
 	alerts.RegisterWorkers(c.Jobs, app.AlertsEval)
+	payloads.RegisterWorkers(c.Jobs, app.PayloadStore)
 	return c.Worker(core.Version).RunSignals()
 }
