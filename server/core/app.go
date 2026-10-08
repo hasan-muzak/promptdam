@@ -128,7 +128,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.RuleEnv = env
 	a.Rules = rules.New(a.Ent, env, a.configChanged)
 	a.Routers = routers.New(a.Ent, env, a.Prices, a.configChanged)
-	a.Activity = activity.New(a.Ent)
+	a.Activity = activity.New(c.Events)
 	a.Payloads = payloads.NewService(a.Ent, a.configChanged)
 	a.PayloadStore = payloads.NewStore(payloads.StoreConfig{Ent: a.Ent, Blob: c.Blob, Vault: c.Vault})
 	a.Alerts = alerts.New(a.Ent)

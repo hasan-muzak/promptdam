@@ -16,7 +16,6 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
 	"github.com/hasan-muzak/promptdam/server/catalog"
-	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/features/activity"
 	"github.com/hasan-muzak/promptdam/server/features/alerts"
 	"github.com/hasan-muzak/promptdam/server/features/analytics"
@@ -99,7 +98,7 @@ func (h *Handlers) GetOverview(ctx *muzak.Context, in OverviewIn) (OverviewOut, 
 		input, cacheRead                uint64
 		fs                              []families.Family
 		fw                              firewall.Stats
-		recent                          []*pdent.Activity
+		recent                          []activity.Row
 		attention                       []AttentionOut
 	)
 	g, gc := errgroup.WithContext(c)
@@ -118,7 +117,7 @@ func (h *Handlers) GetOverview(ctx *muzak.Context, in OverviewIn) (OverviewOut, 
 		g.Go(func() (err error) { fw, err = firewall.ReadStats(gc, h.RouterDeps.Events, project, from, to); return })
 	}
 	g.Go(func() (err error) {
-		recent, _, err = h.Activity.List(gc, project, activity.Filter{}, uuid.Nil, 5)
+		recent, _, err = h.Activity.List(gc, project, activity.Filter{}, nil, 5)
 		return
 	})
 	g.Go(func() (err error) { attention, err = h.attention(ctx, project); return })
@@ -157,8 +156,7 @@ func (h *Handlers) GetOverview(ctx *muzak.Context, in OverviewIn) (OverviewOut, 
 	}
 	out.Attention = attention
 	for _, a := range recent {
-		out.Activity = append(out.Activity, ActivityOut{ID: ids.Encode(activity.IDPrefix, a.ID), Time: a.CreatedAt.UTC(),
-			Kind: a.Kind, Severity: string(a.Severity), Title: a.Title, Body: a.Body, Subject: a.Subject, URL: a.URL, Data: a.Data})
+		out.Activity = append(out.Activity, activityOut(a))
 	}
 	return out, nil
 }

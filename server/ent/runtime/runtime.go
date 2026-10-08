@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hasan-muzak/promptdam/server/ent/activity"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
@@ -29,81 +28,6 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
-	activityMixin := schema.Activity{}.Mixin()
-	activityMixinHooks1 := activityMixin[1].Hooks()
-	activity.Hooks[0] = activityMixinHooks1[0]
-	activityMixinInters1 := activityMixin[1].Interceptors()
-	activity.Interceptors[0] = activityMixinInters1[0]
-	activityMixinFields0 := activityMixin[0].Fields()
-	_ = activityMixinFields0
-	activityFields := schema.Activity{}.Fields()
-	_ = activityFields
-	// activityDescCreatedAt is the schema descriptor for created_at field.
-	activityDescCreatedAt := activityMixinFields0[1].Descriptor()
-	// activity.DefaultCreatedAt holds the default value on creation for the created_at field.
-	activity.DefaultCreatedAt = activityDescCreatedAt.Default.(func() time.Time)
-	// activityDescKind is the schema descriptor for kind field.
-	activityDescKind := activityFields[0].Descriptor()
-	// activity.KindValidator is a validator for the "kind" field. It is called by the builders before save.
-	activity.KindValidator = func() func(string) error {
-		validators := activityDescKind.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(kind string) error {
-			for _, fn := range fns {
-				if err := fn(kind); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
-	// activityDescTitle is the schema descriptor for title field.
-	activityDescTitle := activityFields[2].Descriptor()
-	// activity.TitleValidator is a validator for the "title" field. It is called by the builders before save.
-	activity.TitleValidator = func() func(string) error {
-		validators := activityDescTitle.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(title string) error {
-			for _, fn := range fns {
-				if err := fn(title); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
-	// activityDescBody is the schema descriptor for body field.
-	activityDescBody := activityFields[3].Descriptor()
-	// activity.DefaultBody holds the default value on creation for the body field.
-	activity.DefaultBody = activityDescBody.Default.(string)
-	// activity.BodyValidator is a validator for the "body" field. It is called by the builders before save.
-	activity.BodyValidator = activityDescBody.Validators[0].(func(string) error)
-	// activityDescSubject is the schema descriptor for subject field.
-	activityDescSubject := activityFields[4].Descriptor()
-	// activity.DefaultSubject holds the default value on creation for the subject field.
-	activity.DefaultSubject = activityDescSubject.Default.(string)
-	// activity.SubjectValidator is a validator for the "subject" field. It is called by the builders before save.
-	activity.SubjectValidator = activityDescSubject.Validators[0].(func(string) error)
-	// activityDescURL is the schema descriptor for url field.
-	activityDescURL := activityFields[5].Descriptor()
-	// activity.DefaultURL holds the default value on creation for the url field.
-	activity.DefaultURL = activityDescURL.Default.(string)
-	// activity.URLValidator is a validator for the "url" field. It is called by the builders before save.
-	activity.URLValidator = activityDescURL.Validators[0].(func(string) error)
-	// activityDescData is the schema descriptor for data field.
-	activityDescData := activityFields[6].Descriptor()
-	// activity.DefaultData holds the default value on creation for the data field.
-	activity.DefaultData = activityDescData.Default.(map[string]interface{})
-	// activityDescID is the schema descriptor for id field.
-	activityDescID := activityMixinFields0[0].Descriptor()
-	// activity.DefaultID holds the default value on creation for the id field.
-	activity.DefaultID = activityDescID.Default.(func() uuid.UUID)
 	alertruleMixin := schema.AlertRule{}.Mixin()
 	alertruleMixinHooks1 := alertruleMixin[1].Hooks()
 	alertrule.Hooks[0] = alertruleMixinHooks1[0]

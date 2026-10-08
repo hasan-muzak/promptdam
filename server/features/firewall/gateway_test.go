@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/hasan-muzak/keel-core/pkg/ent/webhookdelivery"
 	"github.com/hasan-muzak/keel-core/pkg/entx"
 	"github.com/hasan-muzak/keel-core/pkg/events"
@@ -348,8 +346,8 @@ func TestWatcherTellsOfBlocks(t *testing.T) {
 		}
 	}
 	// The project's feed has the run, once.
-	feed, _, err := w.App.Activity.List(w.Scoped(), w.Project, activity.Filter{Kind: "firewall.blocked"}, uuid.Nil, 10)
-	if err != nil || len(feed) != 1 || feed[0].Title != "The firewall refused 2 calls" || feed[0].Data["calls"] != float64(2) {
+	feed, _, err := w.App.Activity.List(w.Scoped(), w.Project, activity.Filter{Kind: "firewall.blocked"}, nil, 10)
+	if err != nil || len(feed) != 1 || feed[0].Title != "The firewall refused 2 calls" || feed[0].Data()["calls"] != float64(2) {
 		t.Fatalf("feed %+v %v", feed, err)
 	}
 	for range 2 { // one digest a week

@@ -12,7 +12,6 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/keel"
 
 	"github.com/hasan-muzak/promptdam/server/core"
-	"github.com/hasan-muzak/promptdam/server/features/activity"
 	"github.com/hasan-muzak/promptdam/server/features/alerts"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
@@ -48,7 +47,6 @@ func run() error {
 	training.RegisterWorkers(c.Jobs, app.Training)
 	routers.RegisterWorkers(c.Jobs, app.Watcher)
 	firewall.RegisterWorkers(c.Jobs, app.FirewallWatch)
-	activity.RegisterWorkers(c.Jobs, app.Activity)
 	alerts.RegisterWorkers(c.Jobs, app.AlertsEval)
 	payloads.RegisterWorkers(c.Jobs, app.PayloadStore)
 	return c.Worker(core.Version).RunSignals()

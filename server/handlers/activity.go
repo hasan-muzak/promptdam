@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"encoding/base64"
+	"errors"
+	"strconv"
+	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	muzak "muzak.dev/framework"
 
 	"github.com/hasan-muzak/keel-core/pkg/httpx"
@@ -38,13 +41,13 @@ type ActivityOut struct {
 // ListActivity lists what happened to a project, newest first.
 func (h *Handlers) ListActivity(ctx *muzak.Context, in ListActivityIn) (httpx.List[ActivityOut], error) {
 	pa := muzak.From[tenancy.ProjectAccess](ctx)
-	var after uuid.UUID
+	var after *activity.Cursor
 	if in.Cursor != "" {
-		id, err := ids.Decode(activity.IDPrefix, in.Cursor)
+		c, err := decodeActivityCursor(in.Cursor)
 		if err != nil {
 			return httpx.List[ActivityOut]{}, muzak.UnprocessableEntity("the cursor is invalid").WithCode(CodeInvalidQuery)
 		}
-		after = id
+		after = &c
 	}
 	rows, next, err := h.Activity.List(ctx.Context(), pa.Project.ID, activity.Filter{Kind: in.Kind, Subject: in.Subject}, after,
 		in.Limit)
@@ -53,11 +56,27 @@ func (h *Handlers) ListActivity(ctx *muzak.Context, in ListActivityIn) (httpx.Li
 	}
 	out := httpx.List[ActivityOut]{Data: make([]ActivityOut, len(rows))}
 	for i, r := range rows {
-		out.Data[i] = ActivityOut{ID: ids.Encode(activity.IDPrefix, r.ID), Time: r.CreatedAt.UTC(), Kind: r.Kind,
-			Severity: string(r.Severity), Title: r.Title, Body: r.Body, Subject: r.Subject, URL: r.URL, Data: r.Data}
+		out.Data[i] = activityOut(r)
 	}
-	if next != uuid.Nil {
-		out.NextCursor = ids.Encode(activity.IDPrefix, next)
+	if next != nil {
+		out.NextCursor = base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(next.TS.UnixMilli(), 10) + ":" +
+			ids.Encode(activity.IDPrefix, next.ID)))
 	}
 	return out, nil
+}
+
+func activityOut(r activity.Row) ActivityOut {
+	return ActivityOut{ID: ids.Encode(activity.IDPrefix, r.ID), Time: r.TS.UTC(), Kind: r.Kind, Severity: r.Severity,
+		Title: r.Title, Body: r.Body, Subject: r.Subject, URL: r.URL, Data: r.Data()}
+}
+
+func decodeActivityCursor(s string) (activity.Cursor, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	ms, id, ok := strings.Cut(string(raw), ":")
+	n, perr := strconv.ParseInt(ms, 10, 64)
+	u, ierr := ids.Decode(activity.IDPrefix, id)
+	if err != nil || !ok || perr != nil || ierr != nil {
+		return activity.Cursor{}, errors.New("handlers: the cursor is invalid")
+	}
+	return activity.Cursor{TS: time.UnixMilli(n), ID: u}, nil
 }

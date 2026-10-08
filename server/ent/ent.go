@@ -12,7 +12,6 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"github.com/hasan-muzak/promptdam/server/ent/activity"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
@@ -87,7 +86,6 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			activity.Table:         activity.ValidColumn,
 			alertrule.Table:        alertrule.ValidColumn,
 			budget.Table:           budget.ValidColumn,
 			capturesetting.Table:   capturesetting.ValidColumn,

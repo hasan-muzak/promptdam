@@ -1048,7 +1048,7 @@ func TestPayloads(t *testing.T) {
 }
 
 func TestBudgets(t *testing.T) {
-	e := setup(t)
+	e := setupWith(t, true)
 	ctx := context.Background()
 	alice := e.as("alice")
 	org, prj, base := e.project("alice")

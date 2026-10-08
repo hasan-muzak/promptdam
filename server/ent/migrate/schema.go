@@ -8,48 +8,6 @@ import (
 )
 
 var (
-	// ActivitiesColumns holds the columns for the "activities" table.
-	ActivitiesColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeUUID},
-		{Name: "created_at", Type: field.TypeTime},
-		{Name: "org_id", Type: field.TypeUUID},
-		{Name: "project_id", Type: field.TypeUUID},
-		{Name: "kind", Type: field.TypeString, Size: 64},
-		{Name: "severity", Type: field.TypeEnum, Enums: []string{"info", "warning", "critical"}, Default: "info"},
-		{Name: "title", Type: field.TypeString, Size: 300},
-		{Name: "body", Type: field.TypeString, Size: 4000, Default: ""},
-		{Name: "subject", Type: field.TypeString, Size: 64, Default: ""},
-		{Name: "url", Type: field.TypeString, Size: 500, Default: ""},
-		{Name: "data", Type: field.TypeJSON},
-	}
-	// ActivitiesTable holds the schema information for the "activities" table.
-	ActivitiesTable = &schema.Table{
-		Name:       "activities",
-		Columns:    ActivitiesColumns,
-		PrimaryKey: []*schema.Column{ActivitiesColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "activity_org_id_project_id",
-				Unique:  false,
-				Columns: []*schema.Column{ActivitiesColumns[2], ActivitiesColumns[3]},
-			},
-			{
-				Name:    "activity_project_id_id",
-				Unique:  false,
-				Columns: []*schema.Column{ActivitiesColumns[3], ActivitiesColumns[0]},
-			},
-			{
-				Name:    "activity_project_id_subject_id",
-				Unique:  false,
-				Columns: []*schema.Column{ActivitiesColumns[3], ActivitiesColumns[8], ActivitiesColumns[0]},
-			},
-			{
-				Name:    "activity_created_at",
-				Unique:  false,
-				Columns: []*schema.Column{ActivitiesColumns[1]},
-			},
-		},
-	}
 	// AlertRulesColumns holds the columns for the "alert_rules" table.
 	AlertRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -519,7 +477,6 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
-		ActivitiesTable,
 		AlertRulesTable,
 		BudgetsTable,
 		CaptureSettingsTable,

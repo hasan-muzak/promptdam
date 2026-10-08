@@ -3,30 +3,32 @@
 // firewall refused, alert rules firing. Those who tell (the budgets, the
 // routers' and the firewall's watchers, alert rules) record an entry next
 // to their alerts and webhooks; the dashboard reads them as a feed, and a
-// budget's or a router's own history by its subject. Entries are kept 90
-// days.
+// budget's or a router's own history by its subject. Entries live in
+// ClickHouse, kept 90 days by its TTL: they come as often as a minute per
+// project.
 package activity
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/riverqueue/river"
 
-	"github.com/hasan-muzak/keel-core/pkg/entx"
-	"github.com/hasan-muzak/keel-core/pkg/jobs"
-
-	pdent "github.com/hasan-muzak/promptdam/server/ent"
-	"github.com/hasan-muzak/promptdam/server/ent/activity"
+	"github.com/hasan-muzak/keel-core/pkg/events"
+	"github.com/hasan-muzak/keel-core/pkg/ids"
 )
 
 // IDPrefix starts activity IDs at the API: act_….
 const IDPrefix = "act"
 
-// Retention is how long entries are kept.
+// Table holds the entries.
+const Table = "activities"
+
+// Retention is how long entries are kept (the table's TTL).
 const Retention = 90 * 24 * time.Hour
 
 // Severities.
@@ -46,30 +48,52 @@ type Entry struct {
 	Data         map[string]any
 }
 
-// Service keeps entries.
-type Service struct {
-	ent *pdent.Client
+// Row is an entry as kept.
+type Row struct {
+	ID       uuid.UUID `ch:"id"`
+	TS       time.Time `ch:"ts"`
+	Kind     string    `ch:"kind"`
+	Severity string    `ch:"severity"`
+	Title    string    `ch:"title"`
+	Body     string    `ch:"body"`
+	Subject  string    `ch:"subject"`
+	URL      string    `ch:"url"`
+	DataJSON string    `ch:"data"`
 }
 
-// New returns a Service.
-func New(ent *pdent.Client) *Service { return &Service{ent: ent} }
+// Data is the entry's numbers.
+func (r Row) Data() map[string]any {
+	out := map[string]any{}
+	_ = json.Unmarshal([]byte(r.DataJSON), &out)
+	return out
+}
+
+// Service keeps entries.
+type Service struct {
+	db  *events.DB
+	now func() time.Time
+}
+
+// New returns a Service; without ClickHouse it keeps nothing.
+func New(db *events.DB) *Service { return &Service{db: db, now: time.Now} }
 
 // Record keeps an entry. It never fails who tells: an entry that can't be
 // kept is logged, the alert it goes with has gone out anyway.
 func (s *Service) Record(ctx context.Context, e Entry) {
-	if s == nil {
+	if s == nil || s.db == nil {
 		return
 	}
 	if e.Severity == "" {
 		e.Severity = Info
 	}
-	if e.Data == nil {
-		e.Data = map[string]any{}
+	data, err := json.Marshal(e.Data)
+	if err != nil || e.Data == nil {
+		data = []byte("{}")
 	}
-	err := s.ent.Activity.Create().SetOrgID(e.Org).SetProjectID(e.Project).SetKind(e.Kind).
-		SetSeverity(activity.Severity(e.Severity)).SetTitle(truncate(e.Title, 300)).SetBody(truncate(e.Body, 4000)).
-		SetSubject(e.Subject).SetURL(truncate(e.URL, 500)).SetData(e.Data).
-		Exec(entx.WithOrg(ctx, e.Org))
+	err = s.db.Unscoped().AsyncInsert(context.WithoutCancel(ctx), `INSERT INTO `+Table+` (project_id, ts, id, org_id, kind,
+		severity, title, body, subject, url, data) VALUES (?, fromUnixTimestamp64Milli(?), ?, ?, ?, ?, ?, ?, ?, ?, ?)`, true,
+		e.Project, s.now().UnixMilli(), ids.New(), e.Org, e.Kind, e.Severity, truncate(e.Title, 300), truncate(e.Body, 4000),
+		e.Subject, truncate(e.URL, 500), string(data))
 	if err != nil {
 		slog.Warn("activity: an entry wasn't kept", "kind", e.Kind, "project", e.Project, "err", err)
 	}
@@ -90,55 +114,47 @@ type Filter struct {
 	Kind, Subject string
 }
 
+// Cursor is where a page of entries ends.
+type Cursor struct {
+	TS time.Time
+	ID uuid.UUID
+}
+
 // List returns up to limit entries of a project, newest first, after the
-// entry after (uuid.Nil: from the newest); next is set when more follow.
-func (s *Service) List(ctx context.Context, project uuid.UUID, f Filter, after uuid.UUID, limit int) (
-	[]*pdent.Activity, uuid.UUID, error) {
-	q := s.ent.Activity.Query().Where(activity.ProjectID(project))
+// cursor; next is set when more follow.
+func (s *Service) List(ctx context.Context, project uuid.UUID, f Filter, after *Cursor, limit int) ([]Row, *Cursor, error) {
+	if s == nil || s.db == nil {
+		return []Row{}, nil, nil
+	}
+	var q strings.Builder
+	q.WriteString(`SELECT id, ts, kind, severity, title, body, subject, url, data FROM ` + Table + ` WHERE {tenant}`)
+	var args []any
 	if f.Kind != "" {
-		q.Where(activity.Kind(f.Kind))
+		q.WriteString(" AND kind = ?")
+		args = append(args, f.Kind)
 	}
 	if f.Subject != "" {
-		q.Where(activity.Subject(f.Subject))
+		q.WriteString(" AND subject = ?")
+		args = append(args, f.Subject)
 	}
-	if after != uuid.Nil {
-		q.Where(activity.IDLT(after)) // IDs are time-ordered
+	if after != nil {
+		q.WriteString(" AND (ts, id) < (fromUnixTimestamp64Milli(?), ?)")
+		args = append(args, after.TS.UnixMilli(), after.ID)
 	}
-	rows, err := q.Order(pdent.Desc(activity.FieldID)).Limit(limit + 1).All(ctx)
-	if err != nil {
-		return nil, uuid.Nil, fmt.Errorf("activity: %w", err)
+	q.WriteString(" ORDER BY ts DESC, id DESC LIMIT ?")
+	args = append(args, limit+1)
+	var rows []Row
+	if err := s.db.Select(ctx, &rows, events.Project(project), q.String(), args...); err != nil {
+		return nil, nil, fmt.Errorf("activity: %w", err)
 	}
-	var next uuid.UUID
+	var next *Cursor
 	if len(rows) > limit {
 		rows = rows[:limit]
-		next = rows[limit-1].ID
+		last := rows[limit-1]
+		next = &Cursor{TS: last.TS, ID: last.ID}
+	}
+	if rows == nil {
+		rows = []Row{}
 	}
 	return rows, next, nil
-}
-
-// Prune deletes the entries older than the retention.
-func (s *Service) Prune(ctx context.Context, now time.Time) (int, error) {
-	return s.ent.Activity.Delete().Where(activity.CreatedAtLT(now.Add(-Retention))).Exec(entx.SkipTenant(ctx))
-}
-
-// PruneArgs prunes old entries (daily).
-type PruneArgs struct{}
-
-// Kind implements river.JobArgs.
-func (PruneArgs) Kind() string { return "promptdam_activity_prune" }
-
-type pruneWorker struct {
-	river.WorkerDefaults[PruneArgs]
-	s *Service
-}
-
-func (w *pruneWorker) Work(ctx context.Context, _ *river.Job[PruneArgs]) error {
-	_, err := w.s.Prune(ctx, time.Now())
-	return err
-}
-
-// RegisterWorkers prunes old entries daily.
-func RegisterWorkers(j *jobs.Jobs, s *Service) {
-	jobs.Register(j, &pruneWorker{s: s})
-	j.Every("promptdam-activity-prune", 24*time.Hour, func() river.JobArgs { return PruneArgs{} })
 }

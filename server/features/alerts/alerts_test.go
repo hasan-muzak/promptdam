@@ -95,7 +95,7 @@ func TestEvaluate(t *testing.T) {
 	}
 	told := func(kind string) (feed, hooks int) {
 		t.Helper()
-		f, _, err := w.App.Activity.List(w.Scoped(), w.Project, activity.Filter{Kind: kind}, uuid.Nil, 50)
+		f, _, err := w.App.Activity.List(w.Scoped(), w.Project, activity.Filter{Kind: kind}, nil, 50)
 		if err != nil {
 			t.Fatal(err)
 		}

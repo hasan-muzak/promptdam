@@ -6,9 +6,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
-// Activity is the predicate function for activity builders.
-type Activity func(*sql.Selector)
-
 // AlertRule is the predicate function for alertrule builders.
 type AlertRule func(*sql.Selector)
 

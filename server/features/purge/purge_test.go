@@ -18,7 +18,6 @@ import (
 
 	"github.com/hasan-muzak/promptdam/server/core"
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
-	"github.com/hasan-muzak/promptdam/server/ent/activity"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
@@ -95,9 +94,6 @@ type seed struct {
 
 func seeds(c *pdent.Client) []seed {
 	return []seed{
-		{"Activity", activity.Table, func(ctx context.Context, org, p uuid.UUID) error {
-			return c.Activity.Create().SetOrgID(org).SetProjectID(p).SetKind("router.ready").SetTitle("x").Exec(ctx)
-		}},
 		{"AlertRule", alertrule.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.AlertRule.Create().SetOrgID(org).SetProjectID(p).SetName("errors").SetKind(alertrule.KindErrorRate).
 				SetThreshold(0.1).SetWindowMinutes(15).Exec(ctx)
@@ -192,6 +188,10 @@ func (w *world) fill(tn tenant) {
 			VALUES (?, now64(3), ?, 'email', 7)`, p, tn.org); err != nil {
 			w.t.Fatal(err)
 		}
+		if err := w.c.Events.Unscoped().Exec(w.ctx, `INSERT INTO activities (project_id, ts, org_id, kind, title)
+			VALUES (?, now64(3), ?, 'router.ready', 'x')`, p, tn.org); err != nil {
+			w.t.Fatal(err)
+		}
 	}
 	// Valkey keys name the project they belong to (caches, counters).
 	for _, p := range tn.projects {
@@ -222,7 +222,7 @@ func (w *world) clickhouse(project uuid.UUID) uint64 {
 	var total uint64
 	for _, table := range []string{"requests", "requests_hourly", "requests_hourly_developer", "requests_hourly_tag",
 		"families_hourly", "prefixes_hourly", "savings_hourly", "router_evals",
-		"firewall_events"} {
+		"firewall_events", "activities"} {
 		var n uint64
 		if err := w.c.Events.Unscoped().QueryRow(w.ctx, `SELECT count() FROM `+table+` WHERE project_id = ?`, project).Scan(&n); err != nil {
 			w.t.Fatal(err)
@@ -278,7 +278,7 @@ func TestDeletingAProjectThenItsOrgLeavesNothing(t *testing.T) {
 	if n := w.clickhouse(p); n != 0 {
 		t.Fatalf("%d ClickHouse rows of the deleted project are left", n)
 	}
-	if w.clickhouse(sibling) != 9 { // a row in each table
+	if w.clickhouse(sibling) != 10 { // a row in each table
 		t.Fatal("the purge took ClickHouse rows of a project that wasn't deleted")
 	}
 	if w.rows("project_id", sibling) == 0 || w.keys(sibling) == 0 || w.rows("org_id", b.org) == 0 || w.keys(b.projects[0]) == 0 {
@@ -301,7 +301,7 @@ func TestDeletingAProjectThenItsOrgLeavesNothing(t *testing.T) {
 	if n := w.clickhouse(sibling); n != 0 {
 		t.Fatalf("%d ClickHouse rows of the deleted organization are left", n)
 	}
-	if w.clickhouse(b.projects[0]) != 9 {
+	if w.clickhouse(b.projects[0]) != 10 {
 		t.Fatal("the purge took another organization's ClickHouse rows")
 	}
 	if w.rows("org_id", b.org) == 0 || w.keys(b.projects[0]) == 0 {
