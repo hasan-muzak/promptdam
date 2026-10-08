@@ -3,7 +3,10 @@
 package handlers
 
 import (
+	muzak "muzak.dev/framework"
+
 	"github.com/hasan-muzak/keel-core/pkg/notify"
+	"github.com/hasan-muzak/keel-core/pkg/platform"
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
 	"github.com/hasan-muzak/promptdam/server/features/analytics"
@@ -37,4 +40,25 @@ type Handlers struct {
 	// RouterDeps serve the firewall's routes too: plans, dry-runs.
 	RouterDeps RouterDeps
 	Firewall   *firewall.Service
+}
+
+// requires refuses with 402 plan_required, and where to upgrade, when the
+// organization's plan lacks one of the features.
+func (h *Handlers) requires(ctx *muzak.Context, features ...string) error {
+	if h.RouterDeps.Billing == nil {
+		return nil
+	}
+	_, err := platform.RequireFeature(h.RouterDeps.Billing, h.RouterDeps.AppURL, features...)(ctx)
+	return err
+}
+
+// planHas reports whether the organization's plan includes a feature; one
+// that can't be read hasn't.
+func (h *Handlers) planHas(ctx *muzak.Context, feature string) bool {
+	if h.RouterDeps.Billing == nil {
+		return true
+	}
+	pa := muzak.From[tenancy.ProjectAccess](ctx)
+	e, err := h.RouterDeps.Billing.Entitlements(ctx.Context(), pa.OrgID())
+	return err == nil && e.Has(feature)
 }

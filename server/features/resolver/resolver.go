@@ -380,7 +380,10 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	if o := m.Firewall; o != nil && o.Tokens != nil && o.Tokens.Len() > 0 {
 		m.Sampled = false
 	}
-	out := &gateway.Route{Targets: targets, Retries: route.Retries, PromptCache: route.PromptCache, Header: header, Meta: m,
+	// Prompt caching applies while the plan includes it: the route keeps
+	// the setting through a downgrade.
+	promptCache := route.PromptCache && r.planHas(ctx, m.Org, catalog.PromptCaching)
+	out := &gateway.Route{Targets: targets, Retries: route.Retries, PromptCache: promptCache, Header: header, Meta: m,
 		Sample: m.Sampled}
 	if o := m.Firewall; o != nil {
 		out.Body = o.Body

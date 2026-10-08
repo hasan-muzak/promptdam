@@ -86,6 +86,8 @@ type RouterOut struct {
 	ActivatedAt       *time.Time    `json:"activated_at"`
 	Demoted           []DemotionOut `json:"demoted" doc:"Tiers the canary demoted: the router places no call on them until restored"`
 	ReadyAt           *time.Time    `json:"ready_at" doc:"When the router's shadow evidence first met its floor (router.ready)"`
+	Watching          bool          `json:"watching" doc:"Active, but the plan doesn't include active routers: it watches (decides, evaluates, serves the default tier) until it does"`
+	Learned           bool          `json:"learned" doc:"The classifier and the decision model place its calls: always while it watches, on plans with learned routing when it serves"`
 	CreatedAt         time.Time     `json:"created_at"`
 	UpdatedAt         time.Time     `json:"updated_at"`
 }
@@ -197,11 +199,25 @@ func (h *Handlers) ListRouters(ctx *muzak.Context, _ platform.ProjectPath) (http
 	if err != nil {
 		return httpx.List[RouterOut]{}, err
 	}
+	plan := h.routerPlan(ctx)
 	out := httpx.List[RouterOut]{Data: make([]RouterOut, len(rs))}
 	for i, r := range rs {
-		out.Data[i] = routerOut(r)
+		out.Data[i] = plan(routerOut(r))
 	}
 	return out, nil
+}
+
+// routerPlan sets what the organization's plan lets routers do, as the
+// gateway reads it.
+func (h *Handlers) routerPlan(ctx *muzak.Context) func(RouterOut) RouterOut {
+	active, learned := h.planHas(ctx, catalog.Routers), h.planHas(ctx, catalog.RoutingLearned)
+	return func(o RouterOut) RouterOut {
+		o.Watching = o.Status == tiers.Active && !active
+		// A router that watches decides as shadow routers do, learned
+		// placement included (resolver.place).
+		o.Learned = o.Status == tiers.Shadow || o.Watching || o.Status == tiers.Active && learned
+		return o
+	}
 }
 
 // planAllows refuses an active router on a plan without model routers:
@@ -266,7 +282,7 @@ func (h *Handlers) CreateRouter(ctx *muzak.Context, in CreateRouterIn) (RouterOu
 	if err != nil {
 		return RouterOut{}, routerFail(err)
 	}
-	return routerOut(r), nil
+	return h.routerPlan(ctx)(routerOut(r)), nil
 }
 
 // GetRouter returns a router.
@@ -275,7 +291,7 @@ func (h *Handlers) GetRouter(ctx *muzak.Context, in RouterPath) (RouterOut, erro
 	if err != nil {
 		return RouterOut{}, err
 	}
-	return routerOut(r), nil
+	return h.routerPlan(ctx)(routerOut(r)), nil
 }
 
 func (h *Handlers) router(ctx *muzak.Context, raw string) (*pdent.ModelRouter, error) {
@@ -317,7 +333,7 @@ func (h *Handlers) UpdateRouter(ctx *muzak.Context, in UpdateRouterIn) (RouterOu
 	if err != nil {
 		return RouterOut{}, routerFail(err)
 	}
-	return routerOut(r), nil
+	return h.routerPlan(ctx)(routerOut(r)), nil
 }
 
 // DeleteRouter removes a router.
@@ -352,7 +368,7 @@ func (h *Handlers) RestoreTier(ctx *muzak.Context, in RestoreTierIn) (RouterOut,
 	if err != nil {
 		return RouterOut{}, routerFail(err)
 	}
-	return routerOut(r), nil
+	return h.routerPlan(ctx)(routerOut(r)), nil
 }
 
 // ExplainRouterIn is a request to place, as a client would send it.

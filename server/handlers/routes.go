@@ -12,6 +12,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/platform"
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
+	"github.com/hasan-muzak/promptdam/server/catalog"
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 )
@@ -127,6 +128,11 @@ func (h *Handlers) CreateRoute(ctx *muzak.Context, in CreateRouteIn) (RouteOut, 
 	if err := h.checkRouter(ctx, pa.Project.ID, in.Router); err != nil {
 		return RouteOut{}, err
 	}
+	if in.PromptCache {
+		if err := h.requires(ctx, catalog.PromptCaching); err != nil {
+			return RouteOut{}, err
+		}
+	}
 	r, err := h.Routes.Create(ctx.Context(), pa.OrgID(), pa.Project.ID, in.input())
 	if err != nil {
 		return RouteOut{}, routeFail(err)
@@ -157,6 +163,19 @@ func (h *Handlers) UpdateRoute(ctx *muzak.Context, in UpdateRouteIn) (RouteOut, 
 	}
 	if err := h.checkRouter(ctx, pa.Project.ID, in.Router); err != nil {
 		return RouteOut{}, err
+	}
+	// Turning prompt caching on needs the plan; a route that has it keeps
+	// it (the gateway applies it while the plan includes it).
+	if in.PromptCache {
+		old, err := h.Routes.Get(ctx.Context(), pa.Project.ID, id)
+		if err != nil {
+			return RouteOut{}, routeFail(err)
+		}
+		if !old.PromptCache {
+			if err := h.requires(ctx, catalog.PromptCaching); err != nil {
+				return RouteOut{}, err
+			}
+		}
 	}
 	r, err := h.Routes.Update(ctx.Context(), pa.Project.ID, id, in.input())
 	if err != nil {

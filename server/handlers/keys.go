@@ -11,6 +11,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/platform"
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
+	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 )
 
@@ -70,6 +71,19 @@ func (h *Handlers) PutKeySettings(ctx *muzak.Context, in PutKeySettingsIn) (KeyS
 	key, err := keyID(in.Key)
 	if err != nil {
 		return KeySettings{}, err
+	}
+	// Naming a key's developer (per-developer keys) needs the plan; a
+	// developer already named stays.
+	if in.Developer != "" {
+		old, err := h.Keys.Get(ctx.Context(), pa.OrgID(), pa.Project.ID, key)
+		if err != nil {
+			return KeySettings{}, keyFail(err)
+		}
+		if old.Developer != in.Developer {
+			if err := h.requires(ctx, catalog.DeveloperKeys); err != nil {
+				return KeySettings{}, err
+			}
+		}
 	}
 	s, err := h.Keys.Put(ctx.Context(), pa.OrgID(), pa.Project.ID, key, keysettings.Settings{
 		AllowedModels: in.AllowedModels, Tags: in.Tags, Developer: in.Developer, RPM: in.RPM, Route: in.Route,

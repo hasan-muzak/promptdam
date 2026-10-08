@@ -153,6 +153,7 @@ func TestModels(t *testing.T) {
 // A route with prompt caching sends Anthropic requests with breakpoints.
 func TestPromptCaching(t *testing.T) {
 	w := gatewaytest.New(t, gatewaytest.Options{})
+	w.Grant(catalog.PromptCaching)
 	w.Provider("claude", providers.FormatAnthropic, []string{"claude-sonnet-5-5"})
 	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{Name: routes.Default, PromptCache: true}); err != nil {
 		t.Fatal(err)
@@ -166,6 +167,23 @@ func TestPromptCaching(t *testing.T) {
 	reqs := w.Fake.Requests()
 	if sent := string(reqs[len(reqs)-1].Body); !strings.Contains(sent, `"cache_control":{"type":"ephemeral"}`) {
 		t.Fatalf("the provider got no breakpoint: %.200s", sent)
+	}
+}
+
+// A route keeps prompt caching through a downgrade, but the gateway
+// applies it only while the plan includes it.
+func TestPromptCachingNeedsThePlan(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{})
+	w.Provider("claude", providers.FormatAnthropic, []string{"claude-sonnet-5-5"})
+	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{Name: routes.Default, PromptCache: true}); err != nil {
+		t.Fatal(err)
+	}
+	system, _ := json.Marshal(strings.Repeat("Follow the house style. ", 300))
+	body := `{"model":"claude-sonnet-5-5","max_tokens":9,"system":` + string(system) + `,"messages":[{"role":"user","content":"hi"}]}`
+	status, h, _ := w.Call("/v1/messages", body, "Authorization", "", "X-Api-Key", w.Raw)
+	reqs := w.Fake.Requests()
+	if status != 200 || h.Get(brand.HeaderCache) == "prompt" || strings.Contains(string(reqs[len(reqs)-1].Body), "cache_control") {
+		t.Fatalf("Free got breakpoints: %d %s", status, h.Get(brand.HeaderCache))
 	}
 }
 

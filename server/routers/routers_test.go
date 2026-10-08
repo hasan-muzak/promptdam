@@ -27,6 +27,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/core"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/families"
 	"github.com/hasan-muzak/promptdam/server/handlers"
 	"github.com/hasan-muzak/promptdam/server/migrations"
 	"github.com/hasan-muzak/promptdam/server/routers"
@@ -40,7 +41,10 @@ type env struct {
 	issuer *testkit.FirebaseIssuer
 }
 
-func setup(t *testing.T) *env {
+func setup(t *testing.T) *env { t.Helper(); return setupWith(t, false) }
+
+// setupWith starts the API, with a test ClickHouse when events is set.
+func setupWith(t *testing.T, events bool) *env {
 	t.Helper()
 	cfg := keel.Config{Base: config.Base{Env: config.Development, APIKeyPepper: strings.Repeat("p", 32)}, MailURL: "smtp://localhost:1025"}
 	d := testkit.Postgres(t, migrations.Postgres())
@@ -51,12 +55,29 @@ func setup(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if events {
+		c.Events = testkit.ClickHouse(t, migrations.ClickHouse())
+	}
 	iss := testkit.NewFirebaseIssuer(t, "demo-keel")
 	c.Verifier = iss.Verifier()
 	a := c.API("test")
 	app := core.NewApp(c)
 	routers.Mount(a, app)
 	return &env{c: c, app: app, api: a, client: testclient.New(t, a), issuer: iss}
+}
+
+// plan gives the organization exactly these plan features, as a plan
+// change would (none: back to Free).
+func (e *env) plan(t *testing.T, org string, features ...string) {
+	t.Helper()
+	ctx := entx.SkipTenant(context.Background())
+	id := mustID(t, ids.Org, org)
+	e.c.DB.Ent.OrgFlag.Delete().Where(orgflag.OrgID(id)).ExecX(ctx)
+	for _, f := range features {
+		e.c.DB.Ent.OrgFlag.Create().SetOrgID(id).SetKey("feature." + f).SetValue(json.RawMessage(`true`)).SaveX(ctx)
+	}
+	e.c.Tenancy.ForgetOrg(context.Background(), id)
+	e.c.Billing.BustEntitlements(context.Background(), id)
 }
 
 func (e *env) as(uid string) testclient.RequestOption {
@@ -196,16 +217,32 @@ func TestKeySettings(t *testing.T) {
 	if len(got.AllowedModels) != 0 || got.RPM != 0 || got.AllowedModels == nil {
 		t.Fatalf("defaults %+v", got)
 	}
-	set := testclient.Decoded[handlers.KeySettings](e.client.Put(path, alice, testclient.JSON(map[string]any{
+	settings := map[string]any{
 		"allowed_models": []string{"gpt-5-mini", "claude-*", "gpt-5-mini"}, "tags": []string{"team:search"},
 		"developer": "ana@acme.test", "rpm": 600, "route": "default",
-	})).AssertStatus(http.StatusOK))
+	}
+	// Naming a key's developer comes with per-developer keys (Team).
+	if res := e.client.Put(path, alice, testclient.JSON(settings)); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free names a developer: %d %s", res.Status, res.String())
+	}
+	e.plan(t, org.ID, catalog.DeveloperKeys)
+	set := testclient.Decoded[handlers.KeySettings](e.client.Put(path, alice, testclient.JSON(settings)).AssertStatus(http.StatusOK))
 	if len(set.AllowedModels) != 2 || set.Developer != "ana@acme.test" || set.RPM != 600 {
 		t.Fatalf("set %+v", set)
 	}
 	if again := testclient.Decoded[handlers.KeySettings](e.client.Get(path, alice)); again.RPM != 600 || len(again.Tags) != 1 {
 		t.Fatalf("not stored: %+v", again)
 	}
+	// After a downgrade the developer stays, and the rest can change.
+	e.plan(t, org.ID)
+	settings["rpm"] = 300
+	e.client.Put(path, alice, testclient.JSON(settings)).AssertStatus(http.StatusOK)
+	settings["developer"] = "bo@acme.test"
+	if res := e.client.Put(path, alice, testclient.JSON(settings)); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free names another developer: %d %s", res.Status, res.String())
+	}
+	settings["developer"], settings["rpm"] = "ana@acme.test", 600
+	e.client.Put(path, alice, testclient.JSON(settings)).AssertStatus(http.StatusOK)
 	for _, body := range []map[string]any{
 		{"allowed_models": []string{"gpt*-x"}}, {"tags": []string{"has space"}}, {"route": "Bad Route"},
 	} {
@@ -249,7 +286,7 @@ func mustID(t *testing.T, prefix, s string) uuid.UUID {
 func TestRoutes(t *testing.T) {
 	e := setup(t)
 	alice := e.as("alice")
-	_, _, base := e.project("alice")
+	org, _, base := e.project("alice")
 	path := base + "/routes"
 	r := testclient.Decoded[handlers.RouteOut](e.client.Post(path, alice, testclient.JSON(map[string]any{
 		"name": "default", "fallbacks": []string{"gpt-5-mini", "openrouter/anthropic/claude-haiku-4-5"},
@@ -274,6 +311,23 @@ func TestRoutes(t *testing.T) {
 	})).AssertStatus(http.StatusOK))
 	if up.Retries != 0 || up.Fallbacks[0] != "gpt-5-nano" {
 		t.Fatalf("updated %+v", up)
+	}
+	// Prompt caching comes with Pro; a route keeps it after a downgrade.
+	cached := map[string]any{"name": "default", "fallbacks": []string{"gpt-5-nano"}, "prompt_cache": true}
+	if res := e.client.Put(path+"/"+r.ID, alice, testclient.JSON(cached)); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free caches prompts: %d %s", res.Status, res.String())
+	}
+	e.plan(t, org.ID, catalog.PromptCaching)
+	e.client.Put(path+"/"+r.ID, alice, testclient.JSON(cached)).AssertStatus(http.StatusOK)
+	e.plan(t, org.ID)
+	cached["retries"] = 2
+	if kept := testclient.Decoded[handlers.RouteOut](e.client.Put(path+"/"+r.ID, alice, testclient.JSON(cached)).
+		AssertStatus(http.StatusOK)); !kept.PromptCache {
+		t.Fatalf("kept %+v", kept)
+	}
+	if res := e.client.Post(path, alice, testclient.JSON(map[string]any{"name": "batch", "fallbacks": []string{},
+		"prompt_cache": true})); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free creates a caching route: %d %s", res.Status, res.String())
 	}
 	e.client.Delete(path+"/"+r.ID, alice).AssertStatus(http.StatusNoContent)
 	e.client.Get(path+"/"+r.ID, alice).AssertStatus(http.StatusNotFound)
@@ -371,6 +425,7 @@ func TestRouters(t *testing.T) {
 	// Every plan runs routers in shadow mode, the default.
 	rtr := testclient.Decoded[handlers.RouterOut](e.client.Post(path, alice, testclient.JSON(auto)).AssertStatus(http.StatusCreated))
 	if rtr.Status != "shadow" || rtr.DefaultTier != "smart" || rtr.EvalBudgetMicros != 100_000_000 || rtr.QualityFloor != 0.95 ||
+		rtr.Watching || !rtr.Learned ||
 		!strings.HasPrefix(rtr.ID, handlers.RouterPrefix+"_") || len(rtr.Tiers) != 2 || rtr.Tiers[0].Fallbacks == nil {
 		t.Fatalf("created %+v", rtr)
 	}
@@ -394,8 +449,18 @@ func TestRouters(t *testing.T) {
 	}
 	auto["override"] = true
 	got := testclient.Decoded[handlers.RouterOut](e.client.Put(path+"/"+rtr.ID, alice, testclient.JSON(auto)).AssertStatus(http.StatusOK))
-	if got.Status != "active" || got.ActivatedAt == nil || got.Demoted == nil {
+	if got.Status != "active" || got.ActivatedAt == nil || got.Demoted == nil || got.Watching || got.Learned {
 		t.Fatalf("updated %+v", got)
+	}
+	// After a downgrade it watches; with learned routing, the classifier
+	// places its calls.
+	e.plan(t, org.ID)
+	if w := testclient.Decoded[handlers.RouterOut](e.client.Get(path+"/"+rtr.ID, alice)); !w.Watching || !w.Learned {
+		t.Fatalf("downgraded %+v", w)
+	}
+	e.plan(t, org.ID, catalog.Routers, catalog.RoutingLearned)
+	if l := testclient.Decoded[httpx.List[handlers.RouterOut]](e.client.Get(path, alice)); l.Data[0].Watching || !l.Data[0].Learned {
+		t.Fatalf("on Team %+v", l.Data[0])
 	}
 	delete(auto, "override")
 	// Active already: edits need no override.
@@ -702,6 +767,33 @@ func TestModelsAndPrices(t *testing.T) {
 	}
 }
 
+// Without the plan, the cache doctor says what it found and what fixing it
+// is worth, not how.
+func TestCacheDoctorTeaser(t *testing.T) {
+	e := setupWith(t, true)
+	ctx := context.Background()
+	alice := e.as("alice")
+	org, prj, base := e.project("alice")
+	err := e.c.Events.Unscoped().Exec(ctx, `INSERT INTO requests (project_id, ts, trace, family_id, prefix_hash, prefix_flags,
+		prefix_tokens, kind, served_model, usage_known, input_tokens, cache_read_tokens, retention_days)
+		SELECT ?, now64(3) - toIntervalSecond(number), toString(number), 'dated', concat('p', toString(number)), ?, 3000,
+		'anthropic', 'claude-sonnet-5-5', true, 3050, 0, 7 FROM numbers(100)`, mustID(t, ids.Project, prj.ID),
+		uint16(families.Dates|families.Breakpoints))
+	if err != nil {
+		t.Fatal(err)
+	}
+	locked := testclient.Decoded[httpx.List[handlers.DiagnosisOut]](e.client.Get(base+"/cache-doctor", alice).AssertStatus(http.StatusOK))
+	if len(locked.Data) != 1 || !locked.Data[0].Locked || locked.Data[0].PotentialMonthlyMicros == 0 ||
+		locked.Data[0].Findings[0].Title == "" || locked.Data[0].Findings[0].Fix != "" || locked.Data[0].Findings[0].Detail != "" {
+		t.Fatalf("Free %+v", locked.Data)
+	}
+	e.plan(t, org.ID, catalog.PromptCaching)
+	open := testclient.Decoded[httpx.List[handlers.DiagnosisOut]](e.client.Get(base+"/cache-doctor", alice).AssertStatus(http.StatusOK))
+	if open.Data[0].Locked || open.Data[0].Findings[0].Fix == "" {
+		t.Fatalf("Pro %+v", open.Data)
+	}
+}
+
 func TestBudgets(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
@@ -746,6 +838,13 @@ func TestBudgets(t *testing.T) {
 		if res := e.client.Post(path, alice, testclient.JSON(body)); res.Status != http.StatusUnprocessableEntity {
 			t.Errorf("%v: %d %s", body, res.Status, res.String())
 		}
+	}
+
+	// A developer's budget comes with per-developer keys (Team).
+	dev := map[string]any{"name": "Ana", "scope": "developer", "target": "ana@acme.test", "window": "day", "limit_micros": 1,
+		"channels": []string{}}
+	if res := e.client.Post(path, alice, testclient.JSON(dev)); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Pro sets a developer's budget: %d %s", res.Status, res.String())
 	}
 
 	// Spend counted by the gateway shows in the budgets and alerts once.

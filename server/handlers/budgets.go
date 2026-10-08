@@ -12,6 +12,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/platform"
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
+	"github.com/hasan-muzak/promptdam/server/catalog"
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 )
@@ -113,6 +114,18 @@ func (h *Handlers) budgetInput(ctx *muzak.Context, org uuid.UUID, in BudgetIn) (
 	}, nil
 }
 
+// developerBudget refuses a new per-developer budget on a plan without
+// per-developer keys; one already set for that developer stays.
+func (h *Handlers) developerBudget(ctx *muzak.Context, in budgets.Input, old *pdent.Budget) error {
+	if in.Scope != budgets.ScopeDeveloper || in.Target == "" {
+		return nil // a developer budget without its developer is refused as invalid
+	}
+	if old != nil && string(old.Scope) == budgets.ScopeDeveloper && old.Target == in.Target {
+		return nil
+	}
+	return h.requires(ctx, catalog.DeveloperKeys)
+}
+
 func (h *Handlers) ownChannels(ctx *muzak.Context, org uuid.UUID, raw []string) ([]uuid.UUID, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -185,6 +198,9 @@ func (h *Handlers) CreateBudget(ctx *muzak.Context, in CreateBudgetIn) (BudgetOu
 	if err != nil {
 		return BudgetOut{}, err
 	}
+	if err := h.developerBudget(ctx, input, nil); err != nil {
+		return BudgetOut{}, err
+	}
 	b, err := h.Budgets.Create(ctx.Context(), pa.OrgID(), pa.Project.ID, input)
 	if err != nil {
 		return BudgetOut{}, budgetFail(err)
@@ -216,6 +232,15 @@ func (h *Handlers) UpdateBudget(ctx *muzak.Context, in UpdateBudgetIn) (BudgetOu
 	input, err := h.budgetInput(ctx, pa.OrgID(), in.BudgetIn)
 	if err != nil {
 		return BudgetOut{}, err
+	}
+	if input.Scope == budgets.ScopeDeveloper {
+		old, err := h.Budgets.Get(ctx.Context(), pa.Project.ID, id)
+		if err != nil {
+			return BudgetOut{}, budgetFail(err)
+		}
+		if err := h.developerBudget(ctx, input, old); err != nil {
+			return BudgetOut{}, err
+		}
 	}
 	b, err := h.Budgets.Update(ctx.Context(), pa.Project.ID, id, input)
 	if err != nil {

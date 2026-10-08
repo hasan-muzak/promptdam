@@ -10,6 +10,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/platform"
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
 
+	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/cachedoctor"
 	"github.com/hasan-muzak/promptdam/server/features/families"
 )
@@ -36,6 +37,8 @@ type DiagnosisOut struct {
 	PrefixTokens           uint64       `json:"prefix_tokens" doc:"Estimated length of the prefix"`
 	Findings               []FindingOut `json:"findings"`
 	PotentialMonthlyMicros int64        `json:"potential_monthly_micros" doc:"What caching could save a month at most"`
+	// Locked leaves the findings' details and fixes out.
+	Locked bool `json:"locked" doc:"The plan doesn't include the cache doctor: findings come without their detail and fix"`
 }
 
 func diagnosisOut(d cachedoctor.Diagnosis) DiagnosisOut {
@@ -95,8 +98,17 @@ func (h *Handlers) diagnose(ctx *muzak.Context, family string, r TimeRange) (htt
 		return httpx.List[DiagnosisOut]{}, err
 	}
 	out := httpx.List[DiagnosisOut]{Data: make([]DiagnosisOut, len(ds))}
+	// Without the plan, what the doctor found and what fixing it is worth
+	// show; how to fix it doesn't.
+	locked := len(ds) > 0 && !h.planHas(ctx, catalog.PromptCaching)
 	for i, d := range ds {
 		out.Data[i] = diagnosisOut(d)
+		if locked {
+			out.Data[i].Locked = true
+			for j := range out.Data[i].Findings {
+				out.Data[i].Findings[j].Detail, out.Data[i].Findings[j].Fix = "", ""
+			}
+		}
 	}
 	return out, nil
 }
