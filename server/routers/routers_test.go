@@ -2,6 +2,7 @@ package routers_test
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -791,6 +792,39 @@ func TestCacheDoctorTeaser(t *testing.T) {
 	open := testclient.Decoded[httpx.List[handlers.DiagnosisOut]](e.client.Get(base+"/cache-doctor", alice).AssertStatus(http.StatusOK))
 	if open.Data[0].Locked || open.Data[0].Findings[0].Fix == "" {
 		t.Fatalf("Pro %+v", open.Data)
+	}
+}
+
+func TestLedgerExport(t *testing.T) {
+	e := setupWith(t, true)
+	ctx := context.Background()
+	alice := e.as("alice")
+	org, prj, base := e.project("alice")
+	err := e.c.Events.Unscoped().Exec(ctx, `INSERT INTO requests (project_id, ts, trace, developer, route, requested_model,
+		served_model, provider, status, usage_known, input_tokens, output_tokens, cost_micros, savings_micros, savings_reason,
+		retention_days) SELECT ?, now64(3) - toIntervalSecond(number), concat('req_', toString(number)), '=cmd', 'default',
+		'gpt-5', 'gpt-5-mini', 'openai', 200, true, 100, 10, 1500, 3500, 'routing', 7 FROM numbers(3)`,
+		mustID(t, ids.Project, prj.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := base + "/analytics/savings/export"
+	if res := e.client.Get(path, alice); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free: %d %s", res.Status, res.String())
+	}
+	e.plan(t, org.ID, catalog.LedgerExport)
+	res := e.client.Get(path, alice).AssertStatus(http.StatusOK)
+	if ct := res.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/csv") ||
+		!strings.Contains(res.Header.Get("Content-Disposition"), prj.ID) {
+		t.Fatalf("headers %v", res.Header)
+	}
+	lines, err := csv.NewReader(strings.NewReader(res.String())).ReadAll()
+	if err != nil || len(lines) != 4 || lines[0][0] != "time" || lines[1][1] != "req_0" || lines[1][3] != "'=cmd" ||
+		lines[1][16] != "0.001500" || lines[1][17] != "0.005000" || lines[1][18] != "0.003500" || lines[1][19] != "routing" {
+		t.Fatalf("csv %v %v", lines, err)
+	}
+	if res := e.client.Get(path+"?from=2026-01-01T00:00:00Z&to=2026-03-01T00:00:00Z", alice); res.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("two months: %d %s", res.Status, res.String())
 	}
 }
 
