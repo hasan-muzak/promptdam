@@ -157,7 +157,9 @@ type Live struct {
 // evaluating has none.
 const liveTTL = 10 * time.Minute
 
-func liveKey(store *kv.Store, rule uuid.UUID) string { return store.Key("alerts", "live", rule.String()) }
+func liveKey(store *kv.Store, rule uuid.UUID) string {
+	return store.Key("alerts", "live", rule.String())
+}
 
 // saveLive keeps the rules' measures, in one round trip.
 func saveLive(ctx context.Context, store *kv.Store, live map[uuid.UUID]Live) error {

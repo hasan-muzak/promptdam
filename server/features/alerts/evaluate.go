@@ -47,8 +47,8 @@ const baselineHours = 7 * 24
 
 // EvalConfig configures an Evaluator.
 type EvalConfig struct {
-	Ent      *pdent.Client
-	Events   *events.DB
+	Ent    *pdent.Client
+	Events *events.DB
 	// KV keeps what each evaluation measured.
 	KV       *kv.Store
 	Notifier *notify.Notifier
