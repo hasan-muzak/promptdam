@@ -208,6 +208,15 @@ func Mount(a *muzak.App, app *core.App) {
 			"firewall policies, custom patterns one with custom policies. A downgrade never loosens a firewall: what is "+
 			"saved keeps applying, and may be kept or removed. Gateways apply a change within seconds. Policy compile "+
 			"errors come back with their line and column."))
+	r.Get(fw+"/events", h.ListFirewallEvents, fwcat, muzak.Title("List Firewall Events"), project(tenancy.PermProjectsRead),
+		muzak.Summary("What the firewall found in a project's calls, newest first"),
+		muzak.Description("One event per detector and part of a call it found something in (answers included), or the "+
+			"policy that decided a call: what it got, how many, and whether the call was refused. Never the values. "+
+			"Covers at most 31 days per query (default the last 7) and what the plan keeps."))
+	r.Get(fw+"/stats", h.GetFirewallStats, fwcat, muzak.Title("Get Firewall Stats"), project(tenancy.PermProjectsRead),
+		muzak.Summary("What the firewall did over a time range"),
+		muzak.Description("Calls it found something in and refused, findings per action and detector, and a daily series. "+
+			"Default the last 7 days; at most 90."))
 	r.Post(fw+"/test", h.TestFirewall, fwcat, muzak.Title("Test Firewall"), project(tenancy.PermProjectsRead),
 		muzak.Summary("What the firewall would do with a request, without calling any provider"),
 		muzak.Description("What it finds where, what each finding gets, the request as the provider would get it, and "+

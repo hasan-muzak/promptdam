@@ -1,12 +1,16 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	muzak "muzak.dev/framework"
 
+	"github.com/hasan-muzak/keel-core/pkg/httpx"
+	"github.com/hasan-muzak/keel-core/pkg/ids"
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 	"github.com/hasan-muzak/keel-core/pkg/platform"
 	"github.com/hasan-muzak/keel-core/pkg/tenancy"
@@ -234,4 +238,174 @@ func firewallFail(err error) error {
 		e = e.WithDetails(ds...)
 	}
 	return e
+}
+
+// ListFirewallEventsIn filters a project's firewall events.
+type ListFirewallEventsIn struct {
+	platform.ProjectPath
+	httpx.Page
+	TimeRange
+	Detector string `query:"detector" doc:"Only this detector's: aws_access_key, email, a custom pattern's name…"`
+	Class    string `query:"class" doc:"secret, pii or custom"`
+	Action   string `query:"action" doc:"block, tokenize, redact or alert (or allow, route_to: a policy's event)"`
+	Location string `query:"location" doc:"messages, system, tools, input…, or response"`
+	Key      string `query:"key" doc:"Only this API key's calls (key_…)"`
+	Blocked  bool   `query:"blocked" doc:"Only the events of calls the firewall refused"`
+}
+
+// FirewallEventOut is what the firewall found in one part of a call, or
+// the policy that decided.
+type FirewallEventOut struct {
+	Request        string    `json:"request" doc:"The call's trace (req_…), as in the request log"`
+	Time           time.Time `json:"time"`
+	Key            string    `json:"key" doc:"API key ID (key_…)"`
+	Developer      string    `json:"developer"`
+	Route          string    `json:"route"`
+	RequestedModel string    `json:"requested_model"`
+	Provider       string    `json:"provider" doc:"The provider that answered; empty when the call was refused"`
+	Detector       string    `json:"detector" doc:"Empty for a policy's event"`
+	Class          string    `json:"class"`
+	Action         string    `json:"action"`
+	Location       string    `json:"location"`
+	Count          int       `json:"count"`
+	Blocked        bool      `json:"blocked" doc:"The call was refused"`
+	BlockedBy      string    `json:"blocked_by" doc:"The class (secret, pii, custom), policy:<name>, or scan"`
+	Policy         string    `json:"policy" doc:"The policy that decided the call"`
+	Excerpt        string    `json:"excerpt" doc:"The text around the finding, findings masked; only with excerpts on"`
+}
+
+// ListFirewallEvents lists a project's firewall events, newest first.
+func (h *Handlers) ListFirewallEvents(ctx *muzak.Context, in ListFirewallEventsIn) (httpx.List[FirewallEventOut], error) {
+	pa := muzak.From[tenancy.ProjectAccess](ctx)
+	from, to, err := in.bounds(7 * 24 * time.Hour)
+	if err != nil {
+		return httpx.List[FirewallEventOut]{}, err
+	}
+	f := firewall.EventFilter{From: from, To: to, Detector: in.Detector, Class: in.Class, Action: in.Action, Location: in.Location,
+		Blocked: in.Blocked}
+	if in.Key != "" {
+		if f.Key, err = ids.Decode(ids.APIKey, in.Key); err != nil {
+			return httpx.List[FirewallEventOut]{}, httpx.NotFound("API key")
+		}
+	}
+	var after *firewall.EventCursor
+	if in.Cursor != "" {
+		c, err := decodeEventCursor(in.Cursor)
+		if err != nil {
+			return httpx.List[FirewallEventOut]{}, firewallQueryFail(err)
+		}
+		after = &c
+	}
+	rows, next, err := firewall.ListEvents(ctx.Context(), h.RouterDeps.Events, pa.Project.ID, f, after, in.Limit)
+	if err != nil {
+		return httpx.List[FirewallEventOut]{}, firewallQueryFail(err)
+	}
+	out := httpx.List[FirewallEventOut]{Data: make([]FirewallEventOut, len(rows))}
+	for i, e := range rows {
+		out.Data[i] = FirewallEventOut{Request: e.Trace, Time: e.TS.UTC(), Key: ids.Encode(ids.APIKey, e.KeyID), Developer: e.Developer,
+			Route: e.Route, RequestedModel: e.RequestedModel, Provider: e.Provider, Detector: e.Detector, Class: e.Class,
+			Action: e.Action, Location: e.Location, Count: int(e.Count), Blocked: e.Blocked, BlockedBy: e.BlockedBy,
+			Policy: e.Policy, Excerpt: e.Excerpt}
+	}
+	if next != nil {
+		out.NextCursor = encodeEventCursor(*next)
+	}
+	return out, nil
+}
+
+// encodeEventCursor writes a cursor as an opaque string.
+func encodeEventCursor(c firewall.EventCursor) string {
+	raw, _ := json.Marshal([]any{c.TS.UnixMilli(), c.Trace, c.Detector, c.Location})
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeEventCursor(s string) (firewall.EventCursor, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	var parts []json.RawMessage
+	if err != nil || json.Unmarshal(raw, &parts) != nil || len(parts) != 4 {
+		return firewall.EventCursor{}, firewall.ErrCursor
+	}
+	var ms int64
+	var c firewall.EventCursor
+	if json.Unmarshal(parts[0], &ms) != nil || json.Unmarshal(parts[1], &c.Trace) != nil ||
+		json.Unmarshal(parts[2], &c.Detector) != nil || json.Unmarshal(parts[3], &c.Location) != nil {
+		return firewall.EventCursor{}, firewall.ErrCursor
+	}
+	c.TS = time.UnixMilli(ms).UTC()
+	return c, nil
+}
+
+// FirewallStatsIn asks for a project's firewall stats.
+type FirewallStatsIn struct {
+	platform.ProjectPath
+	TimeRange
+}
+
+// FirewallStatsOut is what the firewall did over a time range.
+type FirewallStatsOut struct {
+	From      time.Time             `json:"from"`
+	To        time.Time             `json:"to"`
+	Calls     uint64                `json:"calls" doc:"Calls the firewall found something in, or a policy decided"`
+	Blocked   uint64                `json:"blocked" doc:"Calls it refused"`
+	Actions   []FirewallActionOut   `json:"actions"`
+	Detectors []FirewallDetectorOut `json:"detectors" doc:"The 50 with the most findings"`
+	Days      []FirewallDayOut      `json:"days" doc:"Per UTC day with events"`
+}
+
+// FirewallActionOut is the calls and findings an action took.
+type FirewallActionOut struct {
+	Action   string `json:"action"`
+	Calls    uint64 `json:"calls"`
+	Findings uint64 `json:"findings"`
+}
+
+// FirewallDetectorOut is a detector's calls and findings.
+type FirewallDetectorOut struct {
+	Detector string `json:"detector"`
+	Class    string `json:"class"`
+	Calls    uint64 `json:"calls"`
+	Findings uint64 `json:"findings"`
+}
+
+// FirewallDayOut is a day's calls and blocked calls.
+type FirewallDayOut struct {
+	Day     time.Time `json:"day"`
+	Calls   uint64    `json:"calls"`
+	Blocked uint64    `json:"blocked"`
+}
+
+// GetFirewallStats returns what the firewall did over a time range.
+func (h *Handlers) GetFirewallStats(ctx *muzak.Context, in FirewallStatsIn) (FirewallStatsOut, error) {
+	pa := muzak.From[tenancy.ProjectAccess](ctx)
+	from, to, err := in.bounds(7 * 24 * time.Hour)
+	if err != nil {
+		return FirewallStatsOut{}, err
+	}
+	s, err := firewall.ReadStats(ctx.Context(), h.RouterDeps.Events, pa.Project.ID, from, to)
+	if err != nil {
+		return FirewallStatsOut{}, firewallQueryFail(err)
+	}
+	out := FirewallStatsOut{From: from, To: to, Calls: s.Calls, Blocked: s.Blocked, Actions: make([]FirewallActionOut, len(s.Actions)),
+		Detectors: make([]FirewallDetectorOut, len(s.Detectors)), Days: make([]FirewallDayOut, len(s.Days))}
+	for i, a := range s.Actions {
+		out.Actions[i] = FirewallActionOut(a)
+	}
+	for i, d := range s.Detectors {
+		out.Detectors[i] = FirewallDetectorOut(d)
+	}
+	for i, d := range s.Days {
+		out.Days[i] = FirewallDayOut{Day: d.Day.UTC(), Calls: d.Calls, Blocked: d.Blocked}
+	}
+	return out, nil
+}
+
+func firewallQueryFail(err error) error {
+	switch {
+	case errors.Is(err, firewall.ErrRange):
+		return muzak.UnprocessableEntity("the time range must start before it ends and cover at most 31 days of events, " +
+			"or 90 days of stats").WithCode(CodeInvalidQuery)
+	case errors.Is(err, firewall.ErrCursor):
+		return muzak.UnprocessableEntity("the cursor is invalid").WithCode(CodeInvalidQuery)
+	}
+	return err
 }

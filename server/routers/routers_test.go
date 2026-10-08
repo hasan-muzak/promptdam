@@ -617,6 +617,23 @@ func TestFirewall(t *testing.T) {
 	if res := e.client.Post(path+"/test", alice, testclient.JSON(map[string]any{"request": map[string]any{"messages": []any{}}})); res.Status != http.StatusUnprocessableEntity {
 		t.Fatalf("no model: %d %s", res.Status, res.String())
 	}
+
+	// Events and stats, without a request log here: empty, not failing.
+	list := testclient.Decoded[httpx.List[handlers.FirewallEventOut]](e.client.Get(path+"/events?blocked=true", alice).
+		AssertStatus(http.StatusOK))
+	if len(list.Data) != 0 || list.NextCursor != "" {
+		t.Fatalf("events %+v", list)
+	}
+	if res := e.client.Get(path+"/events?cursor=nope", alice); res.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("a bad cursor: %d %s", res.Status, res.String())
+	}
+	st := testclient.Decoded[handlers.FirewallStatsOut](e.client.Get(path+"/stats", alice).AssertStatus(http.StatusOK))
+	if st.To.Sub(st.From) != 7*24*time.Hour || st.Detectors == nil || st.Days == nil {
+		t.Fatalf("stats %+v", st)
+	}
+	if res := e.client.Get(path+"/stats?from=2026-01-01T00:00:00Z&to=2026-06-01T00:00:00Z", alice); res.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("five months of stats: %d %s", res.Status, res.String())
+	}
 }
 
 func TestBudgets(t *testing.T) {

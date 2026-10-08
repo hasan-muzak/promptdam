@@ -57,6 +57,8 @@ type RequestOut struct {
 	TierSource       string    `json:"tier_source" doc:"The step that chose the tier: explicit, rule, classifier, decision or default"`
 	TierConfidence   float32   `json:"tier_confidence" doc:"How sure that step was, 0 to 1"`
 	Shadow           bool      `json:"shadow" doc:"The router only watched: it served its default tier"`
+	FirewallAction   string    `json:"firewall_action" doc:"The strongest action the firewall took: block, tokenize, redact, alert, or empty"`
+	FirewallKinds    []string  `json:"firewall_kinds" doc:"What the firewall found (detectors: aws_access_key, email…), never the values"`
 	APIFormat        string    `json:"api_format" doc:"openai.chat, openai.responses, openai.embeddings, anthropic.messages…"`
 	Provider         string    `json:"provider"`
 	RequestedModel   string    `json:"requested_model"`
@@ -86,7 +88,8 @@ func requestOut(r analytics.Request) RequestOut {
 	return RequestOut{
 		ID: r.Trace, Time: r.TS.UTC(), Key: ids.Encode(ids.APIKey, r.KeyID), Developer: r.Developer, User: r.User,
 		Tags: r.Tags, Route: r.Route, Router: r.Router, Tier: r.Tier, DecidedTier: r.DecidedTier, TierSource: r.TierSource,
-		TierConfidence: r.TierConfidence, Shadow: r.Shadow, APIFormat: r.APIFormat, Provider: r.Provider, RequestedModel: r.RequestedModel,
+		TierConfidence: r.TierConfidence, Shadow: r.Shadow, FirewallAction: r.FirewallAction, FirewallKinds: r.FirewallKinds,
+		APIFormat: r.APIFormat, Provider: r.Provider, RequestedModel: r.RequestedModel,
 		ServedModel: r.ServedModel, Stream: r.Stream, Translated: r.Translated, Status: int(r.Status), ErrorCode: r.ErrorCode, Attempts: int(r.Attempts),
 		TTFBms: int(r.TTFBms), LatencyMs: int(r.LatencyMs), UpstreamMs: int(r.UpstreamMs), UsageKnown: r.UsageKnown,
 		InputTokens: int(r.InputTokens), OutputTokens: int(r.OutputTokens), CacheReadTokens: int(r.CacheReadTokens),

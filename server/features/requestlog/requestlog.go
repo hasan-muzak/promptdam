@@ -5,7 +5,9 @@ package requestlog
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
@@ -45,6 +48,8 @@ type Row struct {
 	TierConfidence                                          float32
 	Shadow                                                  bool
 	RouterMicros                                            int64
+	FirewallAction                                          string
+	FirewallKinds                                           []string
 	Tags                                                    []string
 	APIFormat, Provider, Kind, RequestedModel, ServedModel  string
 	Stream, Translated                                      bool
@@ -64,7 +69,8 @@ type Row struct {
 var columns = []string{
 	"project_id", "ts", "trace", "org_id", "key_id", "developer", "end_user", "tags", "route", "family_id", "prefix_hash",
 	"prefix_flags", "prefix_tokens", "est_input_tokens", "messages", "max_tokens", "has_tools", "json_output", "rule",
-	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "router_micros", "api_format", "provider",
+	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "router_micros", "firewall_action",
+	"firewall_kinds", "api_format", "provider",
 	"kind", "requested_model", "served_model", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
 	"upstream_ms", "usage_known", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
 	"reasoning_tokens", "cost_micros", "counterfactual_micros", "savings_micros", "savings_reason", "cache",
@@ -75,7 +81,8 @@ func values(r Row) []any {
 	return []any{
 		r.ProjectID, r.TS, r.Trace, r.OrgID, r.KeyID, r.Developer, r.User, r.Tags, r.Route, r.FamilyID, r.PrefixHash,
 		r.PrefixFlags, r.PrefixTokens, r.EstInput, r.Messages, r.MaxTokens, r.HasTools, r.JSONOutput, r.Rule,
-		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.RouterMicros, r.APIFormat, r.Provider,
+		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.RouterMicros, r.FirewallAction,
+		r.FirewallKinds, r.APIFormat, r.Provider,
 		r.Kind, r.RequestedModel, r.ServedModel, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
 		r.UpstreamMs, r.UsageKnown, r.InputTokens, r.OutputTokens, r.CacheRead, r.CacheWrite, r.Think, r.CostMicros,
 		r.Counterfactual, r.Savings, r.SavingsReason, r.Cache, r.RequestBytes, r.ResponseBytes, r.RetentionDays,
@@ -98,8 +105,12 @@ type Config struct {
 type Log struct {
 	cfg     Config
 	w       *events.Writer[Row]
+	fw      *events.Writer[firewall.Event]
 	dropped atomic.Int64
 	stop    sync.Once
+	// writing counts the rows on their way to the writers, which Stop
+	// waits for.
+	writing sync.WaitGroup
 }
 
 // New returns a Log.
@@ -107,6 +118,8 @@ func New(cfg Config) *Log {
 	l := &Log{cfg: cfg}
 	if cfg.Events != nil {
 		l.w = events.NewWriter(cfg.Events, events.WriterOptions{Table: Table, Columns: columns}, values)
+		l.fw = events.NewWriter(cfg.Events, events.WriterOptions{Table: firewall.EventsTable, Columns: firewall.EventColumns},
+			firewall.EventValues)
 	}
 	return l
 }
@@ -116,7 +129,10 @@ func (l *Log) Start(ctx context.Context) error {
 	if l.w == nil {
 		return nil
 	}
-	return l.w.Start(ctx)
+	if err := l.w.Start(ctx); err != nil {
+		return err
+	}
+	return l.fw.Start(ctx)
 }
 
 // Stop flushes the rows waiting and stops the writer; later calls do
@@ -124,8 +140,9 @@ func (l *Log) Start(ctx context.Context) error {
 func (l *Log) Stop(ctx context.Context) error {
 	var err error
 	l.stop.Do(func() {
+		l.writing.Wait()
 		if l.w != nil {
-			err = l.w.Stop(ctx)
+			err = errors.Join(l.w.Stop(ctx), l.fw.Stop(ctx))
 		}
 	})
 	return err
@@ -186,7 +203,34 @@ func (l *Log) Record(r *gateway.Record) {
 	if row.Tags == nil {
 		row.Tags = []string{}
 	}
-	go l.write(m.Org, row)
+	var fw []firewall.Event
+	row.FirewallKinds = []string{}
+	if o := m.Firewall; o != nil {
+		var answer []firewall.Hit
+		if m.Answer != nil {
+			answer = m.Answer.Hits()
+		}
+		row.FirewallAction = o.Action()
+		if row.FirewallAction == "" && len(answer) > 0 {
+			row.FirewallAction = firewall.Alert
+		}
+		row.FirewallKinds = kinds(o.Hits, answer)
+		fw = firewall.Events(firewall.Event{ProjectID: m.Project, TS: row.TS, Trace: r.Trace, OrgID: m.Org, KeyID: m.Key,
+			Developer: m.Developer, Route: m.Route, RequestedModel: r.RequestedModel, Provider: r.Provider}, o, answer)
+	}
+	l.writing.Go(func() { l.write(m.Org, row, fw) })
+}
+
+// kinds are the detectors of hits, sorted, each once.
+func kinds(hits ...[]firewall.Hit) []string {
+	out := []string{}
+	for _, hs := range hits {
+		for _, h := range hs {
+			out = append(out, h.Detector)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // price is a model's price for the project: its own (for that provider,
@@ -241,7 +285,7 @@ func (l *Log) ledger(r *gateway.Record, m *resolver.Meta, cost int64) Ledger {
 	return led
 }
 
-func (l *Log) write(org uuid.UUID, row Row) {
+func (l *Log) write(org uuid.UUID, row Row, fw []firewall.Event) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	row.RetentionDays = defaultRetention
@@ -253,6 +297,14 @@ func (l *Log) write(org uuid.UUID, row Row) {
 	if err := l.w.Write(ctx, row); err != nil {
 		if n := l.dropped.Add(1); n == 1 || n%1000 == 0 {
 			slog.Warn("requestlog: a row was not written", "dropped", n, "err", err)
+		}
+	}
+	for _, e := range fw {
+		e.RetentionDays = row.RetentionDays
+		if err := l.fw.Write(ctx, e); err != nil {
+			if n := l.dropped.Add(1); n == 1 || n%1000 == 0 {
+				slog.Warn("requestlog: a firewall event was not written", "dropped", n, "err", err)
+			}
 		}
 	}
 }

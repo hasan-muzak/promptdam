@@ -1,10 +1,14 @@
 package firewall_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/hasan-muzak/keel-core/pkg/events"
 
 	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
 	"github.com/hasan-muzak/promptdam/server/brand"
@@ -238,5 +242,57 @@ func TestCachedAnswersGetTheirOwnValues(t *testing.T) {
 	})
 	if got := answer(t, "", body, false); got != "You said: mail bob@example.org" {
 		t.Fatalf("cached: %q", got)
+	}
+}
+
+// What the firewall did reaches the request log, with an event per
+// finding: never the values.
+func TestEventsAreLogged(t *testing.T) {
+	ctx := context.Background()
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true, Upstream: fakeupstream.Options{Reply: echo, StreamReply: true}})
+	s := firewall.Defaults()
+	s.PII, s.Excerpts = firewall.Tokenize, true
+	if _, err := w.App.Firewall.Put(w.Scoped(), w.Org, w.Project, s); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	for _, content := range []string{"deploy with " + awsKey, "mail ada@example.com today", "hello"} {
+		w.Call("/v1/chat/completions", request("", "gpt-5-mini", content, true))
+	}
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct {
+		Action    string   `ch:"firewall_action"`
+		Kinds     []string `ch:"firewall_kinds"`
+		ErrorCode string   `ch:"error_code"`
+	}
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project),
+		`SELECT firewall_action, firewall_kinds, error_code FROM requests WHERE {tenant} ORDER BY ts`); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 || rows[0].Action != "block" || rows[0].Kinds[0] != "aws_access_key" || rows[0].ErrorCode != "firewall_blocked" ||
+		rows[1].Action != "tokenize" || rows[1].Kinds[0] != "email" || rows[2].Action != "" || len(rows[2].Kinds) != 0 {
+		t.Fatalf("requests %+v", rows)
+	}
+
+	f := firewall.EventFilter{From: start.Add(-time.Minute), To: time.Now().Add(time.Minute)}
+	page, next, err := firewall.ListEvents(ctx, w.C.Events, w.Project, f, nil, 1)
+	if err != nil || len(page) != 1 || next == nil || page[0].Detector != "email" || page[0].Action != "tokenize" ||
+		page[0].Location != "messages" || !strings.Contains(page[0].Excerpt, "[REDACTED:email]") || strings.Contains(page[0].Excerpt, "ada@") {
+		t.Fatalf("first page %+v %v", page, err)
+	}
+	page, next, err = firewall.ListEvents(ctx, w.C.Events, w.Project, f, next, 1)
+	if err != nil || len(page) != 1 || next != nil || page[0].Detector != "aws_access_key" || !page[0].Blocked ||
+		page[0].BlockedBy != "secret" || page[0].Provider != "" {
+		t.Fatalf("second page %+v %v", page, err)
+	}
+	f.Blocked = true
+	if page, _, _ = firewall.ListEvents(ctx, w.C.Events, w.Project, f, nil, 10); len(page) != 1 {
+		t.Fatalf("blocked %+v", page)
+	}
+	st, err := firewall.ReadStats(ctx, w.C.Events, w.Project, f.From, f.To)
+	if err != nil || st.Calls != 2 || st.Blocked != 1 || len(st.Detectors) != 2 || len(st.Actions) != 2 || len(st.Days) != 1 {
+		t.Fatalf("stats %+v %v", st, err)
 	}
 }

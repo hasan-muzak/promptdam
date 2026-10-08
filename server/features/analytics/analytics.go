@@ -61,6 +61,8 @@ type Request struct {
 	TierSource       string    `ch:"tier_source"`
 	TierConfidence   float32   `ch:"tier_confidence"`
 	Shadow           bool      `ch:"shadow"`
+	FirewallAction   string    `ch:"firewall_action"`
+	FirewallKinds    []string  `ch:"firewall_kinds"`
 	APIFormat        string    `ch:"api_format"`
 	Provider         string    `ch:"provider"`
 	RequestedModel   string    `ch:"requested_model"`
@@ -87,7 +89,7 @@ type Request struct {
 }
 
 const requestColumns = `ts, trace, key_id, developer, end_user, tags, route, router, tier, decided_tier, tier_source,
-	tier_confidence, shadow, api_format, provider, requested_model,
+	tier_confidence, shadow, firewall_action, firewall_kinds, api_format, provider, requested_model,
 	served_model, stream, translated, status, error_code, attempts, ttfb_ms, latency_ms, upstream_ms, usage_known, input_tokens,
 	output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_micros, savings_micros,
 	savings_reason, cache, family_id`
