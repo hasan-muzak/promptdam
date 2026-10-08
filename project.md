@@ -300,17 +300,36 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
 - **Economics shown to the user:** cache reads cost about 0.1× base input (lower on some models), writes 1.25× for the 5-min TTL or 2× for the 1-hour TTL. The doctor only recommends 1-hour TTL when the start-to-start gaps in a family are 5–60 minutes.
 
 ### 6.4 Firewall (`features/firewall`)
-- Detectors come from `pkg/redact`, plus Promptdam presets:
-  - **"source code"** preset for coding agents (`.env` patterns, private keys, cloud credentials, connection strings)
-  - **"customer data"** preset (email, phone, card, IBAN, national IDs).
-- CEL policies (`pkg/policy`) see `principal` (key, team, developer), `request` (model, provider, route, tokens, has_tools), `findings` (kinds, counts, locations) and `org` (region, plan).
-- **Actions:**
-  - `block`: 4xx with a code and finding kinds, never the secret itself
-  - `redact` (mask)
-  - `tokenize`: `⟦EMAIL_1⟧`; the mapping lives only in request memory and is restored in the response
-  - `alert`
-  - `route_to` (e.g. send PII-bearing requests to an approved provider or region).
-- Firewall events go to ClickHouse with masked excerpts. Alerts go through `pkg/notify`. A weekly digest summarises "secrets blocked, PII redacted".
+- Every text of a request is scanned before anything is sent anywhere: messages, system, tools and tool results, in every API format. Identifiers (`model`, `role`, `id`…) and inline data (base64 images, files) are skipped. Detectors come from `pkg/redact`, grouped in Promptdam's presets (`GET /v1/firewall/presets`):
+  - **"source code"**, the secret class: `.env` assignments, private keys, cloud credentials, connection strings, API tokens
+  - **"customer data"**, the pii class: email, phone, card, IBAN, national IDs (IPv4 only when chosen)
+  - **custom**: a project's own named RE2 patterns.
+- **Actions, per class:**
+  - `block`: 400 `firewall_blocked` naming the detectors, never the value. The call goes nowhere and is logged.
+  - `redact`: masked (`[REDACTED:email]`).
+  - `tokenize`: `⟦email_1⟧`. The mapping lives only in the call's memory and is restored in the answer, whole or streamed, translated or not. A value JSON must escape is redacted instead. Secrets can't be tokenized: a model must never get them back to repeat.
+  - `alert`, `off`.
+  - Defaults: secrets blocked, PII off, custom patterns alerted, answers scanned, no excerpts.
+- **Policies** (CEL, `pkg/policy`) run in order, and the first that holds decides:
+  - `block`, `allow` (cancels a class's block), or `route_to` a model, which then serves the call alone, without the fallbacks it keeps the call from.
+  - They see `request` (as routing rules do), `findings` (detector → count), `classes`, `locations` (part → count), `target` (provider, kind and model the call would go to), `principal` (key, developer, user) and `org` (plan).
+- **Order on a call:** the scan comes before routing, so nothing past it sees what it masks:
+  - the decision model, which isn't asked about a blocked call at all;
+  - evaluation's replays (calls whose answers get tokens back aren't sampled);
+  - the response cache, whose key is the masked request. Calls that differ only in tokenized values share a cached answer, each restored with its own values.
+  - Policies run once the target is known.
+- **Answers** are scanned per place in their events, for alerts only: what was written can't be taken back.
+- **Fail mode**, when a request can't be scanned: refused while secrets are blocked (`secrets_closed`, the default), always refused (`closed`), or let through (`open`).
+- **Plans:**
+  - secrets on every plan, masking or tokenizing PII on Pro, policies on Team, custom patterns on Business.
+  - A downgrade never loosens a firewall: what is saved keeps applying. It may be kept or removed, but not added to.
+- **Events:**
+  - The request log carries each call's `firewall_action` and `firewall_kinds`.
+  - `firewall_events` holds one row per detector and part of a call, or the policy that decided, with masked excerpts only when the project keeps them.
+  - API: `GET …/firewall/events`, `GET …/firewall/stats`, and `POST …/firewall/test`, a dry-run that also takes unsaved settings.
+- **Alerts (worker):**
+  - Every minute, `firewall.blocked` per refused call (at most 100 a minute per project), and an alert to the organization's channels at most hourly per project.
+  - A weekly digest per organization: what was refused, tokenized, redacted and alerted on, and what was found most.
 
 ### 6.5 Data model
 **Postgres** (product Ent graph; `org_id` / `project_id` via TenantMixin):
@@ -324,14 +343,14 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
 | `routing_rules` | route, condition (CEL), to_model, priority, status (draft/active/disabled), activated_at |
 | `model_routers` | name, status (shadow/active/disabled), tiers jsonb (name, description, targets, examples), rules jsonb (condition → tier), unsure_tier, quality_floor, sample_rate, eval_budget_micros, judge, decision (model, timeout), demoted jsonb, activated_at |
 | `router_classifiers` | router_id, version, trained_at, samples, metrics jsonb (per tier: threshold, held-out quality), weights (compact binary) |
-| `policy_sets` | name, rules jsonb (CEL), version, default_effect |
+| `firewall_settings` | settings jsonb (classes' actions, PII detectors, custom patterns, CEL policies, fail mode, response scan, excerpts); one per project |
 | `budgets` | scope (org/project/key/developer/route), scope_id, window (day/month), limit_micros, action (alert/block), thresholds[] |
 | `savings_reports` | period, verified_savings_micros, share_micros, status (draft/approved/disputed/invoiced), approved_by |
 | `alert_rules` | kind (spend_spike, error_rate, provider_down, budget, firewall), params, channel_ids[] |
 
 **ClickHouse:**
-- `requests(org_id, project_id, key_id, route, family_id, provider, requested_model, served_model, api_format, stream, status, http_status, ttfb_ms, latency_ms, upstream_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_micros, counterfactual_micros, savings_micros, savings_reason, response_cache_hit, router, tier, tier_source, tier_confidence, router_micros, firewall_action, findings_kinds Array(LowCardinality(String)), developer, tags Array(String), error_code, payload_ref, ts, retention_days)`
-- `firewall_events(…, finding_kind, location, action, policy_rule, excerpt_masked, ts)`
+- `requests(org_id, project_id, key_id, route, family_id, provider, requested_model, served_model, api_format, stream, status, http_status, ttfb_ms, latency_ms, upstream_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_micros, counterfactual_micros, savings_micros, savings_reason, response_cache_hit, router, tier, tier_source, tier_confidence, router_micros, firewall_action, firewall_kinds Array(LowCardinality(String)), developer, tags Array(String), error_code, payload_ref, ts, retention_days)`
+- `firewall_events(project_id, ts, trace, org_id, key_id, developer, route, requested_model, provider, detector, class, action, location, count, blocked, blocked_by, policy, excerpt, retention_days)`
 - `router_evals(project_id, ts, router, trace, family_id, served_tier, tier_source, baseline_model, candidate_tier, candidate_model, verdict, check, judge_model, candidate_micros, baseline_micros, judge_micros, features Array(UInt32), retention_days)`
 
 All tables have TTL by plan, and `ORDER BY` starts with `(project_id, ts)`.
@@ -557,9 +576,21 @@ Model routers replace per-family savings experiments, and cross-format translati
     - **The canary:** hourly, for each active router's cheaper tier, the calls it served in the last 7 days that were judged. When the upper bound of their quality's 95% interval is under the floor (at least 50 judged), the tier is demoted: the router sends its calls to the next stronger tier, `router.tier_demoted` fires and the channels are alerted. A client may still name a demoted tier. `POST …/routers/{router}/restore` puts it back.
     - Routers, their reports and explanations show demoted tiers and `ready_at`.
     - On the way: ClickHouse compares the millisecond `ts` column wrongly with a whole-second time within that second, so the routers' queries bind times in milliseconds, as the request log's already did.
-- [ ] S3.8 Keel K7.1: streaming-safe redact scanner with chunk overlap; reversible tokenisation restored in streamed responses.
-- [ ] S3.9 Firewall presets (source code, customer data), CEL policy sets, actions (block/redact/tokenize/alert/route_to), fail-closed for secrets and open for the rest by default (decided 2026-10-08).
-- [ ] S3.10 Firewall events (masked excerpts, stats), alerts, weekly digest; the firewall UI is the owner's.
+- [x] S3.8 Keel K7.1: streaming-safe redact scanner with chunk overlap; reversible tokenisation restored in streamed responses.
+  - **Done 2026-10-08 (core `pkg/redact`, additive):** `Stream` finds in text that arrives in pieces what one scan of the whole finds, each value once (16 KiB windows, 4 KiB overlap). `Restorer` puts tokens back in pieces, holding back only what may still become a token. `Token` mints one for a value of the caller's choosing.
+- [x] S3.9 Firewall presets (source code, customer data), CEL policy sets, actions (block/redact/tokenize/alert/route_to), fail-closed for secrets and open for the rest by default (decided 2026-10-08).
+  - **Done 2026-10-08 (`features/firewall`, §6.4):**
+    - Settings per project (`firewall_settings`), carried in the gateway's snapshot compiled. `GET`/`PUT …/firewall` set them, with plan gating.
+    - The gateway scans every call before routing and runs the policies once the target is known; answers are restored and scanned.
+    - End-to-end tests: secrets never reach a provider; personal data reaches it tokenized and comes back restored, in both formats, whole and streamed, translated or not, cached answers included; the three policy actions.
+    - A policy set is the project's ordered policies; named sets shared across projects can come later if customers ask.
+    - Cost: about 10 µs per KB of request and under 1 µs per streamed event on a laptop.
+- [x] S3.10 Firewall events (masked excerpts, stats), alerts, weekly digest; the firewall UI is the owner's.
+  - **Done 2026-10-08:**
+    - `firewall_action` and `firewall_kinds` on the request log.
+    - `firewall_events`, listed (`…/firewall/events`, filtered and paged) and counted (`…/firewall/stats`), purged with their project.
+    - `firewall.blocked` webhooks, hourly alerts and the weekly digest from the worker.
+    - On the way: the request log now waits for rows in flight before it stops.
 - [ ] S3.11 Tag core milestone **`core-v0.4.0`**.
 - **Exit:** a router in shadow mode on a design partner's traffic reaches `router.ready`, then serves it active with measured savings; a forced quality drop demotes a tier within one window; secrets in a test prompt are blocked before leaving.
 
@@ -643,5 +674,7 @@ Model routers replace per-family savings experiments, and cross-format translati
 - [x] Model routing: **routers with customer-described tiers are a core MVP feature** (decided 2026-10-08): the cascade, evaluation and learning of §6.2, with cross-format translation, replacing per-family experiments. ADR 0001.
 - [x] Judge: **the customer's own provider keys only** (decided 2026-10-08). The project picks the judge model, `claude-sonnet-5-5` by default when it has an Anthropic provider. Later, maybe: Promptdam's own keys, charging the customer what the provider charges us.
 - [x] Firewall default for `block` policies when the scanner itself fails: **closed for secrets, open for everything else**, configurable per project (decided 2026-10-08).
+- [x] Firewall after a downgrade: **it never loosens** (decided 2026-10-08). Saved settings keep applying; changing a part to what the plan lacks needs the plan, keeping or removing it doesn't.
+- [x] A firewall policy's `route_to` model **serves the call alone**, without the route's fallbacks, which may be the very provider the policy keeps the call from (decided 2026-10-08).
 - [x] Routers per plan (decided 2026-10-08): shadow mode with evaluation on every plan, active routers on Pro, learned placement (classifier, decision model) on Team (§5).
 - [x] Include OpenAI Responses API routing at MVP: **passthrough only** (auth, budgets, usage, cost, log; no model routing or caching), routing later (decided 2026-10-07).
