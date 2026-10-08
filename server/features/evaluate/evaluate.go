@@ -20,7 +20,6 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -145,7 +144,12 @@ func New(cfg Config) *Evaluator {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 2 * time.Minute
 	}
-	e := &Evaluator{cfg: cfg, jobs: make(chan *gateway.Record, cfg.Queue), client: &http.Client{Transport: cfg.Transport}}
+	// Redirects aren't followed: a provider's key goes to its own endpoint
+	// only (net/http keeps X-Api-Key on a redirect to another host).
+	client := &http.Client{Transport: cfg.Transport, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	e := &Evaluator{cfg: cfg, jobs: make(chan *gateway.Record, cfg.Queue), client: client}
 	if cfg.Events != nil {
 		e.w = events.NewWriter(cfg.Events, events.WriterOptions{Table: Table, Columns: columns}, values)
 	}
@@ -577,7 +581,8 @@ func (e *Evaluator) judgeOnce(ctx context.Context, t gateway.Target, prompt stri
 	}
 	better := readVerdict(a.Text)
 	if better == "" {
-		return "", usage, errors.New("evaluate: the judge's answer has no verdict: " + strconv.Quote(clip(a.Text, 200)))
+		// Not quoted: the judge's answer may repeat the call.
+		return "", usage, fmt.Errorf("evaluate: the judge's answer (%d bytes) has no verdict", len(a.Text))
 	}
 	return better, usage, nil
 }

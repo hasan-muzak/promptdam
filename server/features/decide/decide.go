@@ -45,7 +45,12 @@ type Decider struct {
 
 // New returns a Decider sending calls with transport (safehttp's).
 func New(transport http.RoundTripper) *Decider {
-	return &Decider{client: &http.Client{Transport: transport}, now: time.Now,
+	// Redirects aren't followed: a provider's key goes to its own endpoint
+	// only (net/http keeps X-Api-Key on a redirect to another host).
+	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	return &Decider{client: client, now: time.Now,
 		cache: memcache.New[[32]byte, string](CacheTTL, time.Second, 100_000)}
 }
 
@@ -53,7 +58,7 @@ func New(transport http.RoundTripper) *Decider {
 // picks none), within the question's timeout. A cached answer costs
 // nothing and returns no usage.
 func (d *Decider) Decide(ctx context.Context, q resolver.Question) (string, wire.Usage, error) {
-	key := sha256.Sum256([]byte(q.Router + "\x00" + q.Family + "\x00" + q.Instructions + "\x00" + q.Request))
+	key := sha256.Sum256([]byte(q.Project.String() + "\x00" + q.Router + "\x00" + q.Family + "\x00" + q.Instructions + "\x00" + q.Request))
 	var usage wire.Usage
 	tier, err := d.cache.Get(key, d.now(), func() (string, error) {
 		t, u, err := d.ask(ctx, q)

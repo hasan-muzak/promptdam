@@ -136,7 +136,9 @@ type Decider interface {
 
 // Question is what a decision model is asked.
 type Question struct {
-	// Router and Family key cached answers.
+	// Project, Router and Family key cached answers: a project's never
+	// answers another's.
+	Project        uuid.UUID
 	Router, Family string
 	// Target is the decision model at one of the project's providers;
 	// Schema reports that it takes a JSON schema for its answer.
@@ -342,13 +344,7 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		if len(targets) > 0 {
 			t = firewall.Target{Provider: targets[0].Provider, Kind: targets[0].Kind, Model: targets[0].Model}
 		}
-		var plan string
-		if snap.Firewall.HasPolicies() && r.cfg.Entitlements != nil {
-			if e, err := r.cfg.Entitlements(ctx, m.Org); err == nil {
-				plan = e.Plan
-			}
-		}
-		snap.Firewall.Decide(o, RuleRequest(c, m), firewall.Call{Target: t, Key: ids.Encode(ids.APIKey, m.Key), Plan: plan})
+		snap.Firewall.Decide(o, RuleRequest(c, m), r.policyCall(ctx, snap, m, t))
 		if o.Blocked {
 			return nil, blocked(m, o)
 		}
@@ -380,8 +376,9 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		return nil, e
 	}
 	// An answer that gets tokenized values back isn't sampled: its judge
-	// would read them.
-	if o := m.Firewall; o != nil && o.Tokens != nil && o.Tokens.Len() > 0 {
+	// would read them. Nor is a call a policy decided: replays would take
+	// it to the providers the policy chose against.
+	if o := m.Firewall; o != nil && (o.Tokens != nil && o.Tokens.Len() > 0 || o.Policy != "") {
 		m.Sampled = false
 	}
 	// Prompt caching applies while the plan includes it: the route keeps
@@ -433,6 +430,17 @@ func (r *Resolver) inspect(e *firewall.Engine, c *gateway.Call, m *Meta) error {
 		c.Body, c.Request = o.Body, req
 	}
 	return nil
+}
+
+// policyCall is what the firewall's policies know of a call going to t.
+func (r *Resolver) policyCall(ctx context.Context, snap *snapshot.Snapshot, m *Meta, t firewall.Target) firewall.Call {
+	var plan string
+	if snap.Firewall.HasPolicies() && r.cfg.Entitlements != nil {
+		if e, err := r.cfg.Entitlements(ctx, m.Org); err == nil {
+			plan = e.Plan
+		}
+	}
+	return firewall.Call{Target: t, Key: ids.Encode(ids.APIKey, m.Key), Plan: plan}
 }
 
 // blocked refuses a call the firewall blocked, the call's Meta with it

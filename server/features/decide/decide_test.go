@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/hasan-muzak/keel-core/pkg/events"
 	"github.com/hasan-muzak/keel-core/pkg/safehttp"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/decide"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
 	"github.com/hasan-muzak/promptdam/server/features/resolver"
@@ -131,5 +134,81 @@ func TestRoutersAskTheDecisionModel(t *testing.T) {
 	}
 	if rows[0].Micros <= 0 {
 		t.Fatalf("the decision cost nothing: %+v", rows[0])
+	}
+}
+
+// Projects never share answers, whatever their routers are called; and a
+// decision model's redirect isn't followed (its key would go along).
+func TestAnswersAreTheProjectsOwn(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"tier\": \"fast\"}"}}]}`))
+	}))
+	defer srv.Close()
+	d := decide.New(safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true}))
+	ctx := context.Background()
+	for _, project := range []uuid.UUID{uuid.New(), uuid.New(), uuid.Nil} {
+		q := question(srv.URL, time.Second)
+		q.Project = project
+		if tier, _, err := d.Decide(ctx, q); err != nil || tier != "fast" {
+			t.Fatalf("%q %v", tier, err)
+		}
+	}
+	if calls.Load() != 3 {
+		t.Fatalf("%d calls for 3 projects", calls.Load())
+	}
+
+	var followed atomic.Bool
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { followed.Store(true) }))
+	defer elsewhere.Close()
+	moved := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer moved.Close()
+	q := question(moved.URL, time.Second)
+	q.Project = uuid.New()
+	if tier, _, _ := d.Decide(ctx, q); tier != "" || followed.Load() {
+		t.Fatalf("followed a redirect: %q", tier)
+	}
+}
+
+// A call a firewall policy would keep from the decision model's provider
+// isn't shown to it, and a call a policy decided isn't sampled.
+func TestPoliciesComeBeforeTheDecisionModel(t *testing.T) {
+	var asked atomic.Int32
+	w := gatewaytest.New(t, gatewaytest.Options{Sample: func() float64 { return 0 },
+		Upstream: fakeupstream.Options{Reply: func(model string, body []byte) string {
+			if strings.Contains(string(body), "You route requests") {
+				asked.Add(1)
+				return `{"tier": "fast"}`
+			}
+			return "Answered by " + model
+		}}})
+	w.Grant(catalog.Routers, catalog.RoutingLearned)
+	fw := firewall.Defaults()
+	fw.PII = firewall.Alert
+	fw.Policies = []firewall.Policy{{Name: "personal data stays on gpt-5", When: `classes.pii > 0`,
+		Action: firewall.PolicyRouteTo, Model: "gpt-5"}}
+	if _, err := w.App.Firewall.Put(w.Scoped(), w.Org, w.Project, fw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
+		DecisionModel: "gpt-5-mini", DecisionTimeoutMS: 2000, SampleRate: 0.5,
+		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-mini"}, {Name: "smart", Model: "gpt-5"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	w.Eventually(func() bool {
+		_, h, _ := w.Call("/v1/chat/completions", `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`)
+		return h.Get(brand.HeaderTierSource) == "decision"
+	})
+	before := asked.Load()
+	status, h, _ := w.Call("/v1/chat/completions", `{"model":"auto","messages":[{"role":"user","content":"mail ada@example.com"}]}`)
+	recs := w.Records()
+	m := recs[len(recs)-1].Meta.(*resolver.Meta)
+	if status != 200 || asked.Load() != before || m.Decision.Target.Model != "" || h.Get(brand.HeaderServedModel) != "gpt-5" ||
+		m.Firewall.Policy == "" || m.Sampled {
+		t.Fatalf("asked %d→%d, served %s, meta %+v", before, asked.Load(), h.Get(brand.HeaderServedModel), m)
 	}
 }

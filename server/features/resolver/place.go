@@ -15,6 +15,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/classifier"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
@@ -259,9 +260,19 @@ func (r *Resolver) decide(ctx context.Context, snap *snapshot.Snapshot, rt *rout
 	if len(ts) == 0 {
 		return ""
 	}
+	// The decision model reads the call: not when a policy would keep the
+	// call from its provider.
+	if o := m.Firewall; o != nil && snap.Firewall.HasPolicies() {
+		asked := *o
+		snap.Firewall.Decide(&asked, RuleRequest(c, m), r.policyCall(ctx, snap, m,
+			firewall.Target{Provider: ts[0].Provider, Kind: ts[0].Kind, Model: ts[0].Model}))
+		if asked.Blocked || asked.RouteTo != "" {
+			return ""
+		}
+	}
 	md, known := r.model(ts[0].Kind, ts[0].Model)
 	schema, _ := md.Has(llm.FeatureJSONSchema)
-	q := Question{Router: rt.Name, Family: c.Shape.Family, Target: ts[0], Schema: schema || !known || md.Features == nil,
+	q := Question{Project: m.Project, Router: rt.Name, Family: c.Shape.Family, Target: ts[0], Schema: schema || !known || md.Features == nil,
 		Tiers: rt.Spec.Tiers, Instructions: c.Request.Prefix.System, Request: classifier.LastUser(c.Format, c.Body),
 		Timeout: time.Duration(rt.DecisionTimeoutMS) * time.Millisecond}
 	tier, usage, err := r.cfg.Decider.Decide(ctx, q)
