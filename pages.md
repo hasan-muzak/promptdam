@@ -79,6 +79,7 @@ Groups, in order. Items marked with a plan show the lock when the plan lacks the
 |---|---|---|---|---|
 | **Overview** | Get started | `/get-started` | all | Setup checklist; shown until the project is activated (§4.1), then moves into Help |
 | | Overview | `/` | all | Spend, savings, risk and what needs attention, at a glance |
+| | Activity | `/activity` | all | What happened that was worth telling: budgets, routers, the firewall, alert rules |
 | **Traffic** | Requests | `/requests` | all | The request log: every call, its model, cost, savings, firewall action |
 | | Analytics | `/analytics` | all | Spend, latency and errors over time, grouped |
 | | Families | `/families` | all | Prompt templates by spend: what each feature costs |
@@ -88,6 +89,7 @@ Groups, in order. Items marked with a plan show the lock when the plan lacks the
 | | Cache doctor | `/cache-doctor` | Pro | Why prompt caches miss, and the fix |
 | **Protection** | Firewall | `/firewall` | secrets all, PII Pro, policies Team, custom Business | Secrets and personal data blocked, masked or tokenized |
 | | Budgets | `/budgets` | Pro | Spend caps per project, key, developer or route |
+| | Alert rules | `/alerts` | Pro | Spend spikes, provider errors and outages, slow answers |
 | **Setup** | Providers | `/providers` | all | The project's LLM providers and keys (BYOK) |
 | | API keys | `/keys` | all (per-developer Team) | Gateway keys and what each may do |
 | | Routes | `/routes` | all | Fallbacks, retries, caching per path |
@@ -99,6 +101,7 @@ Groups, in order. Items marked with a plan show the lock when the plan lacks the
 - Routers: a dot when a router is ready to activate (`router.ready`) or a tier was demoted.
 - Firewall: the number of calls refused in the last 24 hours.
 - Budgets: the number of budgets past their first threshold this window.
+- Alert rules: a red dot while a rule is firing.
 - Providers: a red dot when a provider's last check failed or a provider is disabled while routes name it.
 
 ---
@@ -159,10 +162,20 @@ within 7 days (project.md §9).
 
 **Empty state:** the Get started checklist inline.
 
-**API:** `GET …/analytics/spend` (totals, series, `group_by=model|key|developer`), `GET …/analytics/savings`,
-`GET …/analytics/latency`, `GET …/families?limit=5`, `GET …/budgets`, `GET …/routers` + `GET …/routers/{router}/report`,
-`GET …/providers`, `GET …/firewall/stats`, `GET …/firewall/events?blocked=true&limit=5`, `GET …/cache-doctor`,
-`GET /v1/orgs/{org}/usage`.
+**API:** `GET …/overview` gives the page in one call (default this month): spend, the previous period, the
+counterfactual and savings with a daily series, p95, cache use, the firewall's calls and refusals, the top models, keys
+and families, "needs attention" most urgent first, and the latest activity. Beside it: `GET /v1/orgs/{org}/usage` (the
+plan meter), `GET …/cache-doctor` and `GET …/routers/{router}/report` for the opportunities' dollar figures, and
+`GET …/firewall/events?blocked=true&limit=5`.
+
+### 4.2.1 Activity (`/activity`)
+**Purpose:** "what happened while I wasn't looking?" One feed of what the organization's channels and webhooks were told.
+
+**Shows:** newest first: time, severity, title and body, a link to what it is about (the budget, router or alert
+rule), filters by kind (budget thresholds, router ready, tier demoted, firewall refusals, alert rules firing and
+resolving). Kept 90 days.
+
+**API:** `GET …/activity?kind=&subject=` (cursor-paged).
 
 ### 4.3 Requests (`/requests`)
 **Purpose:** the request log. "What happened to this call?" and "show me the failing ones".
@@ -182,8 +195,9 @@ within 7 days (project.md §9).
 | Who | key name, developer, end user; tags as chips |
 | Route, family | the family's label when it has one |
 
-**Filters:** model, provider, route, key, developer, errors only; time range (31 days at most per query). Saved
-filters later.
+**Filters:** model, provider, route, key, developer, errors only, status (`429`, or `4xx`), error code, what the
+firewall did (or any), router, tier, response cache hit or miss; time range (31 days at most per query). Saved filters
+later.
 
 **Actions:** open a row (detail drawer, §4.4); copy trace; export the page as CSV (later).
 
@@ -209,7 +223,7 @@ filters later.
 - **Family:** label or ID (link), and the cache doctor's verdict for it.
 - A note: "Promptdam keeps no prompts or answers."
 
-**API:** `GET …/requests/{request}`; events by trace need a filter (§6).
+**API:** `GET …/requests/{request}`, `GET …/firewall/events?request=req_…` (the call's firewall events).
 
 ### 4.5 Analytics (`/analytics`)
 **Purpose:** trends and breakdowns: "what drives our spend, and is it getting worse?"
@@ -261,11 +275,12 @@ doctor's flag when it found something.
   default tier. Router evaluation costs come off the savings." Link to a request's ledger line.
 - **Monthly report:** a printable or PDF view of the month for finance (later).
 
-**Actions:** range; export the ledger as CSV (Pro; §6).
+**Actions:** range; export the ledger as CSV (Pro): a line per call with who, the models, tokens, cost, counterfactual,
+saving and reason.
 
 **Plan:** read on every plan; export on Pro.
 
-**API:** `GET …/analytics/savings`.
+**API:** `GET …/analytics/savings`, `GET …/analytics/savings/export?from&to` (text/csv, at most 31 days).
 
 ### 4.8 Routers (`/routers`)
 **Purpose:** the core feature. "Send each call to the cheapest model that does it as well, proven on our own traffic."
@@ -275,7 +290,8 @@ any of their providers.
 **List shows** one card per router:
 - name, and how clients call it: `"model": "auto"`, `auto:fast` for a tier of their choice, or a route attached;
 - **status:** shadow (watching: decides every call, serves the default tier, measures), active, disabled; "watching:
-  your plan doesn't include active routers" after a downgrade;
+  your plan doesn't include active routers" after a downgrade (`watching` in the API), and whether the classifier and
+  decision model place its calls (`learned`);
 - tiers, cheapest first, as chips with their models;
 - last 7 days: calls; in shadow mode **what following it would save** (and per month); when active, **saved**;
 - **readiness:** "Ready to activate", "Needs 34 more judged calls on fast", "fast below its floor", demoted tiers;
@@ -300,6 +316,8 @@ classifier and the decision model on Team.
    cheapest to strongest. The default tier is marked: calls nothing places get it, and the others are judged against it.
 3. **Rules** (optional): "calls with tools go to smart", as CEL with autocomplete of `request.*` (model, input_tokens,
    messages, has_tools, json, stream, family, tags, developer, route…) and errors at their line and column.
+   Model pickers everywhere read `GET …/models`: the models the project's providers serve, with what each takes, its
+   limits and prices; providers that take any name (a custom endpoint, OpenRouter) let the user type one.
 4. **Evaluation:** quality floor (default 95%), sample rate (default 10% in shadow, 2% active), monthly evaluation
    budget (default $100, on the project's own keys), judge model (default claude-sonnet-5-5 when an Anthropic provider
    serves it), decision model and its timeout (Team).
@@ -364,7 +382,8 @@ detail and the fix ("A date changes in the system prompt every day: move it to t
 **Actions:** open the family; "Turn on prompt caching for route X" when the fix is the gateway's own (Anthropic
 breakpoints), linking to the route.
 
-**Plan:** Pro (show the potential savings on Free as the upsell).
+**Plan:** Pro. On Free the API answers with each diagnosis `locked`: the family, hit rate, the findings' titles and the
+potential monthly saving, without the detail and the fix. Show it as the upsell: "Fixing this would save ~$310/month".
 
 **API:** `GET …/cache-doctor`, `GET …/families/{family}/cache-doctor`.
 
@@ -419,9 +438,32 @@ show a red banner: "Calls of key ci-bot are refused until 00:00 UTC".
 **Editor:** name; scope and target (pick a key or route, type a developer); window; limit in dollars; action; alert
 thresholds (default 80% and 100%); channels (default all of the organization's).
 
-**Plan:** Pro to create and edit; listing on every plan.
+**History:** each budget's alerts, from its activity (`GET …/activity?subject=bdg_…`).
+
+**Plan:** Pro to create and edit; listing on every plan. A developer's budget needs per-developer keys (Team).
 
 **API:** `GET/POST …/budgets`, `GET/PUT/DELETE …/budgets/{budget}`, channels from `GET /v1/orgs/{org}/channels`.
+
+### 4.12.1 Alert rules (`/alerts`)
+**Purpose:** "tell me when something is going wrong", before a budget or a customer notices.
+
+**Shows:** a card per rule: name, kind, its condition in words ("provider errors above 10% over 15 minutes"), whether it
+is firing now (and which providers look down), the last measured value against the threshold, last fired and
+resolved, channels. Its history from the activity (`subject=alr_…`).
+
+**Editor:** kind, then only the fields that kind uses, with its defaults filled:
+- **Spend spike:** the last hour against the usual hour of the week before; how many times more (default 3×) and the
+  least it must cost (default $5).
+- **Provider errors:** the share of calls failing at the provider (rate limits, server errors, timeouts; default 10%)
+  over 5, 15, 30 or 60 minutes, with at least so many calls (default 20).
+- **Provider down:** one provider failing most calls (default 50%) over 5 minutes; empty provider watches each.
+- **Slow answers:** p95 latency above a threshold (default 10 s).
+- Optional provider and model; channels; cooldown before it alerts again while still firing (default an hour);
+  enabled.
+
+**Plan:** Pro. Rules are evaluated every minute while the plan includes them.
+
+**API:** `GET/POST …/alerts`, `GET/PUT/DELETE …/alerts/{alert}`; webhooks `alert.fired`, `alert.resolved`.
 
 ### 4.13 Providers (`/providers`)
 **Purpose:** the project's own LLM accounts (BYOK). Customers pay their providers directly; Promptdam never resells
@@ -454,7 +496,7 @@ requests per minute, default route. A key without settings may call every model,
   attribution and per-developer budgets), tags, rate limit, default route.
 - **Rotate:** the replacement keeps the settings; the old key works until it expires. **Revoke.**
 
-**Plan:** per-developer keys on Team (§6: not enforced yet).
+**Plan:** naming a key's developer (per-developer keys) needs Team; a developer already named stays after a downgrade.
 
 **API:** `GET/POST …/keys`, rotate and revoke (keel), `GET/PUT …/keys/{key}/gateway`.
 
@@ -475,11 +517,12 @@ router.
 self-hosted models, a host's own model names.
 
 **Shows:** model, provider (or any), input, cached input, cache write, output (USD per million tokens), updated. Beside
-each, the price list's price for comparison (§6). A warning list of models seen in calls without any price.
+each, the price list's price for comparison (`list_price`). A warning list of models seen in calls without any price,
+the busiest first, each with a "Set price" button.
 
 **Actions:** set a price (replaces the same model and provider), delete (the price list's applies again).
 
-**API:** `GET/PUT …/prices`, `DELETE …/prices/{price}`.
+**API:** `GET/PUT …/prices`, `DELETE …/prices/{price}`, `GET …/prices/missing`, `GET …/models` (list prices).
 
 ### 4.17 Project settings (`/settings`)
 Name, project ID (copy), the gateway URL, and **Delete project**: everything Promptdam keeps of it goes (configuration
@@ -496,7 +539,8 @@ Organization name, ID, data region (read-only after creation), **Transfer owners
 API: `GET/PATCH/DELETE /v1/orgs/{org}`, `POST …/transfer-ownership`, `GET /v1/regions`.
 
 ### 5.2 Projects
-The organization's projects with their calls and spend this month; create, rename. API: `GET/POST /v1/orgs/{org}/projects`.
+The organization's projects with their calls, spend and savings this month; create, rename.
+API: `GET/POST /v1/orgs/{org}/projects`, `GET /v1/orgs/{org}/analytics/projects`.
 
 ### 5.3 Members
 Members with their role, invitations pending (resend, revoke), invite by email with a role. The roles, explained in a
@@ -526,18 +570,21 @@ API: `GET …/members`, `PATCH/DELETE …/members/{user}`, `GET/POST …/invitat
 
 ### 5.5 Alert channels
 Where alerts go: email, Slack, Discord, webhook URL. Add, test, remove. List which alerts use them: budgets thresholds,
-`router.ready`, tier demotions, firewall refusals (hourly at most per project), the weekly firewall digest.
+`router.ready`, tier demotions, firewall refusals (hourly at most per project), the weekly firewall digest, alert rules
+firing and resolving.
 API: `GET/POST /v1/orgs/{org}/channels`, delete, test.
 
 ### 5.6 Webhooks
 Endpoints (URL, events subscribed, enabled), the signing secret (reveal, rotate), a test message, deliveries with
 status and **Replay**. Event types listed with their descriptions, Promptdam's included: `budget.threshold_reached`,
-`budget.exceeded`, `router.ready`, `router.tier_demoted`, `firewall.blocked`.
+`budget.exceeded`, `router.ready`, `router.tier_demoted`, `firewall.blocked`, `alert.fired`, `alert.resolved`.
 API: `GET /v1/webhooks/events`, `…/webhooks` CRUD, secret, test, deliveries, replay.
 
 ### 5.7 Audit log (Team)
-Who changed what and when: providers, keys, routers, firewall settings, budgets, members. Filters by actor, action,
-time. API: `GET /v1/orgs/{org}/audit`.
+Who changed what and when, from where: members and keys (Keel), and every change to a project: providers, gateway
+key settings, routes, budgets, routing rules, routers (activations, restored tiers), the firewall, prices, family
+names, alert rules. Filters by actor and action prefix (`router.`). On plans without it the API answers 402: show the
+upsell. API: `GET /v1/orgs/{org}/audit`.
 
 ### 5.8 Account (user menu)
 Name, email, sign-in method; delete account (with a preview of what goes). API: `GET/PATCH/DELETE /v1/me`,
@@ -547,27 +594,15 @@ Name, email, sign-in method; delete account (with a preview of what goes). API: 
 
 ## 6. What the API still lacks for these pages
 
-To build or decide before or with the dashboard:
-1. **Model picker:** a list of the models the project's providers serve, with prices and capabilities, for routers,
-   rules, routes and policies. The gateway's `/v1/models` needs a gateway key; the dashboard needs a control-plane
-   endpoint (`GET …/models`).
-2. **Price list lookup:** the list price of a model, beside the project's own prices and in pickers.
-3. **Ledger export** (Pro): CSV of the savings ledger for a range.
-4. **Request log filters:** by firewall action, router, tier, cache, status; firewall events by trace (for the request
-   detail).
-5. **Activity feed:** one stream of what happened (router ready, tier demoted, budget thresholds, firewall refusals,
-   provider checks failing) for the Overview's "Needs attention" and the sidebar badges. Today it must be pieced
-   together from several endpoints.
-6. **Overview in one call:** fine to compose at first; one endpoint later for speed.
-7. **Router "watching" flag:** the router's output should say when the plan keeps an active router watching.
-8. **Plan checks the API doesn't enforce yet:** prompt caching on routes (Pro), the cache doctor (Pro), a developer on
-   key settings (Team), the ledger export (Pro), the audit log (Team).
-9. **Alert rules** (spend spike, error rate, provider down; `alert_rules` in project.md §6.5): no API yet.
-10. **Budget alert history:** when each threshold fired.
-11. **Payload capture** (opt-in per project, redacted; project.md §4.1): not built; the request detail would show it.
-12. **Per-project usage:** requests per project this period, for the Projects page and the plan meter's breakdown.
+Built since this page was written (2026-10-08): the model picker (`GET …/models`), list and missing prices, the ledger
+export, the request log's and firewall events' filters, the activity feed (and each budget's history), the overview in
+one call, the routers' `watching` and `learned`, the plan checks (prompt caching, the cache doctor, per-developer keys,
+the ledger export, the audit log), alert rules, per-project usage, and the audit log of every project change.
 
----
+Left:
+1. **Payload capture** (opt-in per project, redacted; project.md §4.1): not built; the request detail would show the
+   prompt and answer of the projects that turn it on. It needs its own round: storage, encryption, retention, the
+   firewall on the way in.
 
 ## 7. Flows across pages
 

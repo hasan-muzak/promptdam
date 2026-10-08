@@ -128,7 +128,8 @@ Basic routing and logging are free elsewhere, so Promptdam's plans are priced on
   - spend by model, provider, key, route, developer and tag
   - latency (TTFB, total), errors, cache hit rates, savings over time
   - request log (metadata by default; payload capture opt-in per project with `redact` applied).
-- **Platform (Keel):** orgs, members, keys, billing, usage, audit, webhooks (`budget.exceeded`, `firewall.blocked`, `router.ready`, `router.tier_demoted`).
+- **Alert rules:** spend spikes above the usual hour, provider errors over a window, a provider that looks down, slow answers; evaluated every minute, to the org's channels, webhooks and the project's activity feed.
+- **Platform (Keel):** orgs, members, keys, billing, usage, audit (every project change; Team), webhooks (`budget.threshold_reached`, `budget.exceeded`, `firewall.blocked`, `router.ready`, `router.tier_demoted`, `alert.fired`, `alert.resolved`).
 
 ### 4.2 Post-launch (May – Jul 2027)
 - **Batch deferral:** `x-promptdam-defer: batch` sends requests to Anthropic Message Batches or the OpenAI Batch API (about 50% cheaper). Results arrive by webhook or polling.
@@ -159,7 +160,7 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 | Plan | Price/mo | Requests/mo | Logs | Key features |
 |---|---|---|---|---|
 | Free | $0 | 50k (hard) | 7 days | Gateway, fallbacks, exact cache, **secrets blocking**, savings report (read-only), model routers in shadow mode (the report shows what routing would save) |
-| Pro | $49 | 500k | 30 days | Auto prompt caching + cache doctor, routing rules, active routers with explicit tiers and rules, budgets and alerts, PII redaction, ledger export |
+| Pro | $49 | 500k | 30 days | Auto prompt caching + cache doctor, routing rules, active routers with explicit tiers and rules, budgets and alert rules, PII redaction, ledger export |
 | Team | $199 | 3M | 90 days | Learned routing (evaluation, classifier, decision model) + auto-demotion, CEL firewall policies, per-developer keys, audit log |
 | Business | $499+ | 10M | 1 year | Custom policies, payload-free mode guarantees, DPA, SLA, SSO, priority support |
 
@@ -346,7 +347,8 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
 | `firewall_settings` | settings jsonb (classes' actions, PII detectors, custom patterns, CEL policies, fail mode, response scan, excerpts); one per project |
 | `budgets` | scope (org/project/key/developer/route), scope_id, window (day/month), limit_micros, action (alert/block), thresholds[] |
 | `savings_reports` | period, verified_savings_micros, share_micros, status (draft/approved/disputed/invoiced), approved_by |
-| `alert_rules` | kind (spend_spike, error_rate, provider_down, budget, firewall), params, channel_ids[] |
+| `alert_rules` | name, kind (spend_spike, error_rate, provider_down, latency), threshold, window_minutes, min_calls, min_micros, provider, model, channel_ids[], enabled, cooldown_minutes, firing, firing_on[], last_value, evaluated/fired/resolved_at |
+| `activities` | kind (as its webhook event), severity, title, body, subject (bdg_…, rtr_…, alr_…), url, data jsonb; kept 90 days |
 
 **ClickHouse:**
 - `requests(org_id, project_id, key_id, route, family_id, provider, requested_model, served_model, api_format, stream, status, http_status, ttfb_ms, latency_ms, upstream_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_micros, counterfactual_micros, savings_micros, savings_reason, response_cache_hit, router, tier, tier_source, tier_confidence, router_micros, firewall_action, firewall_kinds Array(LowCardinality(String)), developer, tags Array(String), error_code, payload_ref, ts, retention_days)`
@@ -599,6 +601,15 @@ Model routers replace per-family savings experiments, and cross-format translati
 - [ ] S4.2 "LLM Bill Audit" free tool on the site. The user uploads OpenAI/Anthropic usage exports (CSV), or a 7-day sample through Promptdam's free plan. Output:
   - an estimated savings breakdown (model downgrade potential by family size, caching potential, batch potential)
   - a PDF/email report and a CTA.
+- [x] Dashboard API (pages.md §6), built 2026-10-08 ahead of the dashboard:
+  - `GET …/models` for model pickers (shared with the gateway's `/v1/models`), list prices beside the project's own, `GET …/prices/missing`.
+  - Request log filters (status or class, error code, firewall action, router, tier, cache), firewall events by request.
+  - `GET …/overview` (the Overview page in one call), `GET /v1/orgs/{org}/analytics/projects`, the ledger export (CSV, Pro).
+  - The activity feed (`activities`, each budget's, router's and alert rule's history), alert rules (`alert_rules`, Pro) with `alert.fired` and `alert.resolved`.
+  - Plan checks: prompt caching on routes and the cache doctor's fixes (Pro), developer keys and developer budgets (Team), the audit log (Team, core `AuditFeature`); routers say `watching` and `learned`.
+  - The audit log records every project change. Calls no provider answered are logged with the provider and model they tried.
+  - `dev seed -openai-key … -anthropic-key …` seeds a project with the real providers.
+  - Left: payload capture (opt-in, redacted), its own round.
 - [ ] S4.3 Docs: concepts (families, rules, routers, ledger, firewall), provider setup, migration guides (from OpenRouter, LiteLLM, Portkey, Helicone), security and data handling page, API reference, `llms.txt`.
 - [ ] S4.4 Load test at 1k req/s with streaming on the Promptdam VPS (2 gateway replicas behind Caddy); uptime checks; status page; documented client-side fallback to the provider for when the gateway is unreachable.
 - [ ] S4.5 Security pass: vault for provider keys, payload-free default, tenant isolation, SSRF guard on custom provider URLs, dependency audit, signed container images.
