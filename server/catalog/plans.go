@@ -39,12 +39,14 @@ const (
 	SavingsReport   = "savings.report"
 	// Pro: automatic prompt caching and the cache doctor, routing rules,
 	// active model routers (explicit tiers and rules; every plan may run
-	// routers in shadow mode), budgets and alerts, PII redaction, the
-	// ledger export.
+	// routers in shadow mode), budgets and alert rules (spend spikes,
+	// provider errors and outages, latency), PII redaction, the ledger
+	// export.
 	PromptCaching = "cache.prompt"
 	RoutingRules  = "routing.rules"
 	Routers       = "routing.routers"
 	Budgets       = "budgets"
+	Alerts        = "alerts"
 	PIIRedaction  = "firewall.pii"
 	LedgerExport  = "savings.export"
 	// Team: learned routing (evaluation, the classifier, the decision
@@ -66,7 +68,7 @@ const (
 
 var (
 	free     = []string{Gateway, Fallbacks, ExactCache, SecretsBlocking, SavingsReport}
-	pro      = append(append([]string{}, free...), PromptCaching, RoutingRules, Routers, Budgets, PIIRedaction, LedgerExport)
+	pro      = append(append([]string{}, free...), PromptCaching, RoutingRules, Routers, Budgets, Alerts, PIIRedaction, LedgerExport)
 	team     = append(append([]string{}, pro...), RoutingLearned, FirewallPolicies, DeveloperKeys, AuditLog)
 	business = append(append([]string{}, team...), CustomPolicies, PayloadFree, DPA, SLA, SSOSAML, SupportFast)
 )

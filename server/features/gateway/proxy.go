@@ -173,6 +173,9 @@ func (c *call) serve() {
 			}
 			c.rec.Attempts++
 			c.rec.Fallback = i > 0
+			// A call no provider answered is logged with the one it tried
+			// last: provider outages show in the log.
+			c.rec.Provider, c.rec.Kind, c.rec.TargetModel, c.rec.ServedModel = t.Provider, t.Kind, t.Model, t.Model
 			done, failed := c.attempt(t, req, body, dropUsage, last && try == max(route.Retries, 0))
 			c.h.breakers.record(t.ID, !failed, time.Now())
 			if done {

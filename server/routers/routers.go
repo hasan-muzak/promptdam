@@ -28,7 +28,7 @@ func Mount(a *muzak.App, app *core.App) {
 		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides, Families: families.NewService(app.Ent, c.Events),
 		CacheDoctor: cachedoctor.New(c.Events, app.Prices), Rules: app.Rules,
 		RuleDeps: handlers.RuleDeps{Env: app.RuleEnv, Events: c.Events, Prices: app.Prices},
-		Routers:  app.Routers, Firewall: app.Firewall, Activity: app.Activity,
+		Routers:  app.Routers, Firewall: app.Firewall, Activity: app.Activity, Alerts: app.Alerts,
 		RouterDeps: handlers.RouterDeps{Explainer: resolver.New(resolver.Config{Prices: app.Prices, Rules: app.RuleEnv}),
 			Sources: app.Sources(), Billing: c.Billing, AppURL: c.Config.AppURL, Events: c.Events, Prices: app.Prices, Jobs: c.Jobs},
 	}
@@ -120,6 +120,26 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Summary("Replace a budget"), muzak.Description("A new scope, window or limit starts its alerts again."))
 	r.Delete(bb+"/{budget}", h.DeleteBudget, bcat, muzak.Title("Delete Budget"), project(tenancy.PermProjectsManage),
 		muzak.Status(http.StatusNoContent), muzak.Summary("Remove a budget"))
+
+	acat := muzak.WithCategory("Alert Rules")
+	ab := "/v1/orgs/{org}/projects/{project}/alerts"
+	r.Get(ab, h.ListAlerts, acat, muzak.Title("List Alert Rules"), project(tenancy.PermProjectsRead),
+		muzak.Summary("A project's alert rules and where each stands"),
+		muzak.Description("Rules watch the project's calls every minute and alert its channels when they go wrong: spend "+
+			"spiking above its usual hour, provider errors over a window, a provider that looks down, slow answers. Budgets "+
+			"cap spend; alert rules say something is wrong first."))
+	r.Post(ab, h.CreateAlert, acat, muzak.Title("Create Alert Rule"), project(tenancy.PermProjectsManage),
+		muzak.Status(http.StatusCreated), muzak.Summary("Add an alert rule"),
+		muzak.Description("A rule fires once when its condition starts to hold (alert.fired), again after its cooldown while "+
+			"it still holds, and resolves when it no longer does (alert.resolved). Each goes to its channels, the "+
+			"organization's webhooks and the project's activity. Needs a plan with alert rules; fewer calls than "+
+			"min_calls in the window never fire it."))
+	r.Get(ab+"/{alert}", h.GetAlert, acat, muzak.Title("Get Alert Rule"), project(tenancy.PermProjectsRead),
+		muzak.Summary("Get an alert rule"))
+	r.Put(ab+"/{alert}", h.UpdateAlert, acat, muzak.Title("Update Alert Rule"), project(tenancy.PermProjectsManage),
+		muzak.Summary("Replace an alert rule"), muzak.Description("A changed condition starts the rule anew, not firing."))
+	r.Delete(ab+"/{alert}", h.DeleteAlert, acat, muzak.Title("Delete Alert Rule"), project(tenancy.PermProjectsManage),
+		muzak.Status(http.StatusNoContent), muzak.Summary("Remove an alert rule"))
 
 	log := muzak.WithCategory("Request Log")
 	lb := "/v1/orgs/{org}/projects/{project}/requests"

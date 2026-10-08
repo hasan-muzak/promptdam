@@ -16,6 +16,8 @@ type Tx struct {
 	config
 	// Activity is the client for interacting with the Activity builders.
 	Activity *ActivityClient
+	// AlertRule is the client for interacting with the AlertRule builders.
+	AlertRule *AlertRuleClient
 	// Budget is the client for interacting with the Budget builders.
 	Budget *BudgetClient
 	// FamilyLabel is the client for interacting with the FamilyLabel builders.
@@ -170,6 +172,7 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Activity = NewActivityClient(tx.config)
+	tx.AlertRule = NewAlertRuleClient(tx.config)
 	tx.Budget = NewBudgetClient(tx.config)
 	tx.FamilyLabel = NewFamilyLabelClient(tx.config)
 	tx.FirewallSetting = NewFirewallSettingClient(tx.config)

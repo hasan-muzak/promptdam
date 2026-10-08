@@ -21,6 +21,18 @@ func (f ActivityFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ActivityMutation", m)
 }
 
+// The AlertRuleFunc type is an adapter to allow the use of ordinary
+// function as AlertRule mutator.
+type AlertRuleFunc func(context.Context, *ent.AlertRuleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AlertRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AlertRuleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AlertRuleMutation", m)
+}
+
 // The BudgetFunc type is an adapter to allow the use of ordinary
 // function as Budget mutator.
 type BudgetFunc func(context.Context, *ent.BudgetMutation) (ent.Value, error)

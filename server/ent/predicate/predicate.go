@@ -9,6 +9,9 @@ import (
 // Activity is the predicate function for activity builders.
 type Activity func(*sql.Selector)
 
+// AlertRule is the predicate function for alertrule builders.
+type AlertRule func(*sql.Selector)
+
 // Budget is the predicate function for budget builders.
 type Budget func(*sql.Selector)
 

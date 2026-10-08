@@ -50,6 +50,54 @@ var (
 			},
 		},
 	}
+	// AlertRulesColumns holds the columns for the "alert_rules" table.
+	AlertRulesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "kind", Type: field.TypeEnum, Enums: []string{"spend_spike", "error_rate", "provider_down", "latency"}},
+		{Name: "threshold", Type: field.TypeFloat64},
+		{Name: "window_minutes", Type: field.TypeInt},
+		{Name: "min_calls", Type: field.TypeInt, Default: 0},
+		{Name: "min_micros", Type: field.TypeInt64, Default: 0},
+		{Name: "provider", Type: field.TypeString, Size: 100, Default: ""},
+		{Name: "model", Type: field.TypeString, Size: 200, Default: ""},
+		{Name: "channel_ids", Type: field.TypeJSON},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "cooldown_minutes", Type: field.TypeInt, Default: 60},
+		{Name: "firing", Type: field.TypeBool, Default: false},
+		{Name: "firing_on", Type: field.TypeJSON},
+		{Name: "last_value", Type: field.TypeFloat64, Default: 0},
+		{Name: "evaluated_at", Type: field.TypeTime, Nullable: true},
+		{Name: "fired_at", Type: field.TypeTime, Nullable: true},
+		{Name: "resolved_at", Type: field.TypeTime, Nullable: true},
+	}
+	// AlertRulesTable holds the schema information for the "alert_rules" table.
+	AlertRulesTable = &schema.Table{
+		Name:       "alert_rules",
+		Columns:    AlertRulesColumns,
+		PrimaryKey: []*schema.Column{AlertRulesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "alertrule_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{AlertRulesColumns[3], AlertRulesColumns[4]},
+			},
+			{
+				Name:    "alertrule_project_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{AlertRulesColumns[4], AlertRulesColumns[5]},
+			},
+			{
+				Name:    "alertrule_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{AlertRulesColumns[14]},
+			},
+		},
+	}
 	// BudgetsColumns holds the columns for the "budgets" table.
 	BudgetsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -409,6 +457,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ActivitiesTable,
+		AlertRulesTable,
 		BudgetsTable,
 		FamilyLabelsTable,
 		FirewallSettingsTable,

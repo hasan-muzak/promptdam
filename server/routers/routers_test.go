@@ -828,6 +828,53 @@ func TestLedgerExport(t *testing.T) {
 	}
 }
 
+func TestAlertRules(t *testing.T) {
+	e := setup(t)
+	alice := e.as("alice")
+	org, _, base := e.project("alice")
+	path := base + "/alerts"
+	errorsRule := map[string]any{"name": "Provider errors", "kind": "error_rate", "channels": []string{}}
+	if res := e.client.Post(path, alice, testclient.JSON(errorsRule)); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free: %d %s", res.Status, res.String())
+	}
+	e.plan(t, org.ID, catalog.Alerts)
+	rule := testclient.Decoded[handlers.AlertRuleOut](e.client.Post(path, alice, testclient.JSON(errorsRule)).
+		AssertStatus(http.StatusCreated))
+	if rule.Threshold != 0.1 || rule.WindowMinutes != 15 || rule.MinCalls != 20 || !rule.Enabled || rule.Firing ||
+		rule.FiringOn == nil || !strings.HasPrefix(rule.ID, "alr_") {
+		t.Fatalf("created %+v", rule)
+	}
+	if res := e.client.Post(path, alice, testclient.JSON(errorsRule)); res.Status != http.StatusConflict ||
+		res.Error().Error.Code != handlers.CodeAlertNameTaken {
+		t.Fatalf("same name: %d %s", res.Status, res.String())
+	}
+	for _, body := range []map[string]any{
+		{"name": "x", "kind": "cpu", "channels": []string{}},
+		{"name": "x", "kind": "spend_spike", "window_minutes": 15, "channels": []string{}},
+		{"name": "x", "kind": "error_rate", "threshold": 3, "channels": []string{}},
+	} {
+		if res := e.client.Post(path, alice, testclient.JSON(body)); res.Status != http.StatusUnprocessableEntity ||
+			res.Error().Error.Code != handlers.CodeInvalidAlert {
+			t.Errorf("%v: %d %s", body, res.Status, res.String())
+		}
+	}
+	if res := e.client.Post(path, alice, testclient.JSON(map[string]any{"name": "x", "kind": "latency",
+		"channels": []string{"chn_01m4dj9wggfc68q75qnwxfe9gx"}})); res.Status != http.StatusNotFound {
+		t.Fatalf("another's channel: %d %s", res.Status, res.String())
+	}
+	errorsRule["threshold"], errorsRule["provider"] = 0.25, "openai"
+	up := testclient.Decoded[handlers.AlertRuleOut](e.client.Put(path+"/"+rule.ID, alice, testclient.JSON(errorsRule)).
+		AssertStatus(http.StatusOK))
+	if up.Threshold != 0.25 || up.Provider != "openai" {
+		t.Fatalf("updated %+v", up)
+	}
+	if list := testclient.Decoded[httpx.List[handlers.AlertRuleOut]](e.client.Get(path, alice)); len(list.Data) != 1 {
+		t.Fatalf("list %+v", list)
+	}
+	e.client.Delete(path+"/"+rule.ID, alice).AssertStatus(http.StatusNoContent)
+	e.client.Get(path+"/"+rule.ID, alice).AssertStatus(http.StatusNotFound)
+}
+
 func TestBudgets(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
@@ -1008,7 +1055,7 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 	rte := testclient.Decoded[handlers.RouteOut](e.client.Post(base+"/routes", alice, testclient.JSON(map[string]any{
 		"name": "default", "fallbacks": []string{"gpt-5-mini"},
 	})).AssertStatus(http.StatusCreated))
-	for _, f := range []string{catalog.Budgets, catalog.RoutingRules} {
+	for _, f := range []string{catalog.Budgets, catalog.RoutingRules, catalog.Alerts} {
 		e.c.DB.Ent.OrgFlag.Create().SetOrgID(orgID).SetKey("feature." + f).SetValue(json.RawMessage(`true`)).
 			SaveX(entx.SkipTenant(ctx))
 	}
@@ -1027,13 +1074,16 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 	rtr := testclient.Decoded[handlers.RouterOut](e.client.Post(base+"/routers", alice, testclient.JSON(map[string]any{
 		"name": "auto", "tiers": []map[string]any{{"name": "fast", "model": "gpt-5-mini"}},
 	})).AssertStatus(http.StatusCreated))
+	alr := testclient.Decoded[handlers.AlertRuleOut](e.client.Post(base+"/alerts", alice, testclient.JSON(map[string]any{
+		"name": "errors", "kind": "error_rate", "channels": []string{},
+	})).AssertStatus(http.StatusCreated))
 
 	victim := map[string]string{
 		"org": org.ID, "project": prj.ID, "user": me.User.ID, "invitation": inv.ID, "key": key.ID, "channel": ch.ID,
 		"webhook": ids.Encode(ids.WebhookEndpoint, ep.ID), "delivery": ids.Encode(ids.WebhookDelivery, del.ID),
 		"meter": "requests", "provider": p.ID, "route": rte.ID, "budget": bdg.ID,
 		"request": ids.Encode("req", ids.New()), "price": prc.ID, "family": "0123456789abcdef",
-		"rule": rul.ID, "router": rtr.ID,
+		"rule": rul.ID, "router": rtr.ID, "alert": alr.ID,
 	}
 	e.client.Put(base+"/keys/"+key.ID+"/gateway", alice, testclient.JSON(map[string]any{"rpm": 10})).AssertStatus(http.StatusOK)
 	mallory := e.as("mallory")
@@ -1043,7 +1093,7 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 	ownOrg, ownPrj, _ := e.project("mallory")
 	// Her plan has budgets and rules too, so the IDs are what is checked.
 	ownOrgID := mustID(t, ids.Org, ownOrg.ID)
-	for _, f := range []string{catalog.Budgets, catalog.RoutingRules} {
+	for _, f := range []string{catalog.Budgets, catalog.RoutingRules, catalog.Alerts} {
 		e.c.DB.Ent.OrgFlag.Create().SetOrgID(ownOrgID).SetKey("feature." + f).SetValue(json.RawMessage(`true`)).
 			SaveX(entx.SkipTenant(ctx))
 	}
@@ -1062,5 +1112,6 @@ func TestEveryOrgRouteIsIsolated(t *testing.T) {
 			"PUT /v1/orgs/{org}/projects/{project}/routers/{router}":          `{"name":"x","tiers":[{"name":"a","model":"m"}]}`,
 			"POST /v1/orgs/{org}/projects/{project}/routers/{router}/explain": `{"request":{"model":"x","messages":[]}}`,
 			"POST /v1/orgs/{org}/projects/{project}/routers/{router}/restore": `{"tier":"fast"}`,
+			"PUT /v1/orgs/{org}/projects/{project}/alerts/{alert}":            `{"name":"x","kind":"error_rate","channels":[]}`,
 		}, mallory)
 }

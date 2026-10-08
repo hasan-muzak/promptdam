@@ -9,6 +9,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/ent/activity"
+	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -104,6 +105,33 @@ func (f TraverseActivity) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.ActivityQuery", q)
+}
+
+// The AlertRuleFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AlertRuleFunc func(context.Context, *ent.AlertRuleQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AlertRuleFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AlertRuleQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AlertRuleQuery", q)
+}
+
+// The TraverseAlertRule type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAlertRule func(context.Context, *ent.AlertRuleQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAlertRule) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAlertRule) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AlertRuleQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AlertRuleQuery", q)
 }
 
 // The BudgetFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -408,6 +436,8 @@ func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
 	case *ent.ActivityQuery:
 		return &query[*ent.ActivityQuery, predicate.Activity, activity.OrderOption]{typ: ent.TypeActivity, tq: q}, nil
+	case *ent.AlertRuleQuery:
+		return &query[*ent.AlertRuleQuery, predicate.AlertRule, alertrule.OrderOption]{typ: ent.TypeAlertRule, tq: q}, nil
 	case *ent.BudgetQuery:
 		return &query[*ent.BudgetQuery, predicate.Budget, budget.OrderOption]{typ: ent.TypeBudget, tq: q}, nil
 	case *ent.FamilyLabelQuery:

@@ -16,6 +16,7 @@ import (
 
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/features/activity"
+	"github.com/hasan-muzak/promptdam/server/features/alerts"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
@@ -50,6 +51,9 @@ type App struct {
 	Training *training.Service
 	// Activity keeps what happened to each project that was worth telling.
 	Activity *activity.Service
+	// Alerts keeps alert rules; AlertsEval evaluates them every minute.
+	Alerts     *alerts.Service
+	AlertsEval *alerts.Evaluator
 	// Firewall keeps projects' firewalls: what their calls' secrets and
 	// personal data get, and their policies; FirewallWatch tells
 	// organizations what they did.
@@ -120,6 +124,9 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.Rules = rules.New(a.Ent, env, a.configChanged)
 	a.Routers = routers.New(a.Ent, env, a.Prices, a.configChanged)
 	a.Activity = activity.New(a.Ent)
+	a.Alerts = alerts.New(a.Ent)
+	a.AlertsEval = alerts.NewEvaluator(alerts.EvalConfig{Ent: a.Ent, Events: c.Events, Notifier: c.Notifier, Webhooks: c.Webhooks,
+		Activity: a.Activity, Entitlements: c.Metering.Entitlements, AppURL: c.Config.AppURL})
 	a.Firewall = firewall.NewService(a.Ent, a.configChanged)
 	a.FirewallWatch = firewall.NewWatcher(firewall.WatchConfig{Events: c.Events, KV: c.KV, Notifier: c.Notifier,
 		Webhooks: c.Webhooks, Activity: a.Activity, AppURL: c.Config.AppURL, ProjectName: func(ctx context.Context, id uuid.UUID) (string, error) {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hasan-muzak/promptdam/server/ent/activity"
+	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -101,6 +102,91 @@ func init() {
 	activityDescID := activityMixinFields0[0].Descriptor()
 	// activity.DefaultID holds the default value on creation for the id field.
 	activity.DefaultID = activityDescID.Default.(func() uuid.UUID)
+	alertruleMixin := schema.AlertRule{}.Mixin()
+	alertruleMixinHooks1 := alertruleMixin[1].Hooks()
+	alertrule.Hooks[0] = alertruleMixinHooks1[0]
+	alertruleMixinInters1 := alertruleMixin[1].Interceptors()
+	alertrule.Interceptors[0] = alertruleMixinInters1[0]
+	alertruleMixinFields0 := alertruleMixin[0].Fields()
+	_ = alertruleMixinFields0
+	alertruleFields := schema.AlertRule{}.Fields()
+	_ = alertruleFields
+	// alertruleDescCreatedAt is the schema descriptor for created_at field.
+	alertruleDescCreatedAt := alertruleMixinFields0[1].Descriptor()
+	// alertrule.DefaultCreatedAt holds the default value on creation for the created_at field.
+	alertrule.DefaultCreatedAt = alertruleDescCreatedAt.Default.(func() time.Time)
+	// alertruleDescUpdatedAt is the schema descriptor for updated_at field.
+	alertruleDescUpdatedAt := alertruleMixinFields0[2].Descriptor()
+	// alertrule.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	alertrule.DefaultUpdatedAt = alertruleDescUpdatedAt.Default.(func() time.Time)
+	// alertrule.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	alertrule.UpdateDefaultUpdatedAt = alertruleDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// alertruleDescName is the schema descriptor for name field.
+	alertruleDescName := alertruleFields[0].Descriptor()
+	// alertrule.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	alertrule.NameValidator = func() func(string) error {
+		validators := alertruleDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// alertruleDescMinCalls is the schema descriptor for min_calls field.
+	alertruleDescMinCalls := alertruleFields[4].Descriptor()
+	// alertrule.DefaultMinCalls holds the default value on creation for the min_calls field.
+	alertrule.DefaultMinCalls = alertruleDescMinCalls.Default.(int)
+	// alertruleDescMinMicros is the schema descriptor for min_micros field.
+	alertruleDescMinMicros := alertruleFields[5].Descriptor()
+	// alertrule.DefaultMinMicros holds the default value on creation for the min_micros field.
+	alertrule.DefaultMinMicros = alertruleDescMinMicros.Default.(int64)
+	// alertruleDescProvider is the schema descriptor for provider field.
+	alertruleDescProvider := alertruleFields[6].Descriptor()
+	// alertrule.DefaultProvider holds the default value on creation for the provider field.
+	alertrule.DefaultProvider = alertruleDescProvider.Default.(string)
+	// alertrule.ProviderValidator is a validator for the "provider" field. It is called by the builders before save.
+	alertrule.ProviderValidator = alertruleDescProvider.Validators[0].(func(string) error)
+	// alertruleDescModel is the schema descriptor for model field.
+	alertruleDescModel := alertruleFields[7].Descriptor()
+	// alertrule.DefaultModel holds the default value on creation for the model field.
+	alertrule.DefaultModel = alertruleDescModel.Default.(string)
+	// alertrule.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	alertrule.ModelValidator = alertruleDescModel.Validators[0].(func(string) error)
+	// alertruleDescChannelIds is the schema descriptor for channel_ids field.
+	alertruleDescChannelIds := alertruleFields[8].Descriptor()
+	// alertrule.DefaultChannelIds holds the default value on creation for the channel_ids field.
+	alertrule.DefaultChannelIds = alertruleDescChannelIds.Default.([]string)
+	// alertruleDescEnabled is the schema descriptor for enabled field.
+	alertruleDescEnabled := alertruleFields[9].Descriptor()
+	// alertrule.DefaultEnabled holds the default value on creation for the enabled field.
+	alertrule.DefaultEnabled = alertruleDescEnabled.Default.(bool)
+	// alertruleDescCooldownMinutes is the schema descriptor for cooldown_minutes field.
+	alertruleDescCooldownMinutes := alertruleFields[10].Descriptor()
+	// alertrule.DefaultCooldownMinutes holds the default value on creation for the cooldown_minutes field.
+	alertrule.DefaultCooldownMinutes = alertruleDescCooldownMinutes.Default.(int)
+	// alertruleDescFiring is the schema descriptor for firing field.
+	alertruleDescFiring := alertruleFields[11].Descriptor()
+	// alertrule.DefaultFiring holds the default value on creation for the firing field.
+	alertrule.DefaultFiring = alertruleDescFiring.Default.(bool)
+	// alertruleDescFiringOn is the schema descriptor for firing_on field.
+	alertruleDescFiringOn := alertruleFields[12].Descriptor()
+	// alertrule.DefaultFiringOn holds the default value on creation for the firing_on field.
+	alertrule.DefaultFiringOn = alertruleDescFiringOn.Default.([]string)
+	// alertruleDescLastValue is the schema descriptor for last_value field.
+	alertruleDescLastValue := alertruleFields[13].Descriptor()
+	// alertrule.DefaultLastValue holds the default value on creation for the last_value field.
+	alertrule.DefaultLastValue = alertruleDescLastValue.Default.(float64)
+	// alertruleDescID is the schema descriptor for id field.
+	alertruleDescID := alertruleMixinFields0[0].Descriptor()
+	// alertrule.DefaultID holds the default value on creation for the id field.
+	alertrule.DefaultID = alertruleDescID.Default.(func() uuid.UUID)
 	budgetMixin := schema.Budget{}.Mixin()
 	budgetMixinHooks1 := budgetMixin[1].Hooks()
 	budget.Hooks[0] = budgetMixinHooks1[0]
