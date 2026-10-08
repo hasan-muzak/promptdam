@@ -349,9 +349,11 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
 | `savings_reports` | period, verified_savings_micros, share_micros, status (draft/approved/disputed/invoiced), approved_by |
 | `alert_rules` | name, kind (spend_spike, error_rate, provider_down, latency), threshold, window_minutes, min_calls, min_micros, provider, model, channel_ids[], enabled, cooldown_minutes, firing, firing_on[], last_value, evaluated/fired/resolved_at |
 | `activities` | kind (as its webhook event), severity, title, body, subject (bdg_…, rtr_…, alr_…), url, data jsonb; kept 90 days |
+| `capture_settings` | enabled, sample_rate, answers (one per project; payload capture) |
+| `payload_segments` | key (the object in R2 holding many sealed payloads), bytes, payloads, expires_at; never payload content |
 
 **ClickHouse:**
-- `requests(org_id, project_id, key_id, route, family_id, provider, requested_model, served_model, api_format, stream, status, http_status, ttfb_ms, latency_ms, upstream_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_micros, counterfactual_micros, savings_micros, savings_reason, response_cache_hit, router, tier, tier_source, tier_confidence, router_micros, firewall_action, firewall_kinds Array(LowCardinality(String)), developer, tags Array(String), error_code, payload_ref, ts, retention_days)`
+- `requests(org_id, project_id, key_id, route, family_id, provider, requested_model, served_model, api_format, stream, status, http_status, ttfb_ms, latency_ms, upstream_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_micros, counterfactual_micros, savings_micros, savings_reason, response_cache_hit, router, tier, tier_source, tier_confidence, router_micros, firewall_action, firewall_kinds Array(LowCardinality(String)), payload_ref (segment key#offset+length), developer, tags Array(String), error_code, payload_ref, ts, retention_days)`
 - `firewall_events(project_id, ts, trace, org_id, key_id, developer, route, requested_model, provider, detector, class, action, location, count, blocked, blocked_by, policy, excerpt, retention_days)`
 - `router_evals(project_id, ts, router, trace, family_id, served_tier, tier_source, baseline_model, candidate_tier, candidate_model, verdict, check, judge_model, candidate_micros, baseline_micros, judge_micros, features Array(UInt32), retention_days)`
 
@@ -609,7 +611,18 @@ Model routers replace per-family savings experiments, and cross-format translati
   - Plan checks: prompt caching on routes and the cache doctor's fixes (Pro), developer keys and developer budgets (Team), the audit log (Team, core `AuditFeature`); routers say `watching` and `learned`.
   - The audit log records every project change. Calls no provider answered are logged with the provider and model they tried.
   - `dev seed -openai-key … -anthropic-key …` seeds a project with the real providers.
-  - Left: payload capture (opt-in, redacted), its own round.
+  - Payload capture, built the same day (decided with the owner: every plan; secrets and personal data always masked):
+    - Off by default; `…/payloads/settings` turns it on per project, with a sample rate and answers on or off.
+    - What is kept: the request as the provider got it and the answer the client got (read down to its text and tool
+      calls; a failed call's error). Both are masked with every detector and the project's own patterns, gzipped and
+      sealed with the vault per organization.
+    - Storage: payloads are packed in per-project segments in object storage (R2), written a minute or 4 MiB at a
+      time: a write per segment, not per call. Postgres keeps only each segment's key, size and expiry, never payload
+      content. The request log's `payload_ref` points at the segment, offset and length.
+    - Reading: `GET …/requests/{request}/payload` (developers and up, audited); `DELETE …/payloads` empties them.
+    - Retention: an hourly job deletes segments when the plan's retention ends (Free's 7 days included; object
+      storage's 30-day tier is only a backstop). Purges take a deleted project's or organization's.
+    - Calls the firewall tokenized aren't kept.
 - [ ] S4.3 Docs: concepts (families, rules, routers, ledger, firewall), provider setup, migration guides (from OpenRouter, LiteLLM, Portkey, Helicone), security and data handling page, API reference, `llms.txt`.
 - [ ] S4.4 Load test at 1k req/s with streaming on the Promptdam VPS (2 gateway replicas behind Caddy); uptime checks; status page; documented client-side fallback to the provider for when the gateway is unreachable.
 - [ ] S4.5 Security pass: vault for provider keys, payload-free default, tenant isolation, SSRF guard on custom provider URLs, dependency audit, signed container images.

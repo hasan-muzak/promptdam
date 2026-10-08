@@ -39,6 +39,7 @@ savings ledger proves what Promptdam saves; it doesn't set the invoice.
 | Exact response cache (per route) | ✓ | ✓ | ✓ | ✓ |
 | Per-key allowed models, tags, rate limits, default route | ✓ | ✓ | ✓ | ✓ |
 | Request log, spend, latency and family analytics | ✓ | ✓ | ✓ | ✓ |
+| Payload capture (opt-in: prompts and answers, always masked, kept as long as the logs) | ✓ | ✓ | ✓ | ✓ |
 
 ### Savings
 | Feature | Free | Pro | Team | Business |
@@ -156,7 +157,7 @@ Sized so the gateway holds a project's whole configuration in memory. Raise them
 | Per-developer keys | A developer already named stays; naming another needs the plan. |
 | Cache doctor | Findings and their value, without the fixes. |
 | Ledger export, audit log | 402 `plan_required` (the audit events are still written). |
-| Logs and events | Each row keeps the retention of the plan it was written under; new ones get the new plan's. |
+| Logs, events and payloads | Each keeps the retention of the plan it was written under; new ones get the new plan's. |
 | Members past the seat limit | Stay; inviting more needs seats. |
 
 ---

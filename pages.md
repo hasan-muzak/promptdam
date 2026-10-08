@@ -46,7 +46,8 @@ Their recurring jobs:
   402 `plan_required` with an upgrade URL; turn it into that state, never a raw error.
 - **Roles decide the buttons.** Viewers see everything of a project but no edit buttons. Developers manage projects
   and keys. The billing role sees billing only. Admins and owners see all (§5.3).
-- **Never the content.** The dashboard shows metadata, never prompts or answers: Promptdam doesn't keep them. Firewall
+- **Never the content, unless asked.** The dashboard shows metadata; prompts and answers only for projects that turn
+  payload capture on, always masked. Firewall
   events show detector names and, only when the project turned excerpts on, masked excerpts. Say this where it
   matters (request detail, firewall); it is part of why customers trust the product.
 - **Empty states teach.** An empty page says what will fill it and how: a code snippet, a button, a link to docs.
@@ -221,9 +222,14 @@ later.
 - **Firewall:** the action and the detectors found (never the values); a link to the call's firewall events.
 - **Who:** key (link to its settings), developer, end user, tags, route.
 - **Family:** label or ID (link), and the cache doctor's verdict for it.
-- A note: "Promptdam keeps no prompts or answers."
+- **Payload** tab, for projects that keep payloads (developers and up; every read is audited): the request as the
+  provider got it and the answer the client got (its text and tool calls; a failed call's error), with secrets,
+  personal data and the project's own patterns masked, and what was cut (a request over 1 MiB, an answer over
+  256 KiB). Projects that don't keep payloads see "Promptdam keeps no prompts or answers of this project: turn on
+  payload capture to see them", with a link to the setting.
 
-**API:** `GET …/requests/{request}`, `GET …/firewall/events?request=req_…` (the call's firewall events).
+**API:** `GET …/requests/{request}`, `GET …/firewall/events?request=req_…` (the call's firewall events),
+`GET …/requests/{request}/payload` (404 `payload_gone` once expired or deleted).
 
 ### 4.5 Analytics (`/analytics`)
 **Purpose:** trends and breakdowns: "what drives our spend, and is it getting worse?"
@@ -525,6 +531,11 @@ the busiest first, each with a "Set price" button.
 **API:** `GET/PUT …/prices`, `DELETE …/prices/{price}`, `GET …/prices/missing`, `GET …/models` (list prices).
 
 ### 4.17 Project settings (`/settings`)
+**Payload capture:** off by default. On, the gateway keeps each call's request and answer (a share of calls with the
+sample rate; requests only if answers are off), always masked, sealed, and kept as long as the plan keeps logs. Say
+plainly what is stored and for how long; "Delete all payloads" empties them now. API: `GET/PUT …/payloads/settings`,
+`DELETE …/payloads`.
+
 Name, project ID (copy), the gateway URL, and **Delete project**: everything Promptdam keeps of it goes (configuration
 now, logs and caches by a background purge); type the name to confirm.
 
@@ -599,10 +610,9 @@ export, the request log's and firewall events' filters, the activity feed (and e
 one call, the routers' `watching` and `learned`, the plan checks (prompt caching, the cache doctor, per-developer keys,
 the ledger export, the audit log), alert rules, per-project usage, and the audit log of every project change.
 
-Left:
-1. **Payload capture** (opt-in per project, redacted; project.md §4.1): not built; the request detail would show the
-   prompt and answer of the projects that turn it on. It needs its own round: storage, encryption, retention, the
-   firewall on the way in.
+Since then: payload capture (§4.4 and §4.17).
+
+Left: nothing the pages above need.
 
 ## 7. Flows across pages
 
