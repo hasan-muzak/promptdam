@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/hasan-muzak/keel-core/pkg/kv"
@@ -68,6 +69,28 @@ func Key(scope string, f wire.Format, body []byte) (string, bool) {
 }
 
 func (c *Cache) key(k string) string { return c.kv.Key("rcache", k) }
+
+// Forget deletes the cached answers of scopes (a project and route, as
+// Key names them: a route that changed or went), or of whole projects
+// (their IDs alone). It walks the namespace: for rare work, never for a
+// call.
+func (c *Cache) Forget(ctx context.Context, scopes ...string) (int, error) {
+	if len(scopes) == 0 {
+		return 0, nil
+	}
+	prefixes := make([]string, len(scopes))
+	for i, s := range scopes {
+		prefixes[i] = c.key(s + ":")
+	}
+	return c.kv.DeleteMatching(ctx, func(k string) bool {
+		for _, p := range prefixes {
+			if strings.HasPrefix(k, p) {
+				return true
+			}
+		}
+		return false
+	})
+}
 
 // Get returns the cached answer for key.
 func (c *Cache) Get(ctx context.Context, key string) (*Entry, bool) {

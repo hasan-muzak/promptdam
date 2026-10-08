@@ -88,6 +88,10 @@ var (
 	routeRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,99}$`)
 )
 
+// ValidTag reports a tag a key or a call may carry: 1 to 64 letters,
+// digits or _.:=/-.
+func ValidTag(t string) bool { return tagRE.MatchString(t) }
+
 func check(in *Settings) error {
 	bad := func(format string, args ...any) error { return &InvalidError{Reason: fmt.Sprintf(format, args...)} }
 	in.AllowedModels = clean(in.AllowedModels)

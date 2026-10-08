@@ -33,6 +33,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
@@ -236,12 +237,12 @@ func (r *Resolver) caller(ctx context.Context, c *gateway.Call) (*Meta, *snapsho
 	return m, snap, nil
 }
 
-// headerTags are the tags a client sent: at most 10, each at most 64
-// characters.
+// headerTags are the tags a client sent: at most 10, each one a key could
+// carry (others are dropped).
 func headerTags(v string) []string {
 	var out []string
 	for t := range strings.SplitSeq(v, ",") {
-		if t = strings.TrimSpace(t); t != "" && len(t) <= 64 && len(out) < 10 {
+		if t = strings.TrimSpace(t); keysettings.ValidTag(t) && len(out) < 10 {
 			out = append(out, t)
 		}
 	}

@@ -98,6 +98,12 @@ func (h *Handlers) budgetInput(ctx *muzak.Context, org uuid.UUID, in BudgetIn) (
 		if err != nil {
 			return budgets.Input{}, muzak.UnprocessableEntity("a key budget names an API key (key_…)").WithCode(CodeInvalidBudget)
 		}
+		// One of the project's gateway keys: another's would never match.
+		pa := muzak.From[tenancy.ProjectAccess](ctx)
+		if _, err := h.Keys.Get(ctx.Context(), org, pa.Project.ID, id); err != nil {
+			return budgets.Input{}, muzak.UnprocessableEntity("a key budget names one of the project's gateway keys").
+				WithCode(CodeInvalidBudget)
+		}
 		target = id.String()
 	}
 	action := in.Action

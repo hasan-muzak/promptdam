@@ -1087,6 +1087,8 @@ func TestBudgets(t *testing.T) {
 		{"name": "x", "scope": "key", "target": "nope", "window": "day", "limit_micros": 1, "channels": []string{}},
 		{"name": "x", "scope": "project", "target": "x", "window": "day", "limit_micros": 1, "channels": []string{}},
 		{"name": "x", "scope": "developer", "window": "day", "limit_micros": 1, "channels": []string{}},
+		{"name": "x", "scope": "key", "target": ids.Encode(ids.APIKey, ids.New()), "window": "day", "limit_micros": 1,
+			"channels": []string{}},
 	} {
 		if res := e.client.Post(path, alice, testclient.JSON(body)); res.Status != http.StatusUnprocessableEntity {
 			t.Errorf("%v: %d %s", body, res.Status, res.String())

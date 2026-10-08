@@ -25,6 +25,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 	"github.com/hasan-muzak/promptdam/server/features/rules"
@@ -54,6 +55,8 @@ type Handlers struct {
 	// PayloadStore reads and deletes kept payloads (nil without object
 	// storage: none are kept).
 	PayloadStore *payloads.Store
+	// Cache is the response cache, cleared when a route changes.
+	Cache *responsecache.Cache
 	// Audit is the core graph, where changes are audited.
 	Audit *ent.Client
 }

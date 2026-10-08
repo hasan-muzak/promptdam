@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -165,22 +167,25 @@ func (h *Handlers) UpdateRoute(ctx *muzak.Context, in UpdateRouteIn) (RouteOut, 
 	if err := h.checkRouter(ctx, pa.Project.ID, in.Router); err != nil {
 		return RouteOut{}, err
 	}
+	old, err := h.Routes.Get(ctx.Context(), pa.Project.ID, id)
+	if err != nil {
+		return RouteOut{}, routeFail(err)
+	}
 	// Turning prompt caching on needs the plan; a route that has it keeps
 	// it (the gateway applies it while the plan includes it).
-	if in.PromptCache {
-		old, err := h.Routes.Get(ctx.Context(), pa.Project.ID, id)
-		if err != nil {
-			return RouteOut{}, routeFail(err)
-		}
-		if !old.PromptCache {
-			if err := h.requires(ctx, catalog.PromptCaching); err != nil {
-				return RouteOut{}, err
-			}
+	if in.PromptCache && !old.PromptCache {
+		if err := h.requires(ctx, catalog.PromptCaching); err != nil {
+			return RouteOut{}, err
 		}
 	}
 	r, err := h.Routes.Update(ctx.Context(), pa.Project.ID, id, in.input())
 	if err != nil {
 		return RouteOut{}, routeFail(err)
+	}
+	// Answers cached under the route as it was don't answer for it as it
+	// is: a new name, a router, no cache.
+	if old.CacheTTLSeconds > 0 && (r.Name != old.Name || r.Router != old.Router || r.CacheTTLSeconds == 0) {
+		h.forgetCache(pa.Project.ID, old.Name)
 	}
 	h.audited(ctx, "route.updated", "route", ids.Encode(RoutePrefix, r.ID), map[string]any{"name": r.Name, "fallbacks": r.Fallbacks, "cache_ttl_seconds": r.CacheTTLSeconds, "prompt_cache": r.PromptCache, "router": r.Router})
 	return routeOut(r), nil
@@ -193,8 +198,15 @@ func (h *Handlers) DeleteRoute(ctx *muzak.Context, in RoutePath) (muzak.Empty, e
 	if err != nil {
 		return muzak.Empty{}, err
 	}
+	old, err := h.Routes.Get(ctx.Context(), pa.Project.ID, id)
+	if err != nil {
+		return muzak.Empty{}, routeFail(err)
+	}
 	if err := h.Routes.Delete(ctx.Context(), pa.Project.ID, id); err != nil {
 		return muzak.Empty{}, routeFail(err)
+	}
+	if old.CacheTTLSeconds > 0 {
+		h.forgetCache(pa.Project.ID, old.Name)
 	}
 	h.audited(ctx, "route.deleted", "route", in.Route, map[string]any{})
 	return muzak.Empty{}, nil
@@ -223,4 +235,19 @@ func routeFail(err error) error {
 		return muzak.Conflict("a project has at most 100 routes").WithCode(CodeRouteLimit)
 	}
 	return err
+}
+
+// forgetCache deletes a route's cached answers, in the background: it
+// walks Valkey's keys.
+func (h *Handlers) forgetCache(project uuid.UUID, route string) {
+	if h.Cache == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		if _, err := h.Cache.Forget(ctx, project.String()+":"+route); err != nil {
+			slog.Warn("handlers: a route's cached answers weren't cleared; they expire on their own", "route", route, "err", err)
+		}
+	}()
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/cachedoctor"
 	"github.com/hasan-muzak/promptdam/server/features/families"
 	"github.com/hasan-muzak/promptdam/server/features/resolver"
+	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 	"github.com/hasan-muzak/promptdam/server/handlers"
 )
 
@@ -29,6 +30,7 @@ func Mount(a *muzak.App, app *core.App) {
 		CacheDoctor: cachedoctor.New(c.Events, app.Prices), Rules: app.Rules,
 		RuleDeps: handlers.RuleDeps{Env: app.RuleEnv, Events: c.Events, Prices: app.Prices},
 		Routers:  app.Routers, Firewall: app.Firewall, Activity: app.Activity, Alerts: app.Alerts, Payloads: app.Payloads, PayloadStore: app.PayloadStore, Audit: c.DB.Ent,
+		Cache: responsecache.New(c.KV),
 		RouterDeps: handlers.RouterDeps{Explainer: resolver.New(resolver.Config{Prices: app.Prices, Rules: app.RuleEnv}),
 			Sources: app.Sources(), Billing: c.Billing, AppURL: c.Config.AppURL, Events: c.Events, Prices: app.Prices, Jobs: c.Jobs},
 	}

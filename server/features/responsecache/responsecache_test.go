@@ -62,3 +62,25 @@ func TestGetPut(t *testing.T) {
 		t.Fatal("an answer over the limit was cached")
 	}
 }
+
+// A route's cached answers go when the route changes, a project's when it
+// asks; others stay.
+func TestForget(t *testing.T) {
+	c := responsecache.New(testkit.Valkey(t))
+	ctx := context.Background()
+	e := &responsecache.Entry{Status: 200, ContentType: "application/json", Body: []byte(`{}`)}
+	for _, k := range []string{"p1:chat:a", "p1:chat:b", "p1:batch:a", "p2:chat:a"} {
+		c.Put(ctx, k, e, time.Minute)
+	}
+	if n, err := c.Forget(ctx, "p1:chat"); err != nil || n != 2 {
+		t.Fatalf("forgot %d %v", n, err)
+	}
+	for k, kept := range map[string]bool{"p1:chat:a": false, "p1:chat:b": false, "p1:batch:a": true, "p2:chat:a": true} {
+		if _, hit := c.Get(ctx, k); hit != kept {
+			t.Errorf("%s: kept %v, want %v", k, hit, kept)
+		}
+	}
+	if n, _ := c.Forget(ctx, "p1"); n != 1 {
+		t.Fatalf("a project's: %d", n)
+	}
+}

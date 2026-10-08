@@ -354,3 +354,15 @@ func TestRouters(t *testing.T) {
 		t.Fatalf("delete: %v", err)
 	}
 }
+
+// Tags a client sends are those a key could carry; others are dropped.
+func TestHeaderTags(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{})
+	if status, _, body := w.Call("/v1/chat/completions", chat, brand.HeaderTags, "team:search, has space,ok=1, <b>"); status != 200 {
+		t.Fatalf("%d %s", status, body)
+	}
+	recs := w.Records()
+	if tags := recs[len(recs)-1].Meta.(*resolver.Meta).Tags; len(tags) != 2 || tags[0] != "team:search" || tags[1] != "ok=1" {
+		t.Fatalf("tags %v", tags)
+	}
+}
