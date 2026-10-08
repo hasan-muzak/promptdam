@@ -341,7 +341,7 @@ func TestWatcherTellsOfBlocks(t *testing.T) {
 		if err := watcher.Check(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if hooks, alerts := told(); hooks != 2 || alerts != 1 {
+		if hooks, alerts := told(); hooks != 1 || alerts != 1 { // one webhook listing both calls
 			t.Fatalf("%d webhooks, %d alerts", hooks, alerts)
 		}
 	}

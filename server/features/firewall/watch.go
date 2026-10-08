@@ -22,15 +22,16 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/activity"
 )
 
-// EventBlocked is the webhook event of a call the firewall refused.
+// EventBlocked is the webhook event of the calls the firewall refused.
 var EventBlocked = webhooks.EventType{Name: "firewall.blocked",
-	Description: "The firewall refused a call: what it found (detectors, never the values) or the policy that refused it. " +
-		"At most 100 a minute per project; the firewall's events list has them all."}
+	Description: "The firewall refused calls of a project: what it found in each (detectors, never the values) or the " +
+		"policy that refused it. One a minute per project at most, listing up to 100 calls (more counts the rest); " +
+		"the firewall's events list has them all."}
 
 // Watch limits.
 const (
-	// maxPublished bounds the firewall.blocked webhooks a project gets
-	// per run.
+	// maxPublished bounds the calls a project's firewall.blocked webhook
+	// lists per run.
 	maxPublished = 100
 	// alertEvery is how often a project's blocks alert its channels.
 	alertEvery = time.Hour
@@ -69,10 +70,20 @@ func NewWatcher(cfg WatchConfig) *Watcher {
 	return &Watcher{cfg: cfg}
 }
 
-// BlockedPayload is a refused call in webhooks.
+// BlockedPayload is a run's refused calls of a project in webhooks: one
+// webhook, not one per call, so a burst of refusals doesn't become a
+// burst of deliveries.
 type BlockedPayload struct {
+	Project string        `json:"project"`
+	Calls   []BlockedCall `json:"calls"`
+	// More counts the refused calls past those listed.
+	More int    `json:"more"`
+	URL  string `json:"url"`
+}
+
+// BlockedCall is a refused call.
+type BlockedCall struct {
 	Request   string    `json:"request"`
-	Project   string    `json:"project"`
 	Time      time.Time `json:"time"`
 	BlockedBy string    `json:"blocked_by"`
 	Policy    string    `json:"policy,omitempty"`
@@ -81,7 +92,6 @@ type BlockedPayload struct {
 	Developer string    `json:"developer"`
 	Route     string    `json:"route"`
 	Model     string    `json:"model"`
-	URL       string    `json:"url"`
 }
 
 type blockedCall struct {
@@ -157,16 +167,19 @@ func (w *Watcher) tell(ctx context.Context, calls []blockedCall) {
 	project, org := calls[0].ProjectID, calls[0].OrgID
 	url := w.url(project)
 	if w.cfg.Webhooks != nil {
-		for _, b := range calls[:min(len(calls), maxPublished)] {
-			p := BlockedPayload{Request: b.Trace, Project: ids.Encode(ids.Project, project), Time: b.TS.UTC(), BlockedBy: b.BlockedBy,
-				Policy: b.Policy, Detectors: b.Detectors, Key: ids.Encode(ids.APIKey, b.KeyID), Developer: b.Developer, Route: b.Route,
-				Model: b.Model, URL: url}
-			if p.Detectors == nil {
-				p.Detectors = []string{}
+		listed := calls[:min(len(calls), maxPublished)]
+		p := BlockedPayload{Project: ids.Encode(ids.Project, project), Calls: make([]BlockedCall, len(listed)),
+			More: len(calls) - len(listed), URL: url}
+		for i, b := range listed {
+			c := BlockedCall{Request: b.Trace, Time: b.TS.UTC(), BlockedBy: b.BlockedBy, Policy: b.Policy, Detectors: b.Detectors,
+				Key: ids.Encode(ids.APIKey, b.KeyID), Developer: b.Developer, Route: b.Route, Model: b.Model}
+			if c.Detectors == nil {
+				c.Detectors = []string{}
 			}
-			if err := w.cfg.Webhooks.Publish(ctx, org, EventBlocked.Name, map[string]any{"firewall": p}); err != nil {
-				slog.Warn("firewall: publishing a webhook", "project", project, "err", err)
-			}
+			p.Calls[i] = c
+		}
+		if err := w.cfg.Webhooks.Publish(ctx, org, EventBlocked.Name, map[string]any{"firewall": p}); err != nil {
+			slog.Warn("firewall: publishing a webhook", "project", project, "err", err)
 		}
 	}
 	var found []string
