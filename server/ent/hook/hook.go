@@ -129,6 +129,18 @@ func (f PriceOverrideFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PriceOverrideMutation", m)
 }
 
+// The PrivacySettingFunc type is an adapter to allow the use of ordinary
+// function as PrivacySetting mutator.
+type PrivacySettingFunc func(context.Context, *ent.PrivacySettingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PrivacySettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PrivacySettingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PrivacySettingMutation", m)
+}
+
 // The ProviderFunc type is an adapter to allow the use of ordinary
 // function as Provider mutator.
 type ProviderFunc func(context.Context, *ent.ProviderMutation) (ent.Value, error)

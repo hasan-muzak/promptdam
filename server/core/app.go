@@ -22,8 +22,10 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/features/privacy"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/purge"
+	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 	"github.com/hasan-muzak/promptdam/server/features/rules"
@@ -54,6 +56,8 @@ type App struct {
 	// PayloadStore keeps the payloads, in object storage (nil without it).
 	Payloads     *payloads.Service
 	PayloadStore *payloads.Store
+	// Privacy keeps organizations' payload-free mode.
+	Privacy *privacy.Service
 	// Activity keeps what happened to each project that was worth telling.
 	Activity *activity.Service
 	// Alerts keeps alert rules; AlertsEval evaluates them every minute.
@@ -131,6 +135,18 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.Activity = activity.New(c.Events)
 	a.Payloads = payloads.NewService(a.Ent, a.configChanged)
 	a.PayloadStore = payloads.NewStore(payloads.StoreConfig{Ent: a.Ent, Blob: c.Blob, Vault: c.Vault})
+	a.Privacy = privacy.New(privacy.Config{Ent: a.Ent, Payloads: a.PayloadStore, Cache: responsecache.New(c.KV),
+		Changed: a.configChanged, Projects: func(ctx context.Context, org uuid.UUID) ([]uuid.UUID, error) {
+			ps, err := c.Tenancy.Projects(ctx, org)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]uuid.UUID, len(ps))
+			for i, p := range ps {
+				out[i] = p.ID
+			}
+			return out, nil
+		}})
 	a.Alerts = alerts.New(a.Ent, c.KV)
 	a.AlertsEval = alerts.NewEvaluator(alerts.EvalConfig{Ent: a.Ent, Events: c.Events, KV: c.KV, Notifier: c.Notifier, Webhooks: c.Webhooks,
 		Activity: a.Activity, Entitlements: c.Metering.Entitlements, AppURL: c.Config.AppURL})
@@ -182,5 +198,5 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 // Sources are where the gateway's snapshots are built from.
 func (a *App) Sources() snapshot.Sources {
 	return snapshot.Sources{Providers: a.Providers, Keys: a.Keys, Routes: a.Routes, Budgets: a.Budgets, Prices: a.PriceOverrides,
-		Rules: a.Rules, Routers: a.Routers, Firewall: a.Firewall, Payloads: a.Payloads}
+		Rules: a.Rules, Routers: a.Routers, Firewall: a.Firewall, Payloads: a.Payloads, Privacy: a.Privacy}
 }

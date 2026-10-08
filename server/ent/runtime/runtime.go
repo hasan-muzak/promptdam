@@ -16,6 +16,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
+	"github.com/hasan-muzak/promptdam/server/ent/privacysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
@@ -574,6 +575,39 @@ func init() {
 	priceoverrideDescID := priceoverrideMixinFields0[0].Descriptor()
 	// priceoverride.DefaultID holds the default value on creation for the id field.
 	priceoverride.DefaultID = priceoverrideDescID.Default.(func() uuid.UUID)
+	privacysettingMixin := schema.PrivacySetting{}.Mixin()
+	privacysettingMixinHooks1 := privacysettingMixin[1].Hooks()
+	privacysetting.Hooks[0] = privacysettingMixinHooks1[0]
+	privacysettingMixinInters1 := privacysettingMixin[1].Interceptors()
+	privacysetting.Interceptors[0] = privacysettingMixinInters1[0]
+	privacysettingMixinFields0 := privacysettingMixin[0].Fields()
+	_ = privacysettingMixinFields0
+	privacysettingFields := schema.PrivacySetting{}.Fields()
+	_ = privacysettingFields
+	// privacysettingDescCreatedAt is the schema descriptor for created_at field.
+	privacysettingDescCreatedAt := privacysettingMixinFields0[1].Descriptor()
+	// privacysetting.DefaultCreatedAt holds the default value on creation for the created_at field.
+	privacysetting.DefaultCreatedAt = privacysettingDescCreatedAt.Default.(func() time.Time)
+	// privacysettingDescUpdatedAt is the schema descriptor for updated_at field.
+	privacysettingDescUpdatedAt := privacysettingMixinFields0[2].Descriptor()
+	// privacysetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	privacysetting.DefaultUpdatedAt = privacysettingDescUpdatedAt.Default.(func() time.Time)
+	// privacysetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	privacysetting.UpdateDefaultUpdatedAt = privacysettingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// privacysettingDescPayloadFree is the schema descriptor for payload_free field.
+	privacysettingDescPayloadFree := privacysettingFields[0].Descriptor()
+	// privacysetting.DefaultPayloadFree holds the default value on creation for the payload_free field.
+	privacysetting.DefaultPayloadFree = privacysettingDescPayloadFree.Default.(bool)
+	// privacysettingDescUpdatedBy is the schema descriptor for updated_by field.
+	privacysettingDescUpdatedBy := privacysettingFields[1].Descriptor()
+	// privacysetting.DefaultUpdatedBy holds the default value on creation for the updated_by field.
+	privacysetting.DefaultUpdatedBy = privacysettingDescUpdatedBy.Default.(string)
+	// privacysetting.UpdatedByValidator is a validator for the "updated_by" field. It is called by the builders before save.
+	privacysetting.UpdatedByValidator = privacysettingDescUpdatedBy.Validators[0].(func(string) error)
+	// privacysettingDescID is the schema descriptor for id field.
+	privacysettingDescID := privacysettingMixinFields0[0].Descriptor()
+	// privacysetting.DefaultID holds the default value on creation for the id field.
+	privacysetting.DefaultID = privacysettingDescID.Default.(func() uuid.UUID)
 	providerMixin := schema.Provider{}.Mixin()
 	providerMixinHooks1 := providerMixin[1].Hooks()
 	provider.Hooks[0] = providerMixinHooks1[0]

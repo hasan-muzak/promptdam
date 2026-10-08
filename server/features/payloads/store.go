@@ -457,6 +457,20 @@ func (s *Store) PurgeProjects(ctx context.Context, org uuid.UUID, projects []uui
 	})
 }
 
+// DeleteOrg deletes every payload an organization kept, now: its
+// segments, their rows, and objects written after their rows went.
+func (s *Store) DeleteOrg(ctx context.Context, org uuid.UUID) (int, error) {
+	if s == nil {
+		return 0, nil
+	}
+	n, err := s.deleteWhere(entx.WithOrg(ctx, org), payloadsegment.OrgID(org))
+	if err != nil {
+		return n, err
+	}
+	_, err = s.cfg.Blob.DeleteOrg(ctx, org)
+	return n, err
+}
+
 // PurgeOrg deletes every object of a deleted organization.
 func (s *Store) PurgeOrg(ctx context.Context, org uuid.UUID) (int, error) {
 	if s == nil {

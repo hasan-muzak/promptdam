@@ -103,6 +103,11 @@ func (h *Handlers) PutFirewall(ctx *muzak.Context, in PutFirewallIn) (FirewallSe
 		return FirewallSettings{}, err
 	}
 	s := in.settings()
+	if s.Excerpts {
+		if err := h.payloadFree(ctx, "keeping excerpts"); err != nil {
+			return FirewallSettings{}, err
+		}
+	}
 	if need := s.Needs(old); len(need) > 0 {
 		if _, err := platform.RequireFeature(h.RouterDeps.Billing, h.RouterDeps.AppURL, need...)(ctx); err != nil {
 			return FirewallSettings{}, err

@@ -46,6 +46,11 @@ func (h *Handlers) GetCapture(ctx *muzak.Context, _ platform.ProjectPath) (Captu
 // PutCapture replaces whether a project keeps its calls' payloads.
 func (h *Handlers) PutCapture(ctx *muzak.Context, in PutCaptureIn) (CaptureSettings, error) {
 	pa := muzak.From[tenancy.ProjectAccess](ctx)
+	if in.Enabled {
+		if err := h.payloadFree(ctx, "payload capture"); err != nil {
+			return CaptureSettings{}, err
+		}
+	}
 	s, err := h.Payloads.Put(ctx.Context(), pa.OrgID(), pa.Project.ID, payloads.Settings(in.CaptureSettings))
 	if errors.Is(err, payloads.ErrInvalid) {
 		return CaptureSettings{}, muzak.UnprocessableEntity("sample_rate is 0 to 1").WithCode(CodeInvalidCapture)

@@ -27,6 +27,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
+	"github.com/hasan-muzak/promptdam/server/ent/privacysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
@@ -92,6 +93,9 @@ type seed struct {
 	create      func(ctx context.Context, org, project uuid.UUID) error
 }
 
+// orgTables are an organization's own tables: no project_id.
+var orgTables = map[string]bool{privacysetting.Table: true}
+
 func seeds(c *pdent.Client) []seed {
 	return []seed{
 		{"AlertRule", alertrule.Table, func(ctx context.Context, org, p uuid.UUID) error {
@@ -104,6 +108,10 @@ func seeds(c *pdent.Client) []seed {
 		{"PayloadSegment", payloadsegment.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.PayloadSegment.Create().SetOrgID(org).SetProjectID(p).SetKey("r30/" + org.String() + "/promptdam/k." + p.String()).
 				SetBytes(1).SetPayloads(1).SetExpiresAt(time.Now().Add(time.Hour)).Exec(ctx)
+		}},
+		{"PrivacySetting", privacysetting.Table, func(ctx context.Context, org, _ uuid.UUID) error {
+			return c.PrivacySetting.Create().SetOrgID(org).SetPayloadFree(true).
+				OnConflictColumns(privacysetting.FieldOrgID).Ignore().Exec(ctx)
 		}},
 		{"Budget", budget.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.Budget.Create().SetOrgID(org).SetProjectID(p).SetName("month").SetScope(budget.ScopeProject).
@@ -207,6 +215,9 @@ func (w *world) rows(column string, id uuid.UUID) int {
 	w.t.Helper()
 	total := 0
 	for _, s := range seeds(w.app.Ent) {
+		if orgTables[s.table] && column == "project_id" {
+			continue
+		}
 		var n int
 		if err := w.c.DB.SQL.QueryRowContext(w.ctx, `SELECT count(*) FROM `+s.table+` WHERE `+column+` = $1`, id).Scan(&n); err != nil {
 			w.t.Fatal(err)

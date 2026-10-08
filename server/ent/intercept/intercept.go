@@ -19,6 +19,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/predicate"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
+	"github.com/hasan-muzak/promptdam/server/ent/privacysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
@@ -351,6 +352,33 @@ func (f TraversePriceOverride) Traverse(ctx context.Context, q ent.Query) error 
 	return fmt.Errorf("unexpected query type %T. expect *ent.PriceOverrideQuery", q)
 }
 
+// The PrivacySettingFunc type is an adapter to allow the use of ordinary function as a Querier.
+type PrivacySettingFunc func(context.Context, *ent.PrivacySettingQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f PrivacySettingFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.PrivacySettingQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.PrivacySettingQuery", q)
+}
+
+// The TraversePrivacySetting type is an adapter to allow the use of ordinary function as Traverser.
+type TraversePrivacySetting func(context.Context, *ent.PrivacySettingQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraversePrivacySetting) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraversePrivacySetting) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PrivacySettingQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.PrivacySettingQuery", q)
+}
+
 // The ProviderFunc type is an adapter to allow the use of ordinary function as a Querier.
 type ProviderFunc func(context.Context, *ent.ProviderQuery) (ent.Value, error)
 
@@ -482,6 +510,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.PriceListQuery, predicate.PriceList, pricelist.OrderOption]{typ: ent.TypePriceList, tq: q}, nil
 	case *ent.PriceOverrideQuery:
 		return &query[*ent.PriceOverrideQuery, predicate.PriceOverride, priceoverride.OrderOption]{typ: ent.TypePriceOverride, tq: q}, nil
+	case *ent.PrivacySettingQuery:
+		return &query[*ent.PrivacySettingQuery, predicate.PrivacySetting, privacysetting.OrderOption]{typ: ent.TypePrivacySetting, tq: q}, nil
 	case *ent.ProviderQuery:
 		return &query[*ent.ProviderQuery, predicate.Provider, provider.OrderOption]{typ: ent.TypeProvider, tq: q}, nil
 	case *ent.RouteQuery:

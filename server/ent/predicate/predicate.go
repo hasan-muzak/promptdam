@@ -36,6 +36,9 @@ type PriceList func(*sql.Selector)
 // PriceOverride is the predicate function for priceoverride builders.
 type PriceOverride func(*sql.Selector)
 
+// PrivacySetting is the predicate function for privacysetting builders.
+type PrivacySetting func(*sql.Selector)
+
 // Provider is the predicate function for provider builders.
 type Provider func(*sql.Selector)
 

@@ -34,6 +34,8 @@ type Tx struct {
 	PriceList *PriceListClient
 	// PriceOverride is the client for interacting with the PriceOverride builders.
 	PriceOverride *PriceOverrideClient
+	// PrivacySetting is the client for interacting with the PrivacySetting builders.
+	PrivacySetting *PrivacySettingClient
 	// Provider is the client for interacting with the Provider builders.
 	Provider *ProviderClient
 	// Route is the client for interacting with the Route builders.
@@ -183,6 +185,7 @@ func (tx *Tx) init() {
 	tx.PayloadSegment = NewPayloadSegmentClient(tx.config)
 	tx.PriceList = NewPriceListClient(tx.config)
 	tx.PriceOverride = NewPriceOverrideClient(tx.config)
+	tx.PrivacySetting = NewPrivacySettingClient(tx.config)
 	tx.Provider = NewProviderClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 	tx.RouterClassifier = NewRouterClassifierClient(tx.config)

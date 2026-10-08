@@ -336,6 +336,33 @@ var (
 			},
 		},
 	}
+	// PrivacySettingsColumns holds the columns for the "privacy_settings" table.
+	PrivacySettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "payload_free", Type: field.TypeBool, Default: false},
+		{Name: "updated_by", Type: field.TypeString, Size: 64, Default: ""},
+	}
+	// PrivacySettingsTable holds the schema information for the "privacy_settings" table.
+	PrivacySettingsTable = &schema.Table{
+		Name:       "privacy_settings",
+		Columns:    PrivacySettingsColumns,
+		PrimaryKey: []*schema.Column{PrivacySettingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "privacysetting_org_id",
+				Unique:  false,
+				Columns: []*schema.Column{PrivacySettingsColumns[3]},
+			},
+			{
+				Name:    "privacysetting_org_unique",
+				Unique:  true,
+				Columns: []*schema.Column{PrivacySettingsColumns[3]},
+			},
+		},
+	}
 	// ProvidersColumns holds the columns for the "providers" table.
 	ProvidersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -485,6 +512,7 @@ var (
 		PayloadSegmentsTable,
 		PriceListsTable,
 		PriceOverridesTable,
+		PrivacySettingsTable,
 		ProvidersTable,
 		RoutesTable,
 		RouterClassifiersTable,

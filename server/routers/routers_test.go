@@ -33,6 +33,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/families"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
+	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 	"github.com/hasan-muzak/promptdam/server/handlers"
 	"github.com/hasan-muzak/promptdam/server/migrations"
 	"github.com/hasan-muzak/promptdam/server/routers"
@@ -1045,6 +1046,69 @@ func TestPayloads(t *testing.T) {
 		res.Error().Error.Code != handlers.CodePayloadGone {
 		t.Fatalf("after deleting: %d %s", res.Status, res.String())
 	}
+}
+
+func TestPayloadFreeMode(t *testing.T) {
+	e := setupWith(t, true, true)
+	ctx := context.Background()
+	alice := e.as("alice")
+	org, prj, base := e.project("alice")
+	orgID, prjID := mustID(t, ids.Org, org.ID), mustID(t, ids.Project, prj.ID)
+	path := "/v1/orgs/" + org.ID + "/privacy"
+	if got := testclient.Decoded[handlers.PrivacyOut](e.client.Get(path, alice).AssertStatus(http.StatusOK)); got.PayloadFree {
+		t.Fatalf("on by default: %+v", got)
+	}
+	on := map[string]any{"payload_free": true}
+	if res := e.client.Put(path, alice, testclient.JSON(on)); res.Status != http.StatusPaymentRequired {
+		t.Fatalf("Free: %d %s", res.Status, res.String())
+	}
+
+	// What was kept before goes when it turns on.
+	e.client.Put(base+"/payloads/settings", alice, testclient.JSON(map[string]any{"enabled": true, "sample_rate": 1})).
+		AssertStatus(http.StatusOK)
+	keep := payloads.Compile(payloads.Settings{Enabled: true, SampleRate: 1, Answers: true}, nil)
+	e.app.PayloadStore.Add(ctx, payloads.Entry{Org: orgID, Project: prjID, RetentionDays: 7, At: time.Now(), Capture: keep,
+		Format: wire.OpenAIChat, Status: 200, Request: []byte(`{"model":"m"}`)})
+	e.app.PayloadStore.Flush(ctx, time.Time{})
+	cache := responsecache.New(e.c.KV)
+	cache.Put(ctx, prjID.String()+":default:k", &responsecache.Entry{Status: 200, Body: []byte(`{}`)}, time.Minute)
+
+	e.plan(t, org.ID, catalog.PayloadFree)
+	got := testclient.Decoded[handlers.PrivacyOut](e.client.Put(path, alice, testclient.JSON(on)).AssertStatus(http.StatusOK))
+	if !got.PayloadFree || got.UpdatedAt == nil || !strings.HasPrefix(got.UpdatedBy, "usr_") {
+		t.Fatalf("on %+v", got)
+	}
+	if n := e.app.Ent.PayloadSegment.Query().CountX(entx.SkipTenant(ctx)); n != 0 {
+		t.Fatalf("%d segments left", n)
+	}
+	if _, hit := cache.Get(ctx, prjID.String()+":default:k"); hit {
+		t.Fatal("a cached answer survived")
+	}
+	if n := e.c.DB.Ent.AuditEvent.Query().Where(auditevent.Action("privacy.updated")).CountX(entx.SkipTenant(ctx)); n != 1 {
+		t.Fatalf("%d audit events", n)
+	}
+
+	// Projects can't turn on what keeps content.
+	for name, res := range map[string]*testclient.Response{
+		"capture":  e.client.Put(base+"/payloads/settings", alice, testclient.JSON(map[string]any{"enabled": true, "sample_rate": 1})),
+		"excerpts": e.client.Put(base+"/firewall", alice, testclient.JSON(map[string]any{"enabled": true, "excerpts": true})),
+		"a cache":  e.client.Post(base+"/routes", alice, testclient.JSON(map[string]any{"name": "cached", "fallbacks": []string{}, "cache_ttl_seconds": 60})),
+	} {
+		if res.Status != http.StatusConflict || res.Error().Error.Code != handlers.CodePayloadFree {
+			t.Errorf("%s: %d %s", name, res.Status, res.String())
+		}
+	}
+	e.client.Post(base+"/routes", alice, testclient.JSON(map[string]any{"name": "plain", "fallbacks": []string{}})).
+		AssertStatus(http.StatusCreated)
+
+	// A downgrade keeps it on; turning it off needs no plan.
+	e.plan(t, org.ID)
+	if got := testclient.Decoded[handlers.PrivacyOut](e.client.Get(path, alice)); !got.PayloadFree {
+		t.Fatal("a downgrade turned it off")
+	}
+	e.client.Put(path, alice, testclient.JSON(map[string]any{"payload_free": false})).AssertStatus(http.StatusOK)
+	e.client.Put(base+"/payloads/settings", alice, testclient.JSON(map[string]any{"enabled": true, "sample_rate": 1})).
+		AssertStatus(http.StatusOK)
 }
 
 func TestBudgets(t *testing.T) {

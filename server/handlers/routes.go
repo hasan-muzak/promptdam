@@ -135,6 +135,11 @@ func (h *Handlers) CreateRoute(ctx *muzak.Context, in CreateRouteIn) (RouteOut, 
 			return RouteOut{}, err
 		}
 	}
+	if in.CacheTTL > 0 {
+		if err := h.payloadFree(ctx, "the response cache"); err != nil {
+			return RouteOut{}, err
+		}
+	}
 	r, err := h.Routes.Create(ctx.Context(), pa.OrgID(), pa.Project.ID, in.input())
 	if err != nil {
 		return RouteOut{}, routeFail(err)
@@ -175,6 +180,11 @@ func (h *Handlers) UpdateRoute(ctx *muzak.Context, in UpdateRouteIn) (RouteOut, 
 	// it (the gateway applies it while the plan includes it).
 	if in.PromptCache && !old.PromptCache {
 		if err := h.requires(ctx, catalog.PromptCaching); err != nil {
+			return RouteOut{}, err
+		}
+	}
+	if in.CacheTTL > 0 {
+		if err := h.payloadFree(ctx, "the response cache"); err != nil {
 			return RouteOut{}, err
 		}
 	}

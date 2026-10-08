@@ -25,6 +25,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
+	"github.com/hasan-muzak/promptdam/server/ent/privacysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
@@ -58,6 +59,8 @@ type Client struct {
 	PriceList *PriceListClient
 	// PriceOverride is the client for interacting with the PriceOverride builders.
 	PriceOverride *PriceOverrideClient
+	// PrivacySetting is the client for interacting with the PrivacySetting builders.
+	PrivacySetting *PrivacySettingClient
 	// Provider is the client for interacting with the Provider builders.
 	Provider *ProviderClient
 	// Route is the client for interacting with the Route builders.
@@ -87,6 +90,7 @@ func (c *Client) init() {
 	c.PayloadSegment = NewPayloadSegmentClient(c.config)
 	c.PriceList = NewPriceListClient(c.config)
 	c.PriceOverride = NewPriceOverrideClient(c.config)
+	c.PrivacySetting = NewPrivacySettingClient(c.config)
 	c.Provider = NewProviderClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RouterClassifier = NewRouterClassifierClient(c.config)
@@ -193,6 +197,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PayloadSegment:   NewPayloadSegmentClient(cfg),
 		PriceList:        NewPriceListClient(cfg),
 		PriceOverride:    NewPriceOverrideClient(cfg),
+		PrivacySetting:   NewPrivacySettingClient(cfg),
 		Provider:         NewProviderClient(cfg),
 		Route:            NewRouteClient(cfg),
 		RouterClassifier: NewRouterClassifierClient(cfg),
@@ -226,6 +231,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PayloadSegment:   NewPayloadSegmentClient(cfg),
 		PriceList:        NewPriceListClient(cfg),
 		PriceOverride:    NewPriceOverrideClient(cfg),
+		PrivacySetting:   NewPrivacySettingClient(cfg),
 		Provider:         NewProviderClient(cfg),
 		Route:            NewRouteClient(cfg),
 		RouterClassifier: NewRouterClassifierClient(cfg),
@@ -261,7 +267,7 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AlertRule, c.Budget, c.CaptureSetting, c.FamilyLabel, c.FirewallSetting,
 		c.KeySetting, c.ModelRouter, c.PayloadSegment, c.PriceList, c.PriceOverride,
-		c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
+		c.PrivacySetting, c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -273,7 +279,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AlertRule, c.Budget, c.CaptureSetting, c.FamilyLabel, c.FirewallSetting,
 		c.KeySetting, c.ModelRouter, c.PayloadSegment, c.PriceList, c.PriceOverride,
-		c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
+		c.PrivacySetting, c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -302,6 +308,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PriceList.mutate(ctx, m)
 	case *PriceOverrideMutation:
 		return c.PriceOverride.mutate(ctx, m)
+	case *PrivacySettingMutation:
+		return c.PrivacySetting.mutate(ctx, m)
 	case *ProviderMutation:
 		return c.Provider.mutate(ctx, m)
 	case *RouteMutation:
@@ -1663,6 +1671,141 @@ func (c *PriceOverrideClient) mutate(ctx context.Context, m *PriceOverrideMutati
 	}
 }
 
+// PrivacySettingClient is a client for the PrivacySetting schema.
+type PrivacySettingClient struct {
+	config
+}
+
+// NewPrivacySettingClient returns a client for the PrivacySetting from the given config.
+func NewPrivacySettingClient(c config) *PrivacySettingClient {
+	return &PrivacySettingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `privacysetting.Hooks(f(g(h())))`.
+func (c *PrivacySettingClient) Use(hooks ...Hook) {
+	c.hooks.PrivacySetting = append(c.hooks.PrivacySetting, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `privacysetting.Intercept(f(g(h())))`.
+func (c *PrivacySettingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PrivacySetting = append(c.inters.PrivacySetting, interceptors...)
+}
+
+// Create returns a builder for creating a PrivacySetting entity.
+func (c *PrivacySettingClient) Create() *PrivacySettingCreate {
+	mutation := newPrivacySettingMutation(c.config, OpCreate)
+	return &PrivacySettingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PrivacySetting entities.
+func (c *PrivacySettingClient) CreateBulk(builders ...*PrivacySettingCreate) *PrivacySettingCreateBulk {
+	return &PrivacySettingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PrivacySettingClient) MapCreateBulk(slice any, setFunc func(*PrivacySettingCreate, int)) *PrivacySettingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PrivacySettingCreateBulk{err: fmt.Errorf("calling to PrivacySettingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PrivacySettingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PrivacySettingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PrivacySetting.
+func (c *PrivacySettingClient) Update() *PrivacySettingUpdate {
+	mutation := newPrivacySettingMutation(c.config, OpUpdate)
+	return &PrivacySettingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PrivacySettingClient) UpdateOne(_m *PrivacySetting) *PrivacySettingUpdateOne {
+	mutation := newPrivacySettingMutation(c.config, OpUpdateOne, withPrivacySetting(_m))
+	return &PrivacySettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PrivacySettingClient) UpdateOneID(id uuid.UUID) *PrivacySettingUpdateOne {
+	mutation := newPrivacySettingMutation(c.config, OpUpdateOne, withPrivacySettingID(id))
+	return &PrivacySettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PrivacySetting.
+func (c *PrivacySettingClient) Delete() *PrivacySettingDelete {
+	mutation := newPrivacySettingMutation(c.config, OpDelete)
+	return &PrivacySettingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PrivacySettingClient) DeleteOne(_m *PrivacySetting) *PrivacySettingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PrivacySettingClient) DeleteOneID(id uuid.UUID) *PrivacySettingDeleteOne {
+	builder := c.Delete().Where(privacysetting.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PrivacySettingDeleteOne{builder}
+}
+
+// Query returns a query builder for PrivacySetting.
+func (c *PrivacySettingClient) Query() *PrivacySettingQuery {
+	return &PrivacySettingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePrivacySetting},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PrivacySetting entity by its id.
+func (c *PrivacySettingClient) Get(ctx context.Context, id uuid.UUID) (*PrivacySetting, error) {
+	return c.Query().Where(privacysetting.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PrivacySettingClient) GetX(ctx context.Context, id uuid.UUID) *PrivacySetting {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PrivacySettingClient) Hooks() []Hook {
+	hooks := c.hooks.PrivacySetting
+	return append(hooks[:len(hooks):len(hooks)], privacysetting.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *PrivacySettingClient) Interceptors() []Interceptor {
+	inters := c.inters.PrivacySetting
+	return append(inters[:len(inters):len(inters)], privacysetting.Interceptors[:]...)
+}
+
+func (c *PrivacySettingClient) mutate(ctx context.Context, m *PrivacySettingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PrivacySettingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PrivacySettingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PrivacySettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PrivacySettingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PrivacySetting mutation op: %q", m.Op())
+	}
+}
+
 // ProviderClient is a client for the Provider schema.
 type ProviderClient struct {
 	config
@@ -2207,13 +2350,13 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 type (
 	hooks struct {
 		AlertRule, Budget, CaptureSetting, FamilyLabel, FirewallSetting, KeySetting,
-		ModelRouter, PayloadSegment, PriceList, PriceOverride, Provider, Route,
-		RouterClassifier, RoutingRule []ent.Hook
+		ModelRouter, PayloadSegment, PriceList, PriceOverride, PrivacySetting,
+		Provider, Route, RouterClassifier, RoutingRule []ent.Hook
 	}
 	inters struct {
 		AlertRule, Budget, CaptureSetting, FamilyLabel, FirewallSetting, KeySetting,
-		ModelRouter, PayloadSegment, PriceList, PriceOverride, Provider, Route,
-		RouterClassifier, RoutingRule []ent.Interceptor
+		ModelRouter, PayloadSegment, PriceList, PriceOverride, PrivacySetting,
+		Provider, Route, RouterClassifier, RoutingRule []ent.Interceptor
 	}
 )
 

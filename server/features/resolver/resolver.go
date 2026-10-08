@@ -401,7 +401,8 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		out.Capture, m.Capture = true, cp
 		out.CaptureAnswer = cp.Answers && (c.Format == wire.OpenAIChat || c.Format == wire.AnthropicMessages)
 	}
-	if route.CacheTTL > 0 {
+	// Payload-free organizations cache no answers.
+	if route.CacheTTL > 0 && !snap.PayloadFree {
 		out.CacheTTL = time.Duration(route.CacheTTL) * time.Second
 		out.CacheScope = m.Project.String() + ":" + route.Name
 	}

@@ -42,6 +42,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/modelrouter"
 	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
+	"github.com/hasan-muzak/promptdam/server/ent/privacysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
@@ -178,6 +179,11 @@ type deleter interface {
 // when given. ctx is scoped to the organization (entx.WithOrg).
 func deleteRows(ctx context.Context, c *pdent.Client, org uuid.UUID, projects []uuid.UUID) error {
 	scoped := len(projects) > 0
+	if !scoped { // the organization's own rows
+		if _, err := c.PrivacySetting.Delete().Where(privacysetting.OrgID(org)).Exec(ctx); err != nil {
+			return err
+		}
+	}
 	for _, d := range []deleter{
 		c.AlertRule.Delete().Where(alertrule.OrgID(org), only(scoped, alertrule.ProjectIDIn(projects...))),
 		c.Budget.Delete().Where(budget.OrgID(org), only(scoped, budget.ProjectIDIn(projects...))),

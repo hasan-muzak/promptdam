@@ -32,6 +32,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/features/privacy"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
@@ -83,6 +84,9 @@ type Data struct {
 	// Capture is whether the project keeps its calls' payloads; nil keeps
 	// none.
 	Capture *payloads.Settings `json:"capture,omitempty"`
+	// PayloadFree is the organization's payload-free mode: nothing that
+	// keeps content applies, whatever was saved.
+	PayloadFree bool `json:"payload_free,omitempty"`
 }
 
 // Snapshot is a project's configuration as a gateway holds it in memory.
@@ -103,6 +107,9 @@ type Snapshot struct {
 	Firewall *firewall.Engine
 	// Capture keeps the project's calls' payloads; nil when it keeps none.
 	Capture *payloads.Capture
+	// PayloadFree keeps any content from being kept: no capture, no
+	// firewall excerpts, no response cache.
+	PayloadFree bool
 }
 
 // Opened is a provider with its key's headers.
@@ -122,6 +129,7 @@ type Sources struct {
 	Routers   *routers.Service
 	Firewall  *firewall.Service
 	Payloads  *payloads.Service
+	Privacy   *privacy.Service
 }
 
 // Build reads a project's configuration from Postgres.
@@ -176,7 +184,14 @@ func (s Sources) Build(ctx context.Context, org, project uuid.UUID) (Data, error
 		}
 		d.Firewall = &fw
 	}
-	if s.Payloads != nil {
+	if s.Privacy != nil {
+		p, err := s.Privacy.Get(ctx, org)
+		if err != nil {
+			return Data{}, fmt.Errorf("snapshot: privacy: %w", err)
+		}
+		d.PayloadFree = p.PayloadFree
+	}
+	if s.Payloads != nil && !d.PayloadFree {
 		c, err := s.Payloads.Get(ctx, project)
 		if err != nil {
 			return Data{}, fmt.Errorf("snapshot: capture: %w", err)
@@ -284,8 +299,12 @@ func assemble(project uuid.UUID, d Data, header func(Provider) (http.Header, err
 	if d.Firewall != nil {
 		fw = *d.Firewall
 	}
+	snap.PayloadFree = d.PayloadFree
+	if d.PayloadFree {
+		fw.Excerpts = false
+	}
 	snap.Firewall = firewall.Load(fw)
-	if d.Capture != nil {
+	if d.Capture != nil && !d.PayloadFree {
 		snap.Capture = payloads.Compile(*d.Capture, fw.Custom)
 	}
 	for i := range d.Routers {

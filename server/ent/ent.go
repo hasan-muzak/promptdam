@@ -22,6 +22,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/payloadsegment"
 	"github.com/hasan-muzak/promptdam/server/ent/pricelist"
 	"github.com/hasan-muzak/promptdam/server/ent/priceoverride"
+	"github.com/hasan-muzak/promptdam/server/ent/privacysetting"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
@@ -96,6 +97,7 @@ func checkColumn(t, c string) error {
 			payloadsegment.Table:   payloadsegment.ValidColumn,
 			pricelist.Table:        pricelist.ValidColumn,
 			priceoverride.Table:    priceoverride.ValidColumn,
+			privacysetting.Table:   privacysetting.ValidColumn,
 			provider.Table:         provider.ValidColumn,
 			route.Table:            route.ValidColumn,
 			routerclassifier.Table: routerclassifier.ValidColumn,

@@ -30,7 +30,7 @@ func Mount(a *muzak.App, app *core.App) {
 		CacheDoctor: cachedoctor.New(c.Events, app.Prices), Rules: app.Rules,
 		RuleDeps: handlers.RuleDeps{Env: app.RuleEnv, Events: c.Events, Prices: app.Prices},
 		Routers:  app.Routers, Firewall: app.Firewall, Activity: app.Activity, Alerts: app.Alerts, Payloads: app.Payloads, PayloadStore: app.PayloadStore, Audit: c.DB.Ent,
-		Cache: responsecache.New(c.KV),
+		Cache: responsecache.New(c.KV), Privacy: app.Privacy,
 		RouterDeps: handlers.RouterDeps{Explainer: resolver.New(resolver.Config{Prices: app.Prices, Rules: app.RuleEnv}),
 			Sources: app.Sources(), Billing: c.Billing, AppURL: c.Config.AppURL, Events: c.Events, Prices: app.Prices, Jobs: c.Jobs},
 	}
@@ -319,6 +319,18 @@ func Mount(a *muzak.App, app *core.App) {
 		muzak.Description("Budget thresholds crossed, routers ready to serve or tiers demoted, calls the firewall refused, alert "+
 			"rules firing and resolving: what the organization's channels and webhooks got as it happened. A budget's, router's "+
 			"or alert rule's own history with subject. Kept 90 days."))
+
+	priv := muzak.WithCategory("Privacy")
+	r.Get("/v1/orgs/{org}/privacy", h.GetPrivacy, priv, muzak.Title("Get Privacy"),
+		muzak.Needs(c.Tenancy.RequireOrg(tenancy.PermOrgRead)),
+		muzak.Summary("Whether the organization is payload-free"))
+	r.Put("/v1/orgs/{org}/privacy", h.PutPrivacy, priv, muzak.Title("Set Privacy"),
+		muzak.Needs(c.Tenancy.RequireOrg(tenancy.PermOrgUpdate)),
+		muzak.Summary("Turn payload-free mode on or off"),
+		muzak.Description("Payload-free mode (Business) keeps any prompt or answer from being stored in any of the "+
+			"organization's projects: payload capture, firewall excerpts and the response cache are off, and turning "+
+			"them on is refused (409 payload_free). Turning it on also deletes, at once, every payload and cached "+
+			"answer the projects kept. A downgrade keeps it on; turning it off needs no plan. Audited."))
 
 	ana := muzak.WithCategory("Analytics")
 	r.Get("/v1/orgs/{org}/projects/{project}/overview", h.GetOverview, ana, muzak.Title("Get Overview"),
