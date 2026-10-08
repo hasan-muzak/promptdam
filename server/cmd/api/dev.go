@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/hasan-muzak/keel-core/pkg/apikeys"
 	"github.com/hasan-muzak/keel-core/pkg/cli"
@@ -35,7 +36,8 @@ func devCommands(c *keel.Core, app *core.App) []cli.Command {
 	}, {
 		Name: "dev seed",
 		Usage: "development only: create an organization, a project, a gateway key and two providers (OpenAI and " +
-			"Anthropic format) at -upstream (default the fake provider, `task promptdam:dev:fake`), and print how to call them",
+			"Anthropic format) at -upstream (default the fake provider, `task promptdam:dev:fake`), and print how to call them; " +
+			"with -openai-key or -anthropic-key, the real providers instead",
 		Run: func(ctx context.Context, args []string, out io.Writer) error {
 			if c.Config.Env != config.Development {
 				return errors.New("dev seed runs only with KEEL_ENV=development")
@@ -44,15 +46,27 @@ func devCommands(c *keel.Core, app *core.App) []cli.Command {
 			upstream := fs.String("upstream", "http://localhost:8299/v1", "the providers' base URL")
 			providerKey := fs.String("provider-key", "sk-fake-provider-key", "the providers' API key")
 			name := fs.String("name", "Dev", "the organization's name")
+			openaiKey := fs.String("openai-key", "", "an OpenAI API key: add the real OpenAI provider instead of the fake ones")
+			anthropicKey := fs.String("anthropic-key", "", "an Anthropic API key: add the real Anthropic provider instead of the fake ones")
 			if err := fs.Parse(args); err != nil {
 				return err
 			}
-			return seed(ctx, c, app, out, *name, *upstream, *providerKey)
+			var real []realProvider
+			if *openaiKey != "" {
+				real = append(real, realProvider{kind: "openai", key: *openaiKey})
+			}
+			if *anthropicKey != "" {
+				real = append(real, realProvider{kind: "anthropic", key: *anthropicKey})
+			}
+			return seed(ctx, c, app, out, *name, *upstream, *providerKey, real)
 		},
 	}}
 }
 
-func seed(ctx context.Context, c *keel.Core, app *core.App, out io.Writer, name, upstream, providerKey string) error {
+// realProvider is a provider of a known kind, at its own API.
+type realProvider struct{ kind, key string }
+
+func seed(ctx context.Context, c *keel.Core, app *core.App, out io.Writer, name, upstream, providerKey string, real []realProvider) error {
 	u, err := c.Tenancy.SignIn(ctx, identity.Claims{UID: "dev-seed", Email: "dev@" + brand.Key + ".test", EmailVerified: true, Name: "Dev"})
 	if err != nil {
 		return err
@@ -72,21 +86,39 @@ func seed(ctx context.Context, c *keel.Core, app *core.App, out io.Writer, name,
 		return err
 	}
 	scoped := entx.WithOrg(ctx, org.ID)
-	for _, p := range []struct{ name, format string }{{"openai", providers.FormatOpenAI}, {"anthropic", providers.FormatAnthropic}} {
-		if _, err := app.Providers.Create(scoped, org.ID, prj.ID, providers.Input{
-			Name: p.name, Kind: providers.Custom, Format: p.format, BaseURL: upstream, APIKey: &providerKey, Enabled: true,
-		}); err != nil {
-			return fmt.Errorf("adding the %s provider: %w", p.name, err)
+	where, model := "providers at "+upstream, "gpt-5-mini"
+	if len(real) == 0 {
+		for _, p := range []struct{ name, format string }{{"openai", providers.FormatOpenAI}, {"anthropic", providers.FormatAnthropic}} {
+			if _, err := app.Providers.Create(scoped, org.ID, prj.ID, providers.Input{
+				Name: p.name, Kind: providers.Custom, Format: p.format, BaseURL: upstream, APIKey: &providerKey, Enabled: true,
+			}); err != nil {
+				return fmt.Errorf("adding the %s provider: %w", p.name, err)
+			}
+		}
+	} else {
+		var kinds []string
+		for _, p := range real {
+			kind, _ := providers.LookupKind(p.kind)
+			if _, err := app.Providers.Create(scoped, org.ID, prj.ID, providers.Input{
+				Name: p.kind, Kind: p.kind, Format: kind.Format, BaseURL: kind.BaseURL, APIKey: &p.key, Enabled: true,
+			}); err != nil {
+				return fmt.Errorf("adding the %s provider: %w", p.kind, err)
+			}
+			kinds = append(kinds, kind.Label)
+		}
+		where = strings.Join(kinds, " and ") + ", with your keys"
+		if real[0].kind == "anthropic" {
+			model = "claude-haiku-4-5"
 		}
 	}
 	gw := app.GatewayURL
-	_, err = fmt.Fprintf(out, `Seeded %q: providers at %s.
+	_, err = fmt.Fprintf(out, `Seeded %q: %s.
 
   export OPENAI_BASE_URL=%s/v1 OPENAI_API_KEY=%s
   export ANTHROPIC_BASE_URL=%s ANTHROPIC_API_KEY=%s
 
   curl %s/v1/chat/completions -H "Authorization: Bearer %s" \
-    -H "Content-Type: application/json" -d '{"model":"gpt-5-mini","messages":[{"role":"user","content":"hi"}]}'
-`, name, upstream, gw, key, gw, key, gw, key)
+    -H "Content-Type: application/json" -d '{"model":"%s","messages":[{"role":"user","content":"hi"}]}'
+`, name, where, gw, key, gw, key, gw, key, model)
 	return err
 }
