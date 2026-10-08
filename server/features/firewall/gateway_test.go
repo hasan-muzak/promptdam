@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hasan-muzak/keel-core/pkg/ent/webhookdelivery"
+	"github.com/hasan-muzak/keel-core/pkg/entx"
 	"github.com/hasan-muzak/keel-core/pkg/events"
 
 	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
@@ -294,5 +296,54 @@ func TestEventsAreLogged(t *testing.T) {
 	st, err := firewall.ReadStats(ctx, w.C.Events, w.Project, f.From, f.To)
 	if err != nil || st.Calls != 2 || st.Blocked != 1 || len(st.Detectors) != 2 || len(st.Actions) != 2 || len(st.Days) != 1 {
 		t.Fatalf("stats %+v %v", st, err)
+	}
+}
+
+// Blocked calls are told: a webhook each, an alert an hour, a digest a
+// week.
+func TestWatcherTellsOfBlocks(t *testing.T) {
+	ctx := context.Background()
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true, Upstream: fakeupstream.Options{Reply: echo}})
+	s := firewall.Defaults()
+	s.PII = firewall.Tokenize
+	if _, err := w.App.Firewall.Put(w.Scoped(), w.Org, w.Project, s); err != nil {
+		t.Fatal(err)
+	}
+	all := entx.SkipTenant(ctx)
+	w.C.DB.Ent.WebhookEndpoint.Create().SetOrgID(w.Org).SetURL("https://hooks.example.com/x").SetSecret("whsec_dGVzdA==").SaveX(all)
+	if _, err := w.C.Notifier.AddChannel(ctx, w.Org, "email", "Ops", "ops@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	for _, content := range []string{"key " + awsKey, "again " + awsKey, "mail ada@example.com"} {
+		w.Call("/v1/chat/completions", request("", "gpt-5-mini", content, false))
+	}
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	watcher := firewall.NewWatcher(firewall.WatchConfig{Events: w.C.Events, KV: w.C.KV, Notifier: w.C.Notifier,
+		Webhooks: w.C.Webhooks, AppURL: "https://app.example.com", Now: func() time.Time { return time.Now().Add(time.Minute) }})
+	told := func() (hooks, alerts int) {
+		t.Helper()
+		hooks = w.C.DB.Ent.WebhookDelivery.Query().Where(webhookdelivery.EventType(firewall.EventBlocked.Name)).CountX(all)
+		if err := w.C.DB.SQL.QueryRowContext(ctx, `SELECT count(*) FROM river_job WHERE kind = 'keel_deliver_alert'`).Scan(&alerts); err != nil {
+			t.Fatal(err)
+		}
+		return hooks, alerts
+	}
+	for range 2 { // the second run finds nothing new
+		if err := watcher.Check(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if hooks, alerts := told(); hooks != 2 || alerts != 1 {
+			t.Fatalf("%d webhooks, %d alerts", hooks, alerts)
+		}
+	}
+	for range 2 { // one digest a week
+		if err := watcher.Digest(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, alerts := told(); alerts != 2 {
+			t.Fatalf("%d alerts with the digest", alerts)
+		}
 	}
 }

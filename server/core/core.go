@@ -13,6 +13,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/migrations"
 )
@@ -62,7 +63,7 @@ var Product = keel.Product{
 		{Name: ScopeGateway, Description: "Call LLM providers through the gateway."},
 	},
 	Events: []webhooks.EventType{budgets.EventThreshold, budgets.EventExceeded, routers.EventReady,
-		routers.EventTierDemoted},
+		routers.EventTierDemoted, firewall.EventBlocked},
 	Migrations:           []db.MigrationSet{migrations.Postgres()},
 	ClickHouseMigrations: []events.MigrationSet{migrations.ClickHouse()},
 	Color:                "#0b7285",

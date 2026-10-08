@@ -13,6 +13,7 @@ import (
 
 	"github.com/hasan-muzak/promptdam/server/core"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/purge"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
@@ -43,5 +44,6 @@ func run() error {
 	prices.RegisterWorkers(c.Jobs, app.Prices)
 	training.RegisterWorkers(c.Jobs, app.Training)
 	routers.RegisterWorkers(c.Jobs, app.Watcher)
+	firewall.RegisterWorkers(c.Jobs, app.FirewallWatch)
 	return c.Worker(core.Version).RunSignals()
 }

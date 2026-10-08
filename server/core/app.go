@@ -48,8 +48,10 @@ type App struct {
 	Routers  *routers.Service
 	Training *training.Service
 	// Firewall keeps projects' firewalls: what their calls' secrets and
-	// personal data get, and their policies.
-	Firewall *firewall.Service
+	// personal data get, and their policies; FirewallWatch tells
+	// organizations what they did.
+	Firewall      *firewall.Service
+	FirewallWatch *firewall.Watcher
 	// Watcher announces ready routers and demotes drifting tiers.
 	Watcher *routers.Watcher
 	// GatewayURL is where clients reach the gateway, for setup instructions.
@@ -115,6 +117,14 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a.Rules = rules.New(a.Ent, env, a.configChanged)
 	a.Routers = routers.New(a.Ent, env, a.Prices, a.configChanged)
 	a.Firewall = firewall.NewService(a.Ent, a.configChanged)
+	a.FirewallWatch = firewall.NewWatcher(firewall.WatchConfig{Events: c.Events, KV: c.KV, Notifier: c.Notifier,
+		Webhooks: c.Webhooks, AppURL: c.Config.AppURL, ProjectName: func(ctx context.Context, id uuid.UUID) (string, error) {
+			p, err := c.Tenancy.ProjectByID(ctx, id)
+			if err != nil {
+				return "", err
+			}
+			return p.Name, nil
+		}})
 	a.Training = training.New(training.Config{Ent: a.Ent, Events: c.Events, Changed: a.configChanged})
 	a.Watcher = routers.NewWatcher(routers.WatchConfig{Ent: a.Ent, Events: c.Events, Notifier: c.Notifier, Webhooks: c.Webhooks,
 		AppURL: c.Config.AppURL, Changed: a.configChanged})
