@@ -58,6 +58,11 @@ func (w *Walker) Path() string {
 
 var errMalformed = errors.New("firewall: the document isn't valid JSON")
 
+// maxDepth is the deepest nesting read, as the request parser's
+// (encoding/json): an answer nested deeper, from a provider that wants a
+// gateway's memory, is left unread.
+const maxDepth = 10_000
+
 // rewrite calls fn with every string value (keys aside) of a JSON
 // document; a replacement fn returns is spliced in its place, the rest of
 // the document kept byte for byte. changed is false (and out doc itself)
@@ -68,12 +73,12 @@ func rewrite(doc []byte, fn func(w *Walker, s string) (string, bool)) (out []byt
 	expectKey := false
 	for i := 0; i < len(doc); i++ {
 		switch c := doc[i]; c {
-		case '{':
-			w.frames = append(w.frames, frame{object: true})
-			expectKey = true
-		case '[':
-			w.frames = append(w.frames, frame{})
-			expectKey = false
+		case '{', '[':
+			if len(w.frames) >= maxDepth {
+				return nil, false, errMalformed
+			}
+			w.frames = append(w.frames, frame{object: c == '{'})
+			expectKey = c == '{'
 		case '}', ']':
 			if len(w.frames) == 0 {
 				return nil, false, errMalformed

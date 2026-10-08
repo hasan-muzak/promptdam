@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
+	"github.com/hasan-muzak/keel-core/pkg/redact"
 
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/features/families"
@@ -280,8 +281,37 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, final
 		return false, true
 	}
 	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 400 && !eventStream(res.Header) {
+		if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
+			// A provider refusing the project's key may quote part of it:
+			// the client gets the gateway's own error instead.
+			_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
+			c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_auth_failed",
+				Message: "the provider refused the project's key or account for it (" + strconv.Itoa(res.StatusCode) +
+					"): check the provider's key in Promptdam"})
+			return true, false
+		}
+		maskError(res)
+	}
 	c.relay(res, t, cancel, dropUsage, format, dropped)
 	return true, retryable(res.StatusCode)
+}
+
+// errorRedactor masks secrets and personal data in providers' errors.
+var errorRedactor = redact.Default()
+
+// maxErrorBody bounds the provider error bodies read to be masked.
+const maxErrorBody = 1 << 20
+
+// maskError reads a provider's error body and masks what it may quote:
+// keys, tokens, personal data from the request. A body past maxErrorBody
+// is cut there.
+func maskError(res *http.Response) {
+	body, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorBody))
+	masked, _ := errorRedactor.Mask(string(body))
+	res.Body = io.NopCloser(strings.NewReader(masked))
+	res.ContentLength = int64(len(masked))
+	res.Header.Del("Content-Length")
 }
 
 // relay streams a provider's response to the client, reading its usage.
@@ -659,17 +689,21 @@ func upstreamHeader(dst, src http.Header, f wire.Format, target http.Header) {
 	}
 }
 
-// dropped response headers: hop-by-hop ones, and those that speak for the
-// provider's host rather than the gateway's.
+// dropped response headers: hop-by-hop ones, those that speak for the
+// provider's host rather than the gateway's, and those naming the
+// customer's account at the provider.
 var dropped = map[string]bool{
 	"Connection": true, "Keep-Alive": true, "Proxy-Authenticate": true, "Proxy-Authorization": true, "Te": true,
 	"Trailer": true, "Transfer-Encoding": true, "Upgrade": true, "Set-Cookie": true, "Alt-Svc": true,
 	"Strict-Transport-Security": true, "Server": true,
+	"Openai-Organization": true, "Openai-Project": true, "Anthropic-Organization-Id": true,
 }
 
+// responseHeader copies a provider's headers, but for the dropped ones and
+// the gateway's own (X-Promptdam-…), which a provider can't speak for.
 func responseHeader(dst, src http.Header) {
 	for k, v := range src {
-		if !dropped[k] {
+		if !dropped[k] && !strings.HasPrefix(k, brand.HeaderPrefix) {
 			dst[k] = v
 		}
 	}
