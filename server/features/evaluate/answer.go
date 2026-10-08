@@ -7,11 +7,11 @@ import (
 )
 
 // Answer is what a model answered, as the checks and the judge compare
-// it; ToolCall a tool it called.
-type (
-	Answer   = answers.Answer
-	ToolCall = answers.ToolCall
-)
+// it.
+type Answer = answers.Answer
+
+// ToolCall is a tool an answer called.
+type ToolCall = answers.ToolCall
 
 // answerOf reads an answer of format f, whole or streamed.
 func answerOf(f wire.Format, body []byte, stream bool) (Answer, error) {

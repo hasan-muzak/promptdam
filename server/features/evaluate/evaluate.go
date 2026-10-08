@@ -53,7 +53,8 @@ const Table = "router_evals"
 // project's providers serves it.
 const DefaultJudge = "claude-sonnet-5-5"
 
-// CheckJudgeError: the judge's answer couldn't be read (no verdict).
+// CheckJudgeError is the check of a judge's answer that couldn't be read
+// (no verdict).
 const CheckJudgeError = "judge_error"
 
 // Row is one verdict: a sampled call's answer on one tier against the
@@ -171,9 +172,10 @@ func (e *Evaluator) Offer(r *gateway.Record) {
 	}
 }
 
-// Dropped counts samples dropped (a full queue, a spent budget); Evaluated
-// those evaluated.
-func (e *Evaluator) Dropped() int64   { return e.dropped.Load() }
+// Dropped counts samples dropped (a full queue, a spent budget).
+func (e *Evaluator) Dropped() int64 { return e.dropped.Load() }
+
+// Evaluated counts samples evaluated.
 func (e *Evaluator) Evaluated() int64 { return e.evaluated.Load() }
 
 // Start runs the workers and the row writer.

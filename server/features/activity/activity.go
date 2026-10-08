@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 
 	"github.com/hasan-muzak/keel-core/pkg/events"
@@ -90,8 +91,9 @@ func (s *Service) Record(ctx context.Context, e Entry) {
 	if err != nil || e.Data == nil {
 		data = []byte("{}")
 	}
-	err = s.db.Unscoped().AsyncInsert(context.WithoutCancel(ctx), `INSERT INTO `+Table+` (project_id, ts, id, org_id, kind,
-		severity, title, body, subject, url, data) VALUES (?, fromUnixTimestamp64Milli(?), ?, ?, ?, ?, ?, ?, ?, ?, ?)`, true,
+	async := clickhouse.Context(context.WithoutCancel(ctx), clickhouse.WithAsync(true))
+	err = s.db.Unscoped().Exec(async, `INSERT INTO `+Table+` (project_id, ts, id, org_id, kind,
+		severity, title, body, subject, url, data) VALUES (?, fromUnixTimestamp64Milli(?), ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.Project, s.now().UnixMilli(), ids.New(), e.Org, e.Kind, e.Severity, truncate(e.Title, 300), truncate(e.Body, 4000),
 		e.Subject, truncate(e.URL, 500), string(data))
 	if err != nil {

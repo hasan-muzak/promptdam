@@ -148,7 +148,8 @@ func ladder(cands []Candidate) (map[string]Candidate, map[string]string) {
 	return out, how
 }
 
-// ErrNoModels: none of the project's providers serves a priced chat model.
+// ErrNoModels is returned when none of the project's providers serves a
+// priced chat model.
 var ErrNoModels = errors.New("routers: no provider of the project serves a priced chat model")
 
 // Suggest builds a router from the project's providers' models (in the

@@ -35,7 +35,8 @@ func hostile(t *testing.T, status int, body string, header http.Header) string {
 	return gw.URL
 }
 
-func call(t *testing.T, base string) (*http.Response, string) {
+// call makes a call through the gateway: its status, headers and body.
+func call(t *testing.T, base string) (int, http.Header, string) {
 	t.Helper()
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, base+"/v1/chat/completions",
 		strings.NewReader(`{"model":"gpt-5-mini","messages":[{"role":"user","content":"hi"}]}`))
@@ -44,9 +45,9 @@ func call(t *testing.T, base string) (*http.Response, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() { _ = res.Body.Close() }()
 	body, _ := io.ReadAll(res.Body)
-	_ = res.Body.Close()
-	return res, string(body)
+	return res.StatusCode, res.Header, string(body)
 }
 
 // A provider refusing the project's key may quote it: the client gets the
@@ -54,10 +55,10 @@ func call(t *testing.T, base string) (*http.Response, string) {
 func TestProviderAuthErrorsAreTheGatewaysOwn(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		base := hostile(t, status, `{"error":{"message":"Incorrect API key provided: sk-proj-abcd****************wxyz"}}`, nil)
-		res, body := call(t, base)
-		if res.StatusCode != http.StatusBadGateway || res.Header.Get(brand.HeaderErrorCode) != "provider_auth_failed" ||
+		got, h, body := call(t, base)
+		if got != http.StatusBadGateway || h.Get(brand.HeaderErrorCode) != "provider_auth_failed" ||
 			strings.Contains(body, "wxyz") || strings.Contains(body, "sk-proj") {
-			t.Fatalf("%d: %d %s", status, res.StatusCode, body)
+			t.Fatalf("%d: %d %s", status, got, body)
 		}
 	}
 }
@@ -66,10 +67,10 @@ func TestProviderAuthErrorsAreTheGatewaysOwn(t *testing.T) {
 func TestProviderErrorsAreMasked(t *testing.T) {
 	base := hostile(t, http.StatusBadRequest,
 		`{"error":{"message":"invalid content near AKIAIOSFODNN7EXAMPLE for ada@example.com"}}`, nil)
-	res, body := call(t, base)
-	if res.StatusCode != http.StatusBadRequest || strings.Contains(body, "AKIAIOSFODNN7EXAMPLE") || strings.Contains(body, "ada@") ||
+	got, _, body := call(t, base)
+	if got != http.StatusBadRequest || strings.Contains(body, "AKIAIOSFODNN7EXAMPLE") || strings.Contains(body, "ada@") ||
 		!strings.Contains(body, "invalid content near") {
-		t.Fatalf("%d %s", res.StatusCode, body)
+		t.Fatalf("%d %s", got, body)
 	}
 }
 
@@ -79,9 +80,9 @@ func TestProviderHeadersCantSpoofTheGateways(t *testing.T) {
 		"X-Promptdam-Router": {"spoofed"}, "X-Promptdam-Cache": {"hit"}, "Openai-Organization": {"org-secret"},
 		"X-Request-Id": {"kept"},
 	})
-	res, _ := call(t, base)
-	if res.Header.Get(brand.HeaderRouter) != "" || res.Header.Get(brand.HeaderCache) != "" ||
-		res.Header.Get("Openai-Organization") != "" || res.Header.Get("X-Request-Id") != "kept" {
-		t.Fatalf("headers %v", res.Header)
+	_, h, _ := call(t, base)
+	if h.Get(brand.HeaderRouter) != "" || h.Get(brand.HeaderCache) != "" ||
+		h.Get("Openai-Organization") != "" || h.Get("X-Request-Id") != "kept" {
+		t.Fatalf("headers %v", h)
 	}
 }

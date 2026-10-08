@@ -7,6 +7,7 @@ toolchain go1.27.1
 require (
 	cel.dev/cel-go v0.32.0
 	entgo.io/ent v0.14.6
+	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
 	github.com/anthropics/anthropic-sdk-go v1.78.0
 	github.com/google/uuid v1.6.0
 	github.com/hasan-muzak/keel-core v0.0.0
@@ -24,7 +25,6 @@ require (
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/ClickHouse/ch-go v0.74.0 // indirect
-	github.com/ClickHouse/clickhouse-go/v2 v2.48.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/andybalholm/brotli v1.2.3 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect

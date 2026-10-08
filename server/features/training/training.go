@@ -56,7 +56,7 @@ func New(cfg Config) *Service {
 	return &Service{cfg: cfg}
 }
 
-// ErrNoEvents: without ClickHouse there is nothing to train on.
+// ErrNoEvents is returned without ClickHouse: there is nothing to train on.
 var ErrNoEvents = errors.New("training: no request log")
 
 type judged struct {
