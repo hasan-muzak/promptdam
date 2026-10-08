@@ -121,6 +121,10 @@ type Policy struct {
 const (
 	MaxPolicies = 50
 	MaxCustom   = 50
+	// MaxPattern bounds a custom pattern, MaxCondition a policy's
+	// condition: every gateway compiles them on each reload.
+	MaxPattern   = 1000
+	MaxCondition = 4096
 )
 
 // InvalidError is settings that can't be saved; its message says why.
@@ -181,9 +185,12 @@ func (s *Settings) Check(env *policy.Env) error {
 			return invalid("%q is not a personal data detector (%s, %s)", d, strings.Join(PIIDetectors, ", "), redact.IPv4)
 		}
 	}
-	for name := range s.Custom {
+	for name, re := range s.Custom {
 		if name == "" || len(name) > 32 || strings.ContainsAny(name, " ⟦⟧") || slices.Contains(redact.DefaultDetectors, name) {
 			return invalid("%q: a custom pattern's name is 1 to 32 characters, unlike a built-in detector's", name)
+		}
+		if re == "" || len(re) > MaxPattern {
+			return invalid("pattern %s: 1 to %d characters", name, MaxPattern)
 		}
 	}
 	if _, err := redact.New(redact.Options{Detectors: []string{}, Patterns: s.Custom}); err != nil {
@@ -199,6 +206,8 @@ func (s *Settings) Check(env *policy.Env) error {
 			return invalid("policy %s: the action is block, allow or route_to", p.Name)
 		case p.Action == PolicyRouteTo && (p.Model == "" || len(p.Model) > 300):
 			return invalid("policy %s: route_to needs a model, or provider/model", p.Name)
+		case strings.TrimSpace(p.When) == "" || len(p.When) > MaxCondition:
+			return invalid("policy %s: a condition is 1 to %d characters", p.Name, MaxCondition)
 		}
 		if _, err := env.Compile(p.When); err != nil {
 			var ce *policy.CompileError
@@ -218,6 +227,9 @@ type Engine struct {
 	r     *redact.Redactor
 	class map[string]string // detector → class
 	env   *policy.Env
+	// all finds everything, whatever the classes' actions, to mask
+	// excerpts (only when they are kept).
+	all *redact.Redactor
 }
 
 // Compile builds an Engine from checked settings; nil when the firewall
@@ -259,6 +271,12 @@ func Compile(s Settings, env *policy.Env) (*Engine, error) {
 		return nil, fmt.Errorf("firewall: %w", err)
 	}
 	e.r = r
+	if s.Excerpts {
+		all := append(slices.Clone(redact.DefaultDetectors), redact.IPv4)
+		if e.all, err = redact.New(redact.Options{Detectors: all, Patterns: s.Custom}); err != nil {
+			return nil, fmt.Errorf("firewall: %w", err)
+		}
+	}
 	return e, nil
 }
 
@@ -380,6 +398,8 @@ func (e *Engine) Inspect(body []byte) (*Outcome, error) {
 		if len(fs) == 0 {
 			return "", false
 		}
+		// Everything found in the text, read once if an excerpt is kept.
+		var spans []redact.Finding
 		loc := w.Top()
 		var b strings.Builder
 		last, changed := 0, false
@@ -396,8 +416,12 @@ func (e *Engine) Inspect(body []byte) (*Outcome, error) {
 			h := hits[k]
 			if h == nil {
 				h = &Hit{Detector: f.Detector, Class: class, Action: action, Location: loc}
-				if e.s.Excerpts {
-					h.Excerpt = e.excerpt(s, f)
+				if e.all != nil {
+					if spans == nil {
+						spans = e.all.Find(s)
+						slices.SortFunc(spans, func(a, b redact.Finding) int { return a.Start - b.Start })
+					}
+					h.Excerpt = excerpt(s, f, spans)
 				}
 				hits[k] = h
 				order = append(order, k)
@@ -456,9 +480,10 @@ func plain(s string) bool {
 	return true
 }
 
-// excerpt is up to 40 bytes either side of a finding, every finding in it
-// masked.
-func (e *Engine) excerpt(s string, f redact.Finding) string {
+// excerpt is up to 40 bytes either side of a finding, every span found in
+// the whole text (by every detector and the project's patterns, whatever
+// their actions) masked, those the window cuts too.
+func excerpt(s string, f redact.Finding, spans []redact.Finding) string {
 	start, end := max(0, f.Start-40), min(len(s), f.End+40)
 	for start > 0 && start < len(s) && s[start]&0xC0 == 0x80 {
 		start--
@@ -466,8 +491,20 @@ func (e *Engine) excerpt(s string, f redact.Finding) string {
 	for end < len(s) && s[end]&0xC0 == 0x80 {
 		end++
 	}
-	masked, _ := e.r.Mask(s[start:end])
-	return masked
+	var b strings.Builder
+	pos := start
+	for _, sp := range spans {
+		if sp.End <= pos || sp.Start >= end {
+			continue
+		}
+		if sp.Start > pos {
+			b.WriteString(s[pos:sp.Start])
+		}
+		b.WriteString("[REDACTED:" + sp.Detector + "]")
+		pos = min(sp.End, end)
+	}
+	b.WriteString(s[pos:end])
+	return b.String()
 }
 
 // Target is where a call goes, for policies.

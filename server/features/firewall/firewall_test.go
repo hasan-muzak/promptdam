@@ -236,3 +236,35 @@ func BenchmarkResponseEvent(b *testing.B) {
 		r.Event(ev)
 	}
 }
+
+func TestLimits(t *testing.T) {
+	env, _ := NewEnv()
+	for name, s := range map[string]Settings{
+		"a long pattern":   {Custom: map[string]string{"x": strings.Repeat("a", MaxPattern+1)}},
+		"an empty pattern": {Custom: map[string]string{"x": ""}},
+		"a long condition": {Policies: []Policy{{Name: "p", When: "true || " + strings.Repeat("true || ", 600) + "true", Action: PolicyBlock}}},
+	} {
+		if err := s.Check(env); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// An excerpt masks everything in it, whatever the classes' actions and
+// wherever the window cuts.
+func TestExcerptsMaskEverything(t *testing.T) {
+	e := engine(t, func(s *Settings) { s.Excerpts = true }) // PII off
+	text := "key " + awsKey + " for ada@example.com, then" + strings.Repeat(" ", 12) + "AKIAI44QH8DHBEXAMPLE"
+	o, _ := e.Inspect(chat(text))
+	var ex string
+	for _, h := range o.Hits {
+		if h.Detector == "aws_access_key" {
+			ex = h.Excerpt
+		}
+	}
+	// The window ends two bytes into the second key: those are masked too.
+	if ex == "" || strings.Contains(ex, "ada@") || strings.Contains(ex, "EXAMPLE") || strings.HasSuffix(ex, "AK") ||
+		!strings.Contains(ex, "[REDACTED:email]") || !strings.HasSuffix(ex, "[REDACTED:aws_access_key]") {
+		t.Fatalf("excerpt %q", ex)
+	}
+}
