@@ -8,7 +8,13 @@
 #   docker build -f products/promptdam/promptdam/deploy/Dockerfile --build-arg CMD=gateway \
 #     --build-arg VERSION=$(git -C products/promptdam/promptdam rev-parse --short HEAD) -t promptdam-gateway .
 
-FROM golang:1.27-alpine AS build
+# Base images are pinned by digest: a tag can be moved to other content.
+# To bump one, look its digest up and replace it (keep the tag for readers):
+#
+#   docker buildx imagetools inspect golang:1.27-alpine
+#   docker buildx imagetools inspect gcr.io/distroless/static-debian12:nonroot
+
+FROM golang:1.27-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS build
 ARG CMD
 ARG VERSION=dev
 # The workspace's paths, so the product's go.mod finds the core (../../../core).
@@ -24,7 +30,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
       -ldflags "-s -w -X github.com/hasan-muzak/promptdam/server/core.Version=${VERSION}" \
       -o /out/app ./server/cmd/${CMD}
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 COPY --from=build /out/app /app
 USER nonroot:nonroot
 ENTRYPOINT ["/app"]
