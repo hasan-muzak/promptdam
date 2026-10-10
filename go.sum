@@ -317,5 +317,5 @@ modernc.org/memory v1.12.1 h1:nFMiWrpStgZczNl6XI9GnIk/rWhYIyHGUaR04pGbp9g=
 modernc.org/memory v1.12.1/go.mod h1:/JP4VbVC+K5sU2wZi9bHoq2MAkCnrt2r98UGeSK7Mjw=
 modernc.org/sqlite v1.57.0 h1:qNQP6xnx5M0ISNtlnxoOX0+cD5bJ0/gr9aMmndFczzg=
 modernc.org/sqlite v1.57.0/go.mod h1:yCJ2cmAaIkHQ25oXWrF8H4O1lIfPYPR26yCEDj2P3pQ=
-muzak.dev/framework v0.2.8 h1:60dCE4VD5+cwsKAfpxSlAuLzHsF+NmZ2+cUZUiweuYs=
-muzak.dev/framework v0.2.8/go.mod h1:HD08+Q3L7frqejZOw5eCDjah6mXVcHx/N2islAIuuG4=
+muzak.dev/framework v0.3.1 h1:BZ5ThQjx5FGJyR8y51CSbqd/dXnGJHZsF+55owcgUTE=
+muzak.dev/framework v0.3.1/go.mod h1:HD08+Q3L7frqejZOw5eCDjah6mXVcHx/N2islAIuuG4=

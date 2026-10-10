@@ -16,7 +16,7 @@ require (
 	github.com/stripe/stripe-go/v87 v87.0.0
 	github.com/valkey-io/valkey-go v1.0.78
 	golang.org/x/sync v0.23.0
-	muzak.dev/framework v0.2.8
+	muzak.dev/framework v0.3.1
 )
 
 require (
