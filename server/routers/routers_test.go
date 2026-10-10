@@ -413,6 +413,30 @@ func TestRules(t *testing.T) {
 	e.client.Get(path+"/rul_nope", alice).AssertStatus(http.StatusNotFound)
 }
 
+// A deleted route's cached answers go once the deletion is answered.
+func TestDeletedRouteForgetsItsCache(t *testing.T) {
+	ctx := context.Background()
+	e := setup(t)
+	alice := e.as("alice")
+	_, prj, base := e.project("alice")
+	r := testclient.Decoded[handlers.RouteOut](e.client.Post(base+"/routes", alice, testclient.JSON(map[string]any{
+		"name": "cached", "fallbacks": []string{}, "cache_ttl_seconds": 60,
+	})).AssertStatus(http.StatusCreated))
+	cache := responsecache.New(e.c.KV)
+	key := mustID(t, ids.Project, prj.ID).String() + ":cached:k"
+	cache.Put(ctx, key, &responsecache.Entry{Status: 200, Body: []byte(`{}`)}, time.Minute)
+
+	e.client.Delete(base+"/routes/"+r.ID, alice).AssertStatus(http.StatusNoContent)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, hit := cache.Get(ctx, key); !hit {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the deleted route's cached answer survived")
+		}
+	}
+}
+
 func TestRouters(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()

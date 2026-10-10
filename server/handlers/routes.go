@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -195,7 +194,7 @@ func (h *Handlers) UpdateRoute(ctx *muzak.Context, in UpdateRouteIn) (RouteOut, 
 	// Answers cached under the route as it was don't answer for it as it
 	// is: a new name, a router, no cache.
 	if old.CacheTTLSeconds > 0 && (r.Name != old.Name || r.Router != old.Router || r.CacheTTLSeconds == 0) {
-		h.forgetCache(pa.Project.ID, old.Name)
+		h.forgetCache(ctx, pa.Project.ID, old.Name)
 	}
 	h.audited(ctx, "route.updated", "route", ids.Encode(RoutePrefix, r.ID), map[string]any{"name": r.Name, "fallbacks": r.Fallbacks, "cache_ttl_seconds": r.CacheTTLSeconds, "prompt_cache": r.PromptCache, "router": r.Router})
 	return routeOut(r), nil
@@ -216,7 +215,7 @@ func (h *Handlers) DeleteRoute(ctx *muzak.Context, in RoutePath) (muzak.Empty, e
 		return muzak.Empty{}, routeFail(err)
 	}
 	if old.CacheTTLSeconds > 0 {
-		h.forgetCache(pa.Project.ID, old.Name)
+		h.forgetCache(ctx, pa.Project.ID, old.Name)
 	}
 	h.audited(ctx, "route.deleted", "route", in.Route, map[string]any{})
 	return muzak.Empty{}, nil
@@ -247,17 +246,22 @@ func routeFail(err error) error {
 	return err
 }
 
-// forgetCache deletes a route's cached answers, in the background: it
-// walks Valkey's keys.
-func (h *Handlers) forgetCache(project uuid.UUID, route string) {
+// forgetCache deletes a route's cached answers once the change is answered,
+// on the application's bounded background pool: it walks Valkey's keys. A
+// full pool, or a shutdown, leaves them to expire on their own.
+func (h *Handlers) forgetCache(ctx *muzak.Context, project uuid.UUID, route string) {
 	if h.Cache == nil {
 		return
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	log := ctx.Logger()
+	err := ctx.AfterResponse(func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
 		if _, err := h.Cache.Forget(ctx, project.String()+":"+route); err != nil {
-			slog.Warn("handlers: a route's cached answers weren't cleared; they expire on their own", "route", route, "err", err)
+			log.Warn("handlers: a route's cached answers weren't cleared; they expire on their own", "route", route, "err", err)
 		}
-	}()
+	})
+	if err != nil {
+		log.Warn("handlers: a route's cached answers weren't cleared; they expire on their own", "route", route, "err", err)
+	}
 }
