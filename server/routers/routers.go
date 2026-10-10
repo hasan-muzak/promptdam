@@ -355,8 +355,8 @@ func Mount(a *muzak.App, app *core.App) {
 			"are the difference, by reason (response_cache, routing, fallback, prompt_cache) and family. Default the "+
 			"last 30 days."))
 	r.Get("/v1/orgs/{org}/projects/{project}/analytics/savings/export", h.ExportSavings, ana, muzak.Title("Export Savings Ledger"),
-		project(tenancy.PermProjectsRead), muzak.Summary("The savings ledger as CSV: a line per call"),
-		muzak.Description("text/csv, newest first: time, request, key, developer, end user, route, family, requested and served "+
+		project(tenancy.PermProjectsRead), muzak.Summary("The savings ledger as CSV: a line per call"), muzak.Produces("text/csv"),
+		muzak.Description("text/csv, newest first:time, request, key, developer, end user, route, family, requested and served "+
 			"model, provider, status, error code, tokens, cost, counterfactual (the model asked for at list price, without any "+
 			"cache) and what was saved, in USD, with the reason and the response cache's answer. Default the last 30 days; at "+
 			"most 31 per export. Needs a plan with the ledger export."))

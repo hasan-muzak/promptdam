@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
 	"encoding/csv"
-	"log/slog"
+	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -33,43 +36,64 @@ var ledgerHeader = []string{"time", "request", "key", "developer", "user", "rout
 
 // ExportSavings streams the savings ledger of a range as CSV, a line per
 // call, oldest pages last (the request log's order: newest first).
-func (h *Handlers) ExportSavings(ctx *muzak.Context, in ExportSavingsIn) (muzak.Empty, error) {
+func (h *Handlers) ExportSavings(ctx *muzak.Context, in ExportSavingsIn) (muzak.Stream, error) {
 	pa := muzak.From[tenancy.ProjectAccess](ctx)
 	if err := h.requires(ctx, catalog.LedgerExport); err != nil {
-		return muzak.Empty{}, err
+		return muzak.Stream{}, err
 	}
 	from, to, err := in.bounds(30 * 24 * time.Hour)
 	if err != nil {
-		return muzak.Empty{}, err
+		return muzak.Stream{}, err
 	}
 	f := analytics.Filter{From: from, To: to}
 	// The first page is read before anything is written, so a bad range or
 	// a failing store still answers with an error.
 	rows, next, err := h.Analytics.Requests(ctx.Context(), pa.Project.ID, f, nil, exportPage)
 	if err != nil {
-		return muzak.Empty{}, analyticsFail(err)
+		return muzak.Stream{}, analyticsFail(err)
 	}
-	w := ctx.ResponseWriter()
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="promptdam-ledger-`+ids.Encode(ids.Project, pa.Project.ID)+"-"+
-		from.Format("2006-01-02")+"-"+to.Format("2006-01-02")+`.csv"`)
-	out := csv.NewWriter(w)
-	_ = out.Write(ledgerHeader)
-	for {
-		for _, r := range rows {
-			_ = out.Write(ledgerLine(r))
+	body := &ledgerCSV{ctx: ctx.Context(), next: next, page: func(ctx context.Context, after *analytics.Cursor) ([]analytics.Request, *analytics.Cursor, error) {
+		return h.Analytics.Requests(ctx, pa.Project.ID, f, after, exportPage)
+	}}
+	body.out = csv.NewWriter(&body.buf)
+	_ = body.out.Write(ledgerHeader)
+	body.add(rows)
+	return muzak.Stream{ContentType: "text/csv; charset=utf-8", Body: body, Download: true,
+		Filename: "promptdam-ledger-" + ids.Encode(ids.Project, pa.Project.ID) + "-" + from.Format("2006-01-02") + "-" +
+			to.Format("2006-01-02") + ".csv"}, nil
+}
+
+// ledgerCSV is the export's body. It reads the next page once the client
+// has taken the last, so a store that fails part way aborts the download
+// rather than ending the file cleanly short.
+type ledgerCSV struct {
+	ctx  context.Context // the request's
+	page func(ctx context.Context, after *analytics.Cursor) ([]analytics.Request, *analytics.Cursor, error)
+	next *analytics.Cursor
+	buf  bytes.Buffer
+	out  *csv.Writer
+}
+
+func (l *ledgerCSV) Read(p []byte) (int, error) {
+	for l.buf.Len() == 0 {
+		if l.next == nil {
+			return 0, io.EOF
 		}
-		out.Flush()
-		if next == nil || out.Error() != nil {
-			break
+		rows, next, err := l.page(l.ctx, l.next)
+		if err != nil {
+			return 0, fmt.Errorf("handlers: the ledger export broke off: %w", err)
 		}
-		if rows, next, err = h.Analytics.Requests(ctx.Context(), pa.Project.ID, f, next, exportPage); err != nil {
-			// Too late for an error response: the file ends short.
-			slog.Warn("handlers: the ledger export broke off", "project", pa.Project.ID, "err", err)
-			break
-		}
+		l.next = next
+		l.add(rows)
 	}
-	return muzak.Empty{}, nil
+	return l.buf.Read(p)
+}
+
+func (l *ledgerCSV) add(rows []analytics.Request) {
+	for _, r := range rows {
+		_ = l.out.Write(ledgerLine(r))
+	}
+	l.out.Flush()
 }
 
 func ledgerLine(r analytics.Request) []string {
