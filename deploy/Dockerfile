@@ -11,10 +11,13 @@
 # Base images are pinned by digest: a tag can be moved to other content.
 # To bump one, look its digest up and replace it (keep the tag for readers):
 #
-#   docker buildx imagetools inspect golang:1.27-alpine
+#   docker buildx imagetools inspect golang:1.27.2-alpine
 #   docker buildx imagetools inspect gcr.io/distroless/static-debian12:nonroot
 
-FROM golang:1.27-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS build
+# The Go image builds with its own Go (GOTOOLCHAIN=local), not go.mod's
+# toolchain line: its tag names the patch release, so a security release is
+# a visible bump here.
+FROM golang:1.27.2-alpine@sha256:85dc1069ac644ea3c527b177303a406eb3358192816cd7f9e5848eb658851673 AS build
 ARG CMD
 ARG VERSION=dev
 # The workspace's paths, so the product's go.mod finds the core (../../../core).
