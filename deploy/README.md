@@ -62,3 +62,28 @@ docker build -f products/promptdam/promptdam/deploy/Dockerfile --build-arg CMD=g
 ```
 
 Local images aren't signed and don't verify: they are for trying the image, not for the VPS.
+
+## Billing in Stripe test mode
+
+Once by hand before live keys (S5.4), with test keys in `.env` (`STRIPE_SECRET_KEY=sk_test_…`). The tests prove
+the same against a fake Stripe (`server/features/resolver/quota_test.go`); this proves Stripe's side.
+
+1. `task promptdam:stripe:sync` creates the products, prices and the `promptdam_requests` meter (again after any
+   change to `server/catalog/plans.go`: a changed price needs a new lookup key).
+2. Forward Stripe's events to the local API, and put the `whsec_…` it prints in `.env` as `STRIPE_WEBHOOK_SECRET`:
+
+   ```sh
+   stripe listen --forward-to localhost:8281/hooks/stripe
+   ```
+
+   Then start the API, the worker and the gateway (`task promptdam:dev:api`, `dev:worker`, `dev:gateway`).
+3. Buy Pro: `POST /v1/orgs/{org}/billing/checkout` with `{"plan": "pro", "interval": "month"}`, open the URL it
+   returns, and pay with card `4242 4242 4242 4242`. `GET /v1/orgs/{org}/billing` says `pro` within seconds.
+4. Make calls through the gateway. Within the hour (the worker's `metering-report`), Stripe's test dashboard shows
+   the meter's events for the customer, and `GET /v1/orgs/{org}/billing/upcoming` the invoice to come.
+5. Set a spend cap of $1 (`PUT /v1/orgs/{org}/billing/spend-caps/requests` with `{"cap_cents": 100}`):
+   `GET /v1/orgs/{org}/usage` shows the requests it allows (`ceiling`: 520,000 on Pro), and `DELETE` puts the
+   default back. Calls refused at the cap are the tests' (it takes 500,000 calls to reach it here).
+6. `go run ./server/cmd/api billing reconcile --stripe` compares what the gateway counted, what was stored and
+   reported, and what Stripe holds: it should list nothing.
+7. Cancel (`POST /v1/orgs/{org}/billing/cancel`): Pro stays, with `cancel_at_period_end`, until the period ends.

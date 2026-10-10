@@ -93,7 +93,8 @@ savings ledger proves what Promptdam saves; it doesn't set the invoice.
   response cache count too: the gateway still served them.
 - **Calls refused before they go anywhere don't count:** a bad or revoked key, a key's rate limit, a spent blocking
   budget, the firewall.
-- **Free** stops at 50,000: further calls get 429 `quota_exceeded` until the month resets. Nothing is billed.
+- **Free** stops at 50,000: further calls get 429 `quota_exceeded` until the month ends (UTC), and the error says
+  when. Nothing is billed.
 - **Paid plans** go on past their requests, billed as overage at the end of the period:
 
 | Plan | Included | Overage | Per million past the plan |
@@ -104,7 +105,15 @@ savings ledger proves what Promptdam saves; it doesn't set the invoice.
 
 - **Spend cap on overage:** by default, overage can cost at most the plan's own price per period (Pro: $49, up to
   980,000 extra requests). Organizations set their own cap (0 allows no overage, -1 removes it). Calls past the cap
-  are refused like Free's.
+  get 429 `spend_cap_reached` until the period ends or the cap is raised, and Stripe is never told of more.
+- **Periods:** a paid plan's period is its subscription's (from the day it started, monthly or yearly: a year
+  includes 12 months of requests); Free's is the calendar month. A renewal left unpaid past its week of grace ends
+  the plan (keel's billing policy, rule 7): Free's limits apply, with `quota_exceeded`, until a new subscription.
+- **Notices:** owners and billing members get an email at 80% and 100% of the plan's requests, and when the spend
+  cap first stops calls. Webhooks say the same: `usage.threshold_reached`, and `usage.blocked` (reason `plan_limit`
+  or `spend_cap`) the first time a period refuses a call.
+- **Billing:** usage reaches Stripe within the hour, and in full when the invoice is made. Stripe's metered price
+  bills only the requests past the plan's.
 
 ---
 

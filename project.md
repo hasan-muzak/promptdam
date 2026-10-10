@@ -599,7 +599,36 @@ Model routers replace per-family savings experiments, and cross-format translati
 - **Exit:** a router in shadow mode on a design partner's traffic reaches `router.ready`, then serves it active with measured savings; a forced quality drop demotes a tier within one window; secrets in a test prompt are blocked before leaving.
 
 ### S4: Billing, launch readiness and lead magnet (Tue Apr 13 – Fri Apr 23)
-- [ ] S4.1 Billing: plans and the `requests` overage meter. The savings-plan base, `savings_share` meter and monthly report approval are deferred (2026-10-07).
+- [x] S4.1 Billing: plans and the `requests` overage meter. The savings-plan base, `savings_share` meter and monthly report approval are deferred (2026-10-07).
+  - **Done 2026-10-09.** keel's billing and metering do the work: checkout, upgrades at once and downgrades at the
+    period end, the spend cap, hourly usage reports to Stripe's meter, and the notices. This round proved Promptdam's
+    catalog through them end to end, against a fake Stripe (core `keel.WithBillingGateway`, additive) and stripe-mock:
+    - Free stops at 50,000 with 429 `quota_exceeded` until the month ends. Calls refused before they go anywhere
+      aren't counted; answers from the response cache are.
+    - Pro goes on past its 500,000, and Stripe is told every request once. The default cap is the plan's price.
+    - The spend cap refuses calls with 429 `spend_cap_reached` (every refusal said "no requests left this month"
+      before) and bills no more than the cap. Resetting it lets calls through. Refusals say when calls resume.
+    - A cancelled plan keeps its features until its period ends, with its overage billed. Then Free's limits and
+      features apply, counted afresh.
+    - The catalog's prices, the requests' metered prices included, sync to stripe-mock under the lookup keys
+      checkout uses.
+  - Noted, for later (the core's, or Stripe's settings):
+    - Changing a plan's included requests or overage price needs new lookup keys: `stripe sync` keeps an existing
+      metered price.
+    - No warning before the spend cap: notices come at 80% and 100% of the included requests, then when the cap
+      stops calls.
+    - A mid-period upgrade: Stripe bills the old plan's overage up to the upgrade and counts the new plan's included
+      requests from then on, while Promptdam's counter keeps the period's total. The dashboard's estimate and the
+      invoices can differ for that period.
+    - Requests counted between an invoice being made and the renewal reaching the gateway (about a minute) may land
+      in the ended period and miss its invoice.
+    - A subscription cancelled for an unpaid invoice gets no final invoice: that period's overage isn't billed (by
+      policy).
+    - Renewals that need 3D Secure: billing doesn't handle `invoice.payment_action_required`, so Stripe's own
+      customer emails must ask for it (keel `docs/billing-policy.md`).
+    - `billing reconcile --stripe` compares live, stored, reported and Stripe usage when run; nothing runs it on a
+      schedule yet.
+  - **Needs you:** one checkout in Stripe test mode end to end (`deploy/README.md`), then live keys at S5.4.
 - [ ] S4.2 "LLM Bill Audit" free tool on the site. The user uploads OpenAI/Anthropic usage exports (CSV), or a 7-day sample through Promptdam's free plan. Output:
   - an estimated savings breakdown (model downgrade potential by family size, caching potential, batch potential)
   - a PDF/email report and a CTA.

@@ -18,6 +18,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hasan-muzak/keel-core/pkg/apikeys"
+	"github.com/hasan-muzak/keel-core/pkg/billing"
+	"github.com/hasan-muzak/keel-core/pkg/billing/billingtest"
 	"github.com/hasan-muzak/keel-core/pkg/config"
 	"github.com/hasan-muzak/keel-core/pkg/counter"
 	"github.com/hasan-muzak/keel-core/pkg/entx"
@@ -51,6 +53,9 @@ type Options struct {
 	Sample func() float64
 	// Payloads keeps captured calls' payloads in a test bucket.
 	Payloads bool
+	// Stripe bills through a fake Stripe (World.Stripe): plans are bought
+	// with World.Subscribe, usage reports read with Stripe.Billed.
+	Stripe bool
 }
 
 // World is the gateway serving one project, with one provider ("main", a
@@ -70,9 +75,15 @@ type World struct {
 	Log      *requestlog.Log
 	// Eval evaluates routers' sampled calls (with ClickHouse).
 	Eval *evaluate.Evaluator
+	// Stripe is the fake Stripe billing goes through (Options.Stripe).
+	Stripe *billingtest.FakeGateway
+	// Customer is the organization's customer at the fake Stripe, once
+	// it subscribed.
+	Customer string
 
 	mu      sync.Mutex
 	records []gateway.Record
+	ahead   time.Duration // how far metering's clock runs ahead (Fresh)
 }
 
 // New starts a World.
@@ -84,7 +95,13 @@ func New(t *testing.T, opts Options) *World {
 		t.Fatal(err)
 	}
 	cfg := keel.Config{Base: config.Base{Env: config.Development, APIKeyPepper: strings.Repeat("p", 32)}, MailURL: "smtp://localhost:1025"}
-	c, err := keel.New(ctx, cfg, core.Product, d, testkit.Valkey(t))
+	var stripe *billingtest.FakeGateway
+	var kopts []keel.Option
+	if opts.Stripe {
+		stripe = billingtest.NewFakeGateway()
+		kopts = append(kopts, keel.WithBillingGateway(stripe))
+	}
+	c, err := keel.New(ctx, cfg, core.Product, d, testkit.Valkey(t), kopts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +111,7 @@ func New(t *testing.T, opts Options) *World {
 	if opts.Payloads {
 		c.Blob = testkit.Blob(t, core.Product.Key)
 	}
-	w := &World{T: t, Ctx: ctx, C: c, App: core.NewApp(c)}
+	w := &World{T: t, Ctx: ctx, C: c, App: core.NewApp(c), Stripe: stripe}
 	u, err := c.Tenancy.SignIn(ctx, identity.Claims{UID: "fb-acme", Email: "acme@example.com", EmailVerified: true})
 	if err != nil {
 		t.Fatal(err)
@@ -187,6 +204,44 @@ func (w *World) Grant(features ...string) {
 		}
 	}
 	w.C.Billing.BustEntitlements(w.Ctx, w.Org)
+}
+
+// Subscribe buys the monthly plan as a customer does, through checkout at
+// the fake Stripe (Options.Stripe), with a period that began an hour ago,
+// and applies the subscription as Stripe's webhook does.
+func (w *World) Subscribe(plan string) {
+	w.T.Helper()
+	if _, err := w.C.Billing.Checkout(w.Ctx, w.Org, "acme@example.com", plan, "month"); err != nil {
+		w.T.Fatal(err)
+	}
+	cs := w.Stripe.Checkouts()
+	in := cs[len(cs)-1]
+	start := time.Now().Add(-time.Hour).Truncate(time.Second)
+	w.Customer = in.CustomerID
+	w.Stripe.SetSubscriptions(in.CustomerID, billing.SubscriptionInfo{
+		ID: "sub_" + w.Org.String(), CustomerID: in.CustomerID, Status: "active", LookupKeys: in.LookupKeys,
+		PeriodStart: start, PeriodEnd: start.AddDate(0, 1, 0), StartDate: start, OrgID: in.OrgID.String(),
+	})
+	w.SyncStripe()
+}
+
+// SyncStripe applies what the fake Stripe holds for the organization's
+// customer, as a webhook does, and makes the gateway see it (Fresh).
+func (w *World) SyncStripe() {
+	w.T.Helper()
+	if err := w.C.Billing.SyncCustomer(w.Ctx, w.Customer); err != nil {
+		w.T.Fatal(err)
+	}
+	w.Fresh()
+}
+
+// Fresh makes the gateway see the organization's plan as it is now:
+// metering keeps entitlements 10 s in process, so its clock moves on.
+func (w *World) Fresh() {
+	w.C.Billing.BustEntitlements(w.Ctx, w.Org)
+	w.ahead += time.Minute
+	ahead := w.ahead
+	w.C.Metering.SetClock(func() time.Time { return time.Now().Add(ahead) })
 }
 
 // Serves makes a provider of the World serve only models: "main" serves

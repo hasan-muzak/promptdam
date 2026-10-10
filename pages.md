@@ -573,7 +573,11 @@ API: `GET …/members`, `PATCH/DELETE …/members/{user}`, `GET/POST …/invitat
   on cheaper tiers").
 - **Usage:** requests this period against the plan, per day; overage so far and its price (Pro $5, Team $3, Business
   $2 per extra 100k). Past periods.
-- **Spend caps:** a cap on overage.
+- **Spend caps:** a cap on overage, by default the plan's price; set it in dollars, see the requests it allows, or
+  remove it.
+- **When calls are refused** (Free's limit, the spend cap, an unpaid invoice past its grace), say it at the top of
+  every page with when calls resume and the one action that fixes it (upgrade, raise the cap, pay the invoice): the
+  gateway answers 429 `quota_exceeded` or `spend_cap_reached` meanwhile.
 - **Invoices and payment method:** the Stripe portal.
 - Actions: change plan (checkout), cancel, resume, preview the next invoice.
 - API: `GET /v1/billing/plans`, `GET /v1/orgs/{org}/billing`, `…/billing/checkout`, `…/billing/plan`, `…/billing/cancel`,

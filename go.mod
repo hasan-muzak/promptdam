@@ -13,6 +13,7 @@ require (
 	github.com/hasan-muzak/keel-core v0.0.0
 	github.com/openai/openai-go/v3 v3.71.1
 	github.com/riverqueue/river v0.48.0
+	github.com/stripe/stripe-go/v87 v87.0.0
 	github.com/valkey-io/valkey-go v1.0.78
 	golang.org/x/sync v0.23.0
 	muzak.dev/framework v0.2.8
@@ -102,7 +103,6 @@ require (
 	github.com/spf13/cobra v1.7.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
-	github.com/stripe/stripe-go/v87 v87.0.0 // indirect
 	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect

@@ -166,6 +166,39 @@ func New(cfg Config) *Resolver {
 	return &Resolver{cfg: cfg, keys: memcache.New[[32]byte, apikeys.Principal](KeyTTL, KeyTTL, 100_000)}
 }
 
+// outOfRequests refuses a call the plan has no requests left for, until
+// the period ends: Free's limit (or the free plan's, while a paid plan is
+// restricted for an unpaid invoice) answers quota_exceeded, a paid plan's
+// spend cap on overage spend_cap_reached.
+func (r *Resolver) outOfRequests(ctx context.Context, org uuid.UUID) *gateway.Error {
+	code, msg, fix := "quota_exceeded", "the organization's plan has no requests left", "an owner can upgrade the plan under Billing"
+	var until time.Time
+	if r.cfg.Entitlements != nil {
+		if e, err := r.cfg.Entitlements(ctx, org); err == nil {
+			until = e.PeriodEnd
+			_, capped := e.Ceiling(catalog.Requests)
+			switch {
+			case e.Restricted:
+				msg = "the organization's invoice went unpaid past its grace period, so the free plan's requests apply and none are left"
+				fix = "an owner can subscribe again under Billing"
+			case capped:
+				code, msg = "spend_cap_reached", "the organization's overage reached its spend cap"
+				fix = "an owner can raise the cap under Billing"
+			}
+		}
+	}
+	retry := time.Hour
+	if !until.IsZero() {
+		msg += " until " + until.UTC().Format("2006-01-02 15:04 UTC")
+		if left := time.Until(until); left > 0 && left < retry {
+			retry = left
+		}
+	}
+	e := refuse(http.StatusTooManyRequests, gateway.TypeRateLimit, code, msg+": "+fix)
+	e.RetryAfter = retry
+	return e
+}
+
 func refuse(status int, typ, code, msg string) *gateway.Error {
 	return &gateway.Error{Status: status, Type: typ, Code: code, Message: msg}
 }
@@ -369,12 +402,10 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 		targets = append(targets, r.fallback(snap, format, f, targets)...)
 	}
 	// The plan's requests, counted once a call can go somewhere: hard on
-	// Free. If usage can't be counted, the call goes through.
+	// Free, and on paid plans at the spend cap. If usage can't be counted,
+	// the call goes through.
 	if d, err := r.cfg.Quota.Use(ctx, m.Org, catalog.Requests, 1); err == nil && !d.Allowed() {
-		e := refuse(http.StatusTooManyRequests, gateway.TypeRateLimit, "quota_exceeded",
-			"the organization's plan has no requests left this month")
-		e.RetryAfter = time.Hour
-		return nil, e
+		return nil, r.outOfRequests(ctx, m.Org)
 	}
 	// An answer that gets tokenized values back isn't sampled: its judge
 	// would read them. Nor is a call a policy decided: replays would take
