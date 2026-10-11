@@ -44,7 +44,7 @@ type env struct {
 	app    *core.App
 	api    *muzak.App
 	client *testclient.Client
-	issuer *testkit.FirebaseIssuer
+	issuer *testkit.IdenzyIssuer
 }
 
 func setup(t *testing.T) *env { t.Helper(); return setupWith(t, false) }
@@ -68,7 +68,7 @@ func setupWith(t *testing.T, events bool, blob ...bool) *env {
 	if len(blob) > 0 && blob[0] {
 		c.Blob = testkit.Blob(t, core.Product.Key)
 	}
-	iss := testkit.NewFirebaseIssuer(t, "demo-keel")
+	iss := testkit.NewIdenzyIssuer(t)
 	c.Verifier = iss.Verifier()
 	a := c.API("test")
 	app := core.NewApp(c)

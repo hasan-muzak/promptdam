@@ -41,6 +41,12 @@ tasks:
     cmds:
       - atlas migrate diff {{.CLI_ARGS}} --dir "file://server/migrations/postgres?format=goose" --to "ent://server/ent/schema" --dev-url "docker://postgres/18/dev?search_path=public"
 
+  dev:idenzy:
+    desc: Create Promptdam's local Idenzy project and write its keys to .env (Idenzy runs with `task dev:idenzy` in keel)
+    dir: ../../..
+    cmds:
+      - infra/idenzy/project.sh products/promptdam/promptdam promptdam
+
   dev:api:
     desc: Run Promptdam's API on :8281 (needs `task promptdam:dev:stack`)
     dotenv: [".env"]
