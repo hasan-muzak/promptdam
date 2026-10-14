@@ -35,11 +35,44 @@ type TierModel struct {
 	// Weights are the model's sparse weights, packed (encodeWeights).
 	Weights []byte      `json:"weights,omitempty"`
 	Metrics TierMetrics `json:"metrics"`
+	// OutputRatio is how many output tokens the default tier writes for
+	// each one this tier writes on the same calls (judged samples answered
+	// by both), and OutputPairs how many calls measured it: the ledger
+	// prices what a routed call would have cost on the default tier with
+	// it (0: not measured on enough calls).
+	OutputRatio float64 `json:"output_ratio,omitempty"`
+	OutputPairs int     `json:"output_pairs,omitempty"`
 
 	// index and weight are Weights unpacked (Prepare).
 	prepared bool
 	index    []uint32
 	weight   []float32
+}
+
+// MinOutputPairs is how many calls answered by both a tier and the
+// default tier its output ratio needs.
+const MinOutputPairs = 50
+
+// Ratio is the tier's output ratio against the default tier, when enough
+// calls measured it.
+func (t *TierModel) Ratio() (float64, bool) {
+	if t == nil || t.OutputPairs < MinOutputPairs || t.OutputRatio <= 0 {
+		return 0, false
+	}
+	return t.OutputRatio, true
+}
+
+// Tier is a tier's model (nil when the classifier has none).
+func (m *Model) Tier(name string) *TierModel {
+	if m == nil {
+		return nil
+	}
+	for i := range m.Tiers {
+		if m.Tiers[i].Tier == name {
+			return &m.Tiers[i]
+		}
+	}
+	return nil
 }
 
 // TierMetrics say how a tier's model did on samples it wasn't trained on.

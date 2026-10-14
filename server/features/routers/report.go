@@ -95,6 +95,19 @@ type hourly struct {
 	CacheOut uint64 `ch:"cache_write"`
 }
 
+// writes is how many output tokens the default tier writes for each one
+// tier writes, measured on the router's judged calls (1 for the default
+// tier, or when not measured).
+func writes(r Router, tier string) float64 {
+	if tier == r.Spec.Default {
+		return 1
+	}
+	if ratio, ok := r.Classifier.Tier(tier).Ratio(); ok {
+		return ratio
+	}
+	return 1
+}
+
 // BuildReport reads a router's report for [from, to). Times of judged
 // calls are bound in milliseconds: ClickHouse compares a DateTime64 column
 // with a whole-second DateTime wrongly within that second.
@@ -157,7 +170,12 @@ func BuildReport(ctx context.Context, db *events.DB, project uuid.UUID, r Router
 		case m == nil:
 			rep.Unpriced += h.Priced
 		default:
-			u := wire.Usage{Usage: llm.Usage{Input: h.Input, CacheRead: h.CacheIn, CacheWrite: h.CacheOut, Output: h.Output}}
+			// The chosen tier, priced on the call's input with no cache (its
+			// model's cache isn't the served one's: a projection that errs
+			// low on savings), writing what it writes against the served
+			// tier on the router's judged calls.
+			out := float64(h.Output) * writes(r, h.Tier) / writes(r, h.Decided)
+			u := wire.Usage{Usage: llm.Usage{Input: h.Input, Output: uint64(math.Round(out))}}
 			rep.EstimatedMicros += int64(m.CostMicros(u.Usage))
 		}
 	}

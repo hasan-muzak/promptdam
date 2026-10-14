@@ -70,21 +70,26 @@ type Row struct {
 	Verdict, Check, JudgeModel                   string
 	Consistent                                   bool
 	CandidateMicros, BaselineMicros, JudgeMicros int64
-	Features                                     []uint32
-	RetentionDays                                uint16
+	// CandidateOutput and BaselineOutput are the two answers' output
+	// tokens: what the ledger learns each tier writes against the default.
+	CandidateOutput, BaselineOutput uint32
+	Features                        []uint32
+	RetentionDays                   uint16
 }
 
 var columns = []string{
 	"project_id", "ts", "org_id", "router", "trace", "family_id", "served_tier", "decided_tier", "tier_source",
 	"baseline_tier", "baseline_model", "candidate_tier", "candidate_model", "candidate_rank", "verdict", "check",
-	"judge_model", "consistent", "candidate_micros", "baseline_micros", "judge_micros", "features", "retention_days",
+	"judge_model", "consistent", "candidate_micros", "baseline_micros", "judge_micros", "candidate_output_tokens",
+	"baseline_output_tokens", "features", "retention_days",
 }
 
 func values(r Row) []any {
 	return []any{
 		r.ProjectID, r.TS, r.OrgID, r.Router, r.Trace, r.Family, r.ServedTier, r.DecidedTier, r.TierSource,
 		r.BaselineTier, r.BaselineModel, r.CandidateTier, r.CandidateModel, r.CandidateRank, r.Verdict, r.Check,
-		r.JudgeModel, r.Consistent, r.CandidateMicros, r.BaselineMicros, r.JudgeMicros, r.Features, r.RetentionDays,
+		r.JudgeModel, r.Consistent, r.CandidateMicros, r.BaselineMicros, r.JudgeMicros, r.CandidateOutput, r.BaselineOutput,
+		r.Features, r.RetentionDays,
 	}
 }
 
@@ -223,8 +228,9 @@ type tierRun struct {
 	answer Answer
 	target gateway.Target
 	// micros is what getting the answer cost the evaluation (0 for the
-	// answer the client got).
+	// answer the client got); output is its output tokens (0: unknown).
 	micros int64
+	output uint64
 	err    error
 }
 
@@ -247,6 +253,9 @@ func (e *Evaluator) run(ctx context.Context, rec *gateway.Record) {
 	if rec.Answer != nil {
 		if a, err := answerOf(rec.Format, rec.Answer, rec.Stream); err == nil {
 			runs[served] = &tierRun{answer: a, target: gateway.Target{Provider: rec.Provider, Kind: rec.Kind, Model: rec.TargetModel}}
+			if rec.UsageKnown {
+				runs[served].output = rec.Usage.Output
+			}
 		}
 	}
 	// The other tiers answer at once, each on its own model and fallbacks.
@@ -292,6 +301,9 @@ func (e *Evaluator) run(ctx context.Context, rec *gateway.Record) {
 			RetentionDays: retention}
 		if len(rows) == 0 {
 			row.BaselineMicros = base.micros
+		}
+		if run.err == nil {
+			row.CandidateOutput, row.BaselineOutput = uint32(min(run.output, 1<<31)), uint32(min(base.output, 1<<31))
 		}
 		total += run.micros
 		switch v, how, ok := check(base.answer, run.answer, wantJSON); {
@@ -372,7 +384,7 @@ func (e *Evaluator) replay(ctx context.Context, m *resolver.Meta, snap *snapshot
 	var out tierRun
 	for _, tg := range targets {
 		a, usage, status, err := e.callTier(ctx, tg, f, body)
-		out = tierRun{answer: a, target: tg, micros: e.cost(m, tg, usage), err: err}
+		out = tierRun{answer: a, target: tg, micros: e.cost(m, tg, usage), output: usage.Output, err: err}
 		if err == nil || !retryable(status) {
 			return out
 		}

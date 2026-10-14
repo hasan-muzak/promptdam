@@ -73,6 +73,11 @@ type Meta struct {
 	// named a router: its default tier's model ("" for the model asked
 	// for).
 	Baseline gateway.Target
+	// OutputRatio is how many output tokens the router's default tier
+	// writes for each one the served tier writes, measured on the router's
+	// judged calls (0: not measured, or savings aren't counted against the
+	// default tier): the ledger prices the counterfactual with it.
+	OutputRatio float64
 	// Decision is the decision model's call when one was asked: its
 	// target and usage, which the call's cost includes.
 	Decision struct {

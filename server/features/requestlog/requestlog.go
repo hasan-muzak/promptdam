@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -347,12 +348,22 @@ func (l *Log) ledger(r *gateway.Record, m *resolver.Meta, cost int64) Ledger {
 		return Ledger{Counterfactual: cost}
 	}
 	led := Ledger{Counterfactual: counterfactual(price, r.Usage)}
+	// A router's call whose tier's writing was measured against the
+	// default tier: the counterfactual writes what the default would have.
+	measured := rerouted && !r.Fallback && r.Cache != "hit" && m.OutputRatio > 0
+	if measured {
+		u := r.Usage
+		u.Output = uint64(math.Round(float64(u.Output) * m.OutputRatio))
+		led.Counterfactual = counterfactual(price, u)
+	}
 	led.Savings = led.Counterfactual - cost
 	switch {
 	case r.Cache == "hit":
 		led.Reason, led.Basis = ReasonResponseCache, BasisCache
 	case rerouted && r.Fallback:
 		led.Reason, led.Basis = ReasonFallback, BasisEstimate
+	case measured:
+		led.Reason, led.Basis = ReasonRouting, BasisReplays
 	case rerouted:
 		led.Reason, led.Basis = ReasonRouting, BasisEstimate
 	case r.Usage.CacheRead > 0 || r.Usage.CacheWrite > 0:

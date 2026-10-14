@@ -62,6 +62,10 @@ const (
 	// BasisEstimate: the model asked for, priced on the tokens of the model
 	// that served the call (which may think or write more, or less).
 	BasisEstimate = "estimate"
+	// BasisReplays: the router's default tier, priced on the call's input
+	// and the output that tier writes against the served one, measured on
+	// the router's judged calls.
+	BasisReplays = "replays"
 )
 
 // Ledger is what a call would have cost on the model asked for at list

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hasan-muzak/keel-core/pkg/llm"
@@ -236,11 +237,20 @@ func (r *Resolver) place(ctx context.Context, snap *snapshot.Snapshot, rt *route
 	}
 	m.Router, m.Tier, m.Decided, m.Shadow = rt.Name, spec.Tiers[pl.Served].Name, spec.Tiers[pl.Choice.Tier].Name, pl.Shadow
 	m.TierSource, m.TierConfidence = pl.Choice.Source, pl.Choice.Confidence
+	def := spec.Index(spec.Default)
 	if named {
-		if f := &pl.Fits[spec.Index(spec.Default)]; f.Checked && len(f.Targets) > 0 {
+		if f := &pl.Fits[def]; f.Checked && len(f.Targets) > 0 {
 			m.Baseline = f.Targets[0]
-		} else if base := r.fallback(snap, c.Format, spec.Tiers[spec.Index(spec.Default)].Model, nil); len(base) > 0 {
+		} else if base := r.fallback(snap, c.Format, spec.Tiers[def].Model, nil); len(base) > 0 {
 			m.Baseline = base[0]
+		}
+	}
+	// What the served tier writes against the default tier, measured on
+	// the router's judged calls, prices the counterfactual: when savings
+	// are counted against the default tier.
+	if pl.Served != def && (named || c.Request.Model == bareModel(spec.Tiers[def].Model)) {
+		if ratio, ok := rt.Classifier.Tier(spec.Tiers[pl.Served].Name).Ratio(); ok {
+			m.OutputRatio = ratio
 		}
 	}
 	// A turn's placement holds for the calls that continue it, on every
@@ -289,6 +299,14 @@ func (r *Resolver) turnOf(ctx context.Context, rt *routers.Router, m *Meta) *tur
 	}
 	ts.provider, ts.model = rec.Provider, rec.Model
 	return ts
+}
+
+// bareModel is a tier's model without its provider ("provider/model").
+func bareModel(model string) string {
+	if _, m, ok := strings.Cut(model, "/"); ok {
+		return m
+	}
+	return model
 }
 
 // preferFirst moves the target of provider's model to the front, keeping

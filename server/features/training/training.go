@@ -60,9 +60,11 @@ func New(cfg Config) *Service {
 var ErrNoEvents = errors.New("training: no request log")
 
 type judged struct {
-	Tier     string   `ch:"candidate_tier"`
-	Verdict  string   `ch:"verdict"`
-	Features []uint32 `ch:"features"`
+	Tier            string   `ch:"candidate_tier"`
+	Verdict         string   `ch:"verdict"`
+	Features        []uint32 `ch:"features"`
+	CandidateOutput uint32   `ch:"candidate_output_tokens"`
+	BaselineOutput  uint32   `ch:"baseline_output_tokens"`
 }
 
 // Train trains a router's classifier and stores it. ctx is scoped to the
@@ -74,8 +76,8 @@ func (s *Service) Train(ctx context.Context, r *pdent.ModelRouter) (*classifier.
 	var rows []judged
 	// Only calls judged against the router's current default tier say
 	// anything of its tiers now.
-	err := s.cfg.Events.Select(ctx, &rows, events.Project(r.ProjectID), `SELECT candidate_tier, verdict, features
-		FROM router_evals WHERE {tenant} AND router = ? AND baseline_tier = ? AND verdict != ''
+	err := s.cfg.Events.Select(ctx, &rows, events.Project(r.ProjectID), `SELECT candidate_tier, verdict, features,
+		candidate_output_tokens, baseline_output_tokens FROM router_evals WHERE {tenant} AND router = ? AND baseline_tier = ? AND verdict != ''
 		AND ts >= fromUnixTimestamp64Milli(?) ORDER BY ts DESC LIMIT ?`, r.Name, r.DefaultTier, s.cfg.Now().Add(-Window).UnixMilli(),
 		maxPerTier*len(r.Tiers))
 	if err != nil {
@@ -88,7 +90,22 @@ func (s *Service) Train(ctx context.Context, r *pdent.ModelRouter) (*classifier.
 		}
 	}
 	byTier := map[string][]classifier.Sample{}
+	// What each tier writes against the default tier, on the calls both
+	// answered.
+	type outputs struct {
+		candidate, baseline uint64
+		pairs               int
+	}
+	written := map[string]*outputs{}
 	for _, row := range rows {
+		if row.CandidateOutput > 0 && row.BaselineOutput > 0 {
+			o := written[row.Tier]
+			if o == nil {
+				o = &outputs{}
+				written[row.Tier] = o
+			}
+			o.candidate, o.baseline, o.pairs = o.candidate+uint64(row.CandidateOutput), o.baseline+uint64(row.BaselineOutput), o.pairs+1
+		}
 		if len(byTier[row.Tier]) >= maxPerTier {
 			continue
 		}
@@ -104,8 +121,11 @@ func (s *Service) Train(ctx context.Context, r *pdent.ModelRouter) (*classifier.
 		if i == def {
 			continue
 		}
-		m.Tiers = append(m.Tiers, classifier.TrainTier(t.Name, i-def, byTier[t.Name],
-			classifier.Options{Floor: r.QualityFloor, Seed: uint64(r.ID.ID())}))
+		tm := classifier.TrainTier(t.Name, i-def, byTier[t.Name], classifier.Options{Floor: r.QualityFloor, Seed: uint64(r.ID.ID())})
+		if o := written[t.Name]; o != nil && o.candidate > 0 {
+			tm.OutputRatio, tm.OutputPairs = float64(o.baseline)/float64(o.candidate), o.pairs
+		}
+		m.Tiers = append(m.Tiers, tm)
 	}
 	prev, err := s.cfg.Ent.RouterClassifier.Query().Where(routerclassifier.RouterID(r.ID)).Only(ctx)
 	switch {

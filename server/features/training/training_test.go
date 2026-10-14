@@ -7,6 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hasan-muzak/keel-core/pkg/events"
+	"github.com/hasan-muzak/keel-core/pkg/llm"
+
+	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/classifier"
@@ -37,8 +41,10 @@ func TestTrainedRoutersPlaceCalls(t *testing.T) {
 
 	// 600 judged calls: the fast tier holds up on counting, listing and
 	// extracting, not on proving or judging legality.
+	// The default tier writes three times what the fast one does.
 	batch, err := w.C.Events.Unscoped().PrepareBatch(ctx, `INSERT INTO router_evals (project_id, ts, org_id, router,
-		baseline_tier, candidate_tier, candidate_rank, verdict, check, features, retention_days)`)
+		baseline_tier, candidate_tier, candidate_rank, verdict, check, candidate_output_tokens, baseline_output_tokens,
+		features, retention_days)`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +59,7 @@ func TestTrainedRoutersPlaceCalls(t *testing.T) {
 		text := fmt.Sprintf(tmpl, noun[rng.IntN(len(noun))])
 		in := classifier.Input{Ask: text, Messages: 1, InputTokens: (len(`{"model":"auto","messages":[{"role":"user","content":""}]}`) + len(text)) / 4}
 		if err := batch.Append(w.Project, time.Now(), w.Org, "auto", "smart", "fast", int8(-1), verdict, "judge",
-			classifier.Features(in), uint16(7)); err != nil {
+			uint32(100), uint32(300), classifier.Features(in), uint16(7)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -69,7 +75,7 @@ func TestTrainedRoutersPlaceCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	if m := stored.Model; m.Version != 1 || m.Default != "smart" || len(m.Tiers) != 1 || m.Tiers[0].Threshold <= 0 ||
-		stored.Samples != 600 || stored.RouterID != rt.ID {
+		stored.Samples != 600 || stored.RouterID != rt.ID || m.Tiers[0].OutputRatio != 3 || m.Tiers[0].OutputPairs != 600 {
 		t.Fatalf("classifier %+v", stored)
 	}
 	// Nothing judged since: nothing to train.
@@ -90,5 +96,28 @@ func TestTrainedRoutersPlaceCalls(t *testing.T) {
 	})
 	if tier, source := call("Is this warranty contract legal in Germany?"); tier != "smart" || source != "default" {
 		t.Fatalf("a legal question: %s %s", tier, source)
+	}
+
+	// A call the classifier sent to the fast tier saved what the default
+	// tier would have cost writing three times its output, measured.
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct {
+		Output         uint32 `ch:"output_tokens"`
+		Counterfactual int64  `ch:"counterfactual_micros"`
+		Basis          string `ch:"savings_basis"`
+	}
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT output_tokens, counterfactual_micros,
+		savings_basis FROM requests WHERE {tenant} AND tier = 'fast' AND tier_source = 'classifier' LIMIT 1`); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Basis != "replays" {
+		t.Fatalf("a routed call's ledger %+v", rows)
+	}
+	gpt5, _ := llm.Default().Lookup("openai", "gpt-5")
+	want := int64(gpt5.CostMicros(llm.Usage{Input: uint64(fakeupstream.PromptTokens), Output: 3 * uint64(rows[0].Output)}))
+	if rows[0].Counterfactual != want {
+		t.Fatalf("counterfactual %d, want %d (the default tier writing 3x)", rows[0].Counterfactual, want)
 	}
 }
