@@ -38,6 +38,11 @@ const (
 	// "model": "<router>:<tier>" does. The response names the tier that
 	// served it.
 	HeaderTier = HeaderPrefix + "Tier"
+	// HeaderAnswerModel set to "served" keeps the served model's name in
+	// answers: by default an answer the gateway moved to another model (a
+	// router, a rule, a fallback) names the model the client asked for, as
+	// agents expect; X-Promptdam-Served-Model names the other.
+	HeaderAnswerModel = HeaderPrefix + "Answer-Model"
 	// HeaderSession names the conversation a call belongs to, for clients
 	// that keep one; others' conversations are told apart by their
 	// messages.

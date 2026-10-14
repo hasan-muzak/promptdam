@@ -69,6 +69,12 @@ type call struct {
 	// abort cuts the client's connection once the call is logged: an
 	// answer that broke off after it began must not look complete.
 	abort bool
+	// answerModel is the model the answer names when the gateway moved the
+	// call to another (the one the client asked for), "" to leave the
+	// provider's; servedInAnswer keeps the provider's (X-Promptdam-Answer-
+	// Model: served).
+	answerModel    string
+	servedInAnswer bool
 }
 
 // outcome is what an attempt leaves the call to do.
@@ -125,6 +131,7 @@ func (c *call) serve() {
 	}
 	c.rec.RequestedModel, c.rec.Stream, c.rec.Request = req.Model, req.Stream, req
 	c.rec.Shape = families.Of(req.Prefix, c.r.Header.Get(brand.HeaderFamily))
+	c.servedInAnswer = strings.EqualFold(c.r.Header.Get(brand.HeaderAnswerModel), "served")
 
 	route, err := c.h.cfg.Resolver.Resolve(c.r.Context(), &Call{
 		Format: c.ep.format, Request: req, Header: c.r.Header, Trace: c.rec.Trace, Client: c.h.clientKey(c.r),
@@ -167,6 +174,9 @@ func (c *call) serve() {
 	if route.CacheTTL > 0 && c.h.cfg.Cache != nil && !req.Stream && c.ep.format != wire.AnthropicCountTokens {
 		if key, ok := responsecache.Key(route.CacheScope, c.ep.format, body); ok {
 			if e, hit := c.h.cfg.Cache.Get(c.r.Context(), key); hit {
+				if !c.servedInAnswer && route.Targets[0].Model != req.Model {
+					c.answerModel = req.Model
+				}
 				c.serveCached(e)
 				return
 			}
@@ -299,6 +309,12 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 	canAgain, canOnward := !lastTarget || !lastTry, !lastTarget
 	format, path := t.formatOf(c.ep.format), c.ep.path
 	c.rec.PromptCached = c.marked && format == c.ep.format
+	// A call moved to another model answers as the model asked for:
+	// agents keep state (thinking) by the model they called.
+	c.answerModel = ""
+	if !c.servedInAnswer && t.Model != req.Model {
+		c.answerModel = req.Model
+	}
 	var dropped []string
 	switch {
 	case format != c.ep.format:
@@ -481,7 +497,7 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	h.Set(brand.HeaderTrace, c.rec.Trace)
 	h.Set(brand.HeaderProvider, t.Provider)
 	h.Set(brand.HeaderServedModel, t.Model)
-	if translating || c.filter != nil {
+	if translating || c.filter != nil || c.answerModel != "" {
 		h.Del("Content-Length") // the answer is rewritten
 	}
 	if len(dropped) > 0 {
@@ -513,6 +529,9 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 		var st translate.Stream
 		if translating {
 			st, _ = translate.NewStream(format, c.ep.format, c.rec.Request.IncludeUsage)
+			if st != nil && c.answerModel != "" {
+				st = translate.Named(st, c.answerModel)
+			}
 		}
 		var out []byte
 		gone := false
@@ -533,6 +552,9 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 			if usage && dropUsage {
 				continue
 			}
+			if c.answerModel != "" {
+				ev = namedEvent(ev, c.answerModel)
+			}
 			if gone = !c.write(ev.Raw); gone {
 				break
 			}
@@ -547,7 +569,7 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 		}
 	case translating:
 		readErr = c.relayTranslated(res, t, body, meter, format)
-	case c.filter != nil:
+	case c.filter != nil || c.answerModel != "" && res.StatusCode < 300:
 		readErr = c.relayFiltered(res, t, body, meter)
 	default:
 		c.w.WriteHeader(res.StatusCode)
@@ -643,6 +665,7 @@ func (c *call) relayTranslated(res *http.Response, t Target, body io.Reader, met
 		if c.cacheKey != "" && res.StatusCode == http.StatusOK {
 			c.store(res.StatusCode, "application/json", t, meter, out)
 		}
+		out = named(out, c.answerModel)
 	} else {
 		out = translate.ErrorBody(c.ep.format, res.StatusCode, kept)
 	}
@@ -689,7 +712,7 @@ func (c *call) relayFiltered(res *http.Response, t Target, body io.Reader, meter
 		}
 	}
 	c.w.WriteHeader(res.StatusCode)
-	c.write(c.filterBody(kept))
+	c.write(named(c.filterBody(kept), c.answerModel))
 	return nil
 }
 
@@ -716,6 +739,48 @@ func (c *call) filterEvent(ev wire.Event) wire.Event {
 	return wire.Event{Name: ev.Name, Data: data, Raw: frame(ev.Name, data)}
 }
 
+// named is a whole answer naming model ("" leaves it): its top-level
+// "model", when it has one.
+func named(body []byte, model string) []byte {
+	if model == "" {
+		return body
+	}
+	if _, ok, err := wire.Field(body, "model"); err != nil || !ok {
+		return body
+	}
+	v, _ := json.Marshal(model)
+	out, err := wire.SetField(body, "model", v)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+// namedEvent is a streamed event naming model: a Chat Completions chunk's
+// model, a Messages stream's message_start's message.model. Other events
+// name none.
+func namedEvent(ev wire.Event, model string) wire.Event {
+	if ev.Partial || len(ev.Data) == 0 || ev.Data[0] != '{' {
+		return ev
+	}
+	data := ev.Data
+	switch ev.Name {
+	case "message_start":
+		msg, ok, err := wire.Field(data, "message")
+		if err != nil || !ok {
+			return ev
+		}
+		if data, err = wire.SetField(data, "message", named(msg, model)); err != nil {
+			return ev
+		}
+	case "":
+		data = named(data, model)
+	default:
+		return ev
+	}
+	return wire.Event{Name: ev.Name, Data: data, Raw: frame(ev.Name, data)}
+}
+
 // frame writes an event as a stream carries it.
 func frame(name string, data []byte) []byte {
 	b := make([]byte, 0, len(name)+len(data)+16)
@@ -736,8 +801,9 @@ func (c *call) serveCached(e *responsecache.Entry) {
 	h.Set(brand.HeaderProvider, e.Provider)
 	h.Set(brand.HeaderServedModel, e.Model)
 	h.Set(brand.HeaderCache, "hit")
+	h.Del("Content-Length")
 	c.w.WriteHeader(e.Status)
-	c.write(c.filterBody(e.Body))
+	c.write(named(c.filterBody(e.Body), c.answerModel))
 	if c.capture && c.sample && !c.overflow {
 		c.rec.Answer = c.answer
 	}

@@ -31,10 +31,24 @@ func NewStream(provider, client wire.Format, includeUsage bool) (Stream, error) 
 	return nil, refuse("streams of " + provider.String() + " can't be sent as " + client.String())
 }
 
+// Named makes s name model in what it writes, whatever model the
+// provider's events name (the gateway's answers name the model the client
+// asked for).
+func Named(s Stream, model string) Stream {
+	switch t := s.(type) {
+	case *toChat:
+		t.name = model
+	case *toMessages:
+		t.name = model
+	}
+	return s
+}
+
 // toChat turns Messages events into Chat Completions chunks.
 type toChat struct {
 	includeUsage bool
 	id, model    string
+	name         string // the model to name, when set
 	created      int64
 	tools        map[int]int // content block index → tool call index
 	nextTool     int
@@ -112,6 +126,9 @@ func (s *toChat) Event(out []byte, ev wire.Event) []byte {
 	case "message_start":
 		if e.Message != nil {
 			s.id, s.model, s.usage = e.Message.ID, e.Message.Model, e.Message.Usage
+			if s.name != "" {
+				s.model = s.name
+			}
 		}
 		return s.chunk(out, chunkDelta{Role: "assistant", Content: text("")}, nil)
 	case "content_block_start":
@@ -193,7 +210,8 @@ func (s *toChat) End(out []byte) []byte { return out }
 type toMessages struct {
 	started, done bool
 	id, model     string
-	next          int // the next content block's index
+	name          string // the model to name, when set
+	next          int    // the next content block's index
 	textOpen      bool
 	tools         []*pendingTool
 	byIndex       map[int]*pendingTool
@@ -249,10 +267,13 @@ func (s *toMessages) Event(out []byte, ev wire.Event) []byte {
 	}
 	if !s.started {
 		s.started, s.id, s.model = true, c.ID, c.Model
+		if s.name != "" {
+			s.model = s.name
+		}
 		b, _ := marshal(struct {
 			Type    string         `json:"type"`
 			Message messagesAnswer `json:"message"`
-		}{"message_start", messagesAnswer{ID: c.ID, Type: "message", Role: "assistant", Model: c.Model, Content: []msgBlock{}}})
+		}{"message_start", messagesAnswer{ID: c.ID, Type: "message", Role: "assistant", Model: s.model, Content: []msgBlock{}}})
 		out = sseEvent(out, "message_start", b)
 	}
 	for _, ch := range c.Choices {
