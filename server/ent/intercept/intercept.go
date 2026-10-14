@@ -11,6 +11,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/cachepolicy"
+	"github.com/hasan-muzak/promptdam/server/ent/cacheprofile"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -162,6 +163,33 @@ func (f TraverseCachePolicy) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.CachePolicyQuery", q)
+}
+
+// The CacheProfileFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CacheProfileFunc func(context.Context, *ent.CacheProfileQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CacheProfileFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CacheProfileQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CacheProfileQuery", q)
+}
+
+// The TraverseCacheProfile type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCacheProfile func(context.Context, *ent.CacheProfileQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCacheProfile) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCacheProfile) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CacheProfileQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CacheProfileQuery", q)
 }
 
 // The CaptureSettingFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -524,6 +552,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.BudgetQuery, predicate.Budget, budget.OrderOption]{typ: ent.TypeBudget, tq: q}, nil
 	case *ent.CachePolicyQuery:
 		return &query[*ent.CachePolicyQuery, predicate.CachePolicy, cachepolicy.OrderOption]{typ: ent.TypeCachePolicy, tq: q}, nil
+	case *ent.CacheProfileQuery:
+		return &query[*ent.CacheProfileQuery, predicate.CacheProfile, cacheprofile.OrderOption]{typ: ent.TypeCacheProfile, tq: q}, nil
 	case *ent.CaptureSettingQuery:
 		return &query[*ent.CaptureSettingQuery, predicate.CaptureSetting, capturesetting.OrderOption]{typ: ent.TypeCaptureSetting, tq: q}, nil
 	case *ent.FamilyLabelQuery:

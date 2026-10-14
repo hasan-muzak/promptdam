@@ -20,6 +20,8 @@ type Tx struct {
 	Budget *BudgetClient
 	// CachePolicy is the client for interacting with the CachePolicy builders.
 	CachePolicy *CachePolicyClient
+	// CacheProfile is the client for interacting with the CacheProfile builders.
+	CacheProfile *CacheProfileClient
 	// CaptureSetting is the client for interacting with the CaptureSetting builders.
 	CaptureSetting *CaptureSettingClient
 	// FamilyLabel is the client for interacting with the FamilyLabel builders.
@@ -180,6 +182,7 @@ func (tx *Tx) init() {
 	tx.AlertRule = NewAlertRuleClient(tx.config)
 	tx.Budget = NewBudgetClient(tx.config)
 	tx.CachePolicy = NewCachePolicyClient(tx.config)
+	tx.CacheProfile = NewCacheProfileClient(tx.config)
 	tx.CaptureSetting = NewCaptureSettingClient(tx.config)
 	tx.FamilyLabel = NewFamilyLabelClient(tx.config)
 	tx.FirewallSetting = NewFirewallSettingClient(tx.config)

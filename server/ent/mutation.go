@@ -16,6 +16,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/cachepolicy"
+	"github.com/hasan-muzak/promptdam/server/ent/cacheprofile"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -47,6 +48,7 @@ const (
 	TypeAlertRule        = "AlertRule"
 	TypeBudget           = "Budget"
 	TypeCachePolicy      = "CachePolicy"
+	TypeCacheProfile     = "CacheProfile"
 	TypeCaptureSetting   = "CaptureSetting"
 	TypeFamilyLabel      = "FamilyLabel"
 	TypeFirewallSetting  = "FirewallSetting"
@@ -3418,6 +3420,536 @@ func (m *CachePolicyMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *CachePolicyMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown CachePolicy edge %s", name)
+}
+
+// CacheProfileMutation represents an operation that mutates the CacheProfile nodes in the graph.
+type CacheProfileMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	created_at    *time.Time
+	updated_at    *time.Time
+	doc           *[]byte
+	models        *int
+	addmodels     *int
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*CacheProfile, error)
+	predicates    []predicate.CacheProfile
+}
+
+var _ ent.Mutation = (*CacheProfileMutation)(nil)
+
+// cacheprofileOption allows management of the mutation configuration using functional options.
+type cacheprofileOption func(*CacheProfileMutation)
+
+// newCacheProfileMutation creates new mutation for the CacheProfile entity.
+func newCacheProfileMutation(c config, op Op, opts ...cacheprofileOption) *CacheProfileMutation {
+	m := &CacheProfileMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCacheProfile,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCacheProfileID sets the ID field of the mutation.
+func withCacheProfileID(id uuid.UUID) cacheprofileOption {
+	return func(m *CacheProfileMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CacheProfile
+		)
+		m.oldValue = func(ctx context.Context) (*CacheProfile, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CacheProfile.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCacheProfile sets the old CacheProfile of the mutation.
+func withCacheProfile(node *CacheProfile) cacheprofileOption {
+	return func(m *CacheProfileMutation) {
+		m.oldValue = func(context.Context) (*CacheProfile, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CacheProfileMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CacheProfileMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of CacheProfile entities.
+func (m *CacheProfileMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CacheProfileMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CacheProfileMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CacheProfile.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CacheProfileMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CacheProfileMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CacheProfile entity.
+// If the CacheProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CacheProfileMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CacheProfileMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CacheProfileMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CacheProfileMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CacheProfile entity.
+// If the CacheProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CacheProfileMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CacheProfileMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetDoc sets the "doc" field.
+func (m *CacheProfileMutation) SetDoc(b []byte) {
+	m.doc = &b
+}
+
+// Doc returns the value of the "doc" field in the mutation.
+func (m *CacheProfileMutation) Doc() (r []byte, exists bool) {
+	v := m.doc
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDoc returns the old "doc" field's value of the CacheProfile entity.
+// If the CacheProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CacheProfileMutation) OldDoc(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDoc is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDoc requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDoc: %w", err)
+	}
+	return oldValue.Doc, nil
+}
+
+// ResetDoc resets all changes to the "doc" field.
+func (m *CacheProfileMutation) ResetDoc() {
+	m.doc = nil
+}
+
+// SetModels sets the "models" field.
+func (m *CacheProfileMutation) SetModels(i int) {
+	m.models = &i
+	m.addmodels = nil
+}
+
+// Models returns the value of the "models" field in the mutation.
+func (m *CacheProfileMutation) Models() (r int, exists bool) {
+	v := m.models
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModels returns the old "models" field's value of the CacheProfile entity.
+// If the CacheProfile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CacheProfileMutation) OldModels(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModels is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModels requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModels: %w", err)
+	}
+	return oldValue.Models, nil
+}
+
+// AddModels adds i to the "models" field.
+func (m *CacheProfileMutation) AddModels(i int) {
+	if m.addmodels != nil {
+		*m.addmodels += i
+	} else {
+		m.addmodels = &i
+	}
+}
+
+// AddedModels returns the value that was added to the "models" field in this mutation.
+func (m *CacheProfileMutation) AddedModels() (r int, exists bool) {
+	v := m.addmodels
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetModels resets all changes to the "models" field.
+func (m *CacheProfileMutation) ResetModels() {
+	m.models = nil
+	m.addmodels = nil
+}
+
+// Where appends a list predicates to the CacheProfileMutation builder.
+func (m *CacheProfileMutation) Where(ps ...predicate.CacheProfile) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CacheProfileMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CacheProfileMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CacheProfile, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CacheProfileMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CacheProfileMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CacheProfile).
+func (m *CacheProfileMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CacheProfileMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.created_at != nil {
+		fields = append(fields, cacheprofile.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, cacheprofile.FieldUpdatedAt)
+	}
+	if m.doc != nil {
+		fields = append(fields, cacheprofile.FieldDoc)
+	}
+	if m.models != nil {
+		fields = append(fields, cacheprofile.FieldModels)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CacheProfileMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case cacheprofile.FieldCreatedAt:
+		return m.CreatedAt()
+	case cacheprofile.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case cacheprofile.FieldDoc:
+		return m.Doc()
+	case cacheprofile.FieldModels:
+		return m.Models()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CacheProfileMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case cacheprofile.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case cacheprofile.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case cacheprofile.FieldDoc:
+		return m.OldDoc(ctx)
+	case cacheprofile.FieldModels:
+		return m.OldModels(ctx)
+	}
+	return nil, fmt.Errorf("unknown CacheProfile field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CacheProfileMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case cacheprofile.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case cacheprofile.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case cacheprofile.FieldDoc:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDoc(v)
+		return nil
+	case cacheprofile.FieldModels:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModels(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CacheProfile field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CacheProfileMutation) AddedFields() []string {
+	var fields []string
+	if m.addmodels != nil {
+		fields = append(fields, cacheprofile.FieldModels)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CacheProfileMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case cacheprofile.FieldModels:
+		return m.AddedModels()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CacheProfileMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case cacheprofile.FieldModels:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddModels(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CacheProfile numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CacheProfileMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CacheProfileMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CacheProfileMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown CacheProfile nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CacheProfileMutation) ResetField(name string) error {
+	switch name {
+	case cacheprofile.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case cacheprofile.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case cacheprofile.FieldDoc:
+		m.ResetDoc()
+		return nil
+	case cacheprofile.FieldModels:
+		m.ResetModels()
+		return nil
+	}
+	return fmt.Errorf("unknown CacheProfile field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CacheProfileMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CacheProfileMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CacheProfileMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CacheProfileMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CacheProfileMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CacheProfileMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CacheProfileMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CacheProfile unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CacheProfileMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CacheProfile edge %s", name)
 }
 
 // CaptureSettingMutation represents an operation that mutates the CaptureSetting nodes in the graph.

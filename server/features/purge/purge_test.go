@@ -159,7 +159,7 @@ func seeds(c *pdent.Client) []seed {
 }
 
 // global entities are reference data, no organization's: nothing to purge.
-var global = map[string]bool{"PriceList": true}
+var global = map[string]bool{"PriceList": true, "CacheProfile": true}
 
 // Every entity of the graph is seeded, so a new one fails here until the
 // purge (deleteRows) and this list cover it, or it is global.

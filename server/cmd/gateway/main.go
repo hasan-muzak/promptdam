@@ -74,7 +74,7 @@ func run() error {
 	res := resolver.New(resolver.Config{
 		Keys: c.APIKeys, Snapshots: snapshots, Quota: c.Metering, Spend: app.Spend, Rates: rates, Prices: app.Prices,
 		Scope: core.ScopeGateway, Rules: app.RuleEnv, Entitlements: c.Metering.Entitlements, Decider: decide.New(transport),
-		Turns: turns,
+		Turns: turns, Caching: app.CacheProfiles,
 	})
 	log := requestlog.New(requestlog.Config{
 		Events: c.Events, Prices: app.Prices, Spend: app.Spend, Entitlements: c.Metering.Entitlements, Payloads: app.PayloadStore,
@@ -103,7 +103,7 @@ func run() error {
 	// sampled calls evaluated, and configuration changes listened for.
 	// The payload store starts before the log and stops after it: the
 	// log's last rows add the last payloads.
-	for _, l := range []lifecycle{app.Prices, c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, evalSpend, snapshots,
+	for _, l := range []lifecycle{app.Prices, app.CacheProfiles, c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, evalSpend, snapshots,
 		turns, app.PayloadStore, log, eval} {
 		if err := l.Start(ctx); err != nil {
 			return err

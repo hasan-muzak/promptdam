@@ -152,7 +152,7 @@ func New(t *testing.T, opts Options) *World {
 	res := resolver.New(resolver.Config{
 		Keys: c.APIKeys, Snapshots: snaps, Quota: c.Metering, Spend: w.App.Spend, Rates: rates, Prices: w.App.Prices,
 		Scope: core.ScopeGateway, Rules: w.App.RuleEnv, Sample: opts.Sample, Entitlements: c.Metering.Entitlements,
-		Decider: decide.New(transport), Turns: w.Turns,
+		Decider: decide.New(transport), Turns: w.Turns, Caching: w.App.CacheProfiles,
 	})
 	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})
 	w.Eval = evaluate.New(evaluate.Config{Resolver: res, Transport: transport, Events: c.Events, Prices: w.App.Prices,
@@ -195,7 +195,7 @@ func (w *World) Replica() *httptest.Server {
 		Keys: w.C.APIKeys, Snapshots: snaps, Quota: w.C.Metering, Spend: w.App.Spend,
 		Rates: counter.New(w.C.KV, "rpm", counter.Options{}), Prices: w.App.Prices, Scope: core.ScopeGateway,
 		Rules: w.App.RuleEnv, Sample: w.opts.Sample, Entitlements: w.C.Metering.Entitlements, Decider: decide.New(transport),
-		Turns: turns,
+		Turns: turns, Caching: w.App.CacheProfiles,
 	})
 	for _, l := range []interface {
 		Start(context.Context) error

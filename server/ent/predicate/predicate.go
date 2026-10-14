@@ -15,6 +15,9 @@ type Budget func(*sql.Selector)
 // CachePolicy is the predicate function for cachepolicy builders.
 type CachePolicy func(*sql.Selector)
 
+// CacheProfile is the predicate function for cacheprofile builders.
+type CacheProfile func(*sql.Selector)
+
 // CaptureSetting is the predicate function for capturesetting builders.
 type CaptureSetting func(*sql.Selector)
 

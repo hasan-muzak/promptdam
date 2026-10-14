@@ -1,8 +1,11 @@
 package resolver_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"github.com/hasan-muzak/promptdam/server/features/cacheprofile"
+	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -450,5 +453,39 @@ func TestTurnsKeepTheirFallback(t *testing.T) {
 		{"role":"user","content":"is b.go safe to delete?"}]}`
 	if _, h, _ := w.Call("/v1/chat/completions", next); h.Get(brand.HeaderProvider) != "main" {
 		t.Fatalf("the next turn went to %q, not the route's first model", h.Get(brand.HeaderProvider))
+	}
+}
+
+// A model's learned profile decides how its calls are cached: a custom
+// endpoint's model that caches what a request marks gets breakpoints.
+func TestCallsFollowTheirModelsProfile(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{})
+	ctx := context.Background()
+	w.Grant(catalog.PromptCaching)
+	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{Name: "default", PromptCache: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.App.CacheProfiles.Save(ctx, &cacheprofile.Doc{Models: map[string]cacheprofile.Profile{
+		cacheprofile.Key("custom", "llama-cached"): {Use: promptcache.Markers},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	system, _ := json.Marshal(strings.Repeat("Answer as the house style says. ", 200))
+	body := func(model string) string {
+		return `{"model":"` + model + `","messages":[{"role":"system","content":` + string(system) + `},{"role":"user","content":"hi"}]}`
+	}
+	w.Eventually(func() bool { // the caching route reached the gateway
+		_, _, _ = w.Call("/v1/chat/completions", body("llama-cached"))
+		recs := w.Records()
+		return len(recs) > 0 && recs[len(recs)-1].CacheStrategy == promptcache.Markers
+	})
+	reqs := w.Fake.Requests()
+	if sent := string(reqs[len(reqs)-1].Body); !strings.Contains(sent, `"cache_control":{"type":"ephemeral"}`) {
+		t.Fatalf("a model whose profile marks: %s", sent)
+	}
+	_, _, _ = w.Call("/v1/chat/completions", body("llama-plain"))
+	reqs = w.Fake.Requests()
+	if sent := string(reqs[len(reqs)-1].Body); strings.Contains(sent, "cache_control") {
+		t.Fatalf("a model without a profile was marked: %s", sent)
 	}
 }

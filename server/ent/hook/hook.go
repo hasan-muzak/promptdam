@@ -45,6 +45,18 @@ func (f CachePolicyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CachePolicyMutation", m)
 }
 
+// The CacheProfileFunc type is an adapter to allow the use of ordinary
+// function as CacheProfile mutator.
+type CacheProfileFunc func(context.Context, *ent.CacheProfileMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CacheProfileFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CacheProfileMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CacheProfileMutation", m)
+}
+
 // The CaptureSettingFunc type is an adapter to allow the use of ordinary
 // function as CaptureSetting mutator.
 type CaptureSettingFunc func(context.Context, *ent.CaptureSettingMutation) (ent.Value, error)

@@ -145,6 +145,16 @@ type Config struct {
 	// Turns keeps what the gateway knows of each conversation's turns
 	// (features/conversation); nil keeps nothing.
 	Turns *conversation.Store
+	// Caching plans a call's prompt caching by its model's learned profile
+	// (features/cacheprofile); nil plans by the price list alone.
+	Caching CachePlanner
+}
+
+// CachePlanner plans how a call to a target uses its provider's prompt
+// cache: def is the target's strategy by its price list, conversation the
+// call's conversation key ("" outside one).
+type CachePlanner interface {
+	Plan(kind string, anthropic bool, model, def, conversation string, inTurn bool) gateway.CachePlan
 }
 
 // Decider asks a decision model which tier a call needs.
@@ -491,6 +501,20 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	// OpenRouter keeps a session on one backend from its first call.
 	if promptCache && m.InTurn {
 		out.Session = "pd-" + m.Turn.Conversation.String()
+	}
+	// Each target's caching, by what its model's calls showed.
+	if promptCache && r.cfg.Caching != nil {
+		conversation := ""
+		if m.InTurn {
+			conversation = m.Turn.Conversation.String()
+		}
+		for i, t := range out.Targets {
+			f := t.Format
+			if f == 0 {
+				f = format
+			}
+			out.Targets[i].Cache = r.cfg.Caching.Plan(t.Kind, f.Anthropic(), t.Model, t.Cache.Strategy, conversation, m.InTurn)
+		}
 	}
 	// The family's learned lifetimes: an hour where its calls' gaps pay for
 	// the dearer write.

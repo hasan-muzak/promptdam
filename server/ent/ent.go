@@ -15,6 +15,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/cachepolicy"
+	"github.com/hasan-muzak/promptdam/server/ent/cacheprofile"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -91,6 +92,7 @@ func checkColumn(t, c string) error {
 			alertrule.Table:        alertrule.ValidColumn,
 			budget.Table:           budget.ValidColumn,
 			cachepolicy.Table:      cachepolicy.ValidColumn,
+			cacheprofile.Table:     cacheprofile.ValidColumn,
 			capturesetting.Table:   capturesetting.ValidColumn,
 			familylabel.Table:      familylabel.ValidColumn,
 			firewallsetting.Table:  firewallsetting.ValidColumn,

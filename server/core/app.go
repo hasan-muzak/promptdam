@@ -19,6 +19,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/alerts"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/cachepolicy"
+	"github.com/hasan-muzak/promptdam/server/features/cacheprofile"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
@@ -56,6 +57,9 @@ type App struct {
 	// CachePolicy learns how long prompt caches keep each family's prefix
 	// and conversations.
 	CachePolicy *cachepolicy.Service
+	// CacheProfiles are how every model uses its prompt cache, learned
+	// from all projects' calls: each call's caching is planned by them.
+	CacheProfiles *cacheprofile.Store
 	// Payloads keeps whether projects keep their calls' payloads;
 	// PayloadStore keeps the payloads, in object storage (nil without it).
 	Payloads     *payloads.Service
@@ -128,6 +132,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 		o(a)
 	}
 	a.Prices = prices.New(prices.Config{Ent: a.Ent, KV: c.KV, Fallback: a.fallback})
+	a.CacheProfiles = cacheprofile.New(cacheprofile.Config{Ent: a.Ent, KV: c.KV})
 	a.PriceOverrides = prices.NewOverrides(a.Ent, a.configChanged)
 	env, err := rules.NewEnv()
 	if err != nil {

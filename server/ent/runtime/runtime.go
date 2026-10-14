@@ -9,6 +9,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
 	"github.com/hasan-muzak/promptdam/server/ent/cachepolicy"
+	"github.com/hasan-muzak/promptdam/server/ent/cacheprofile"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -201,6 +202,25 @@ func init() {
 	cachepolicyDescID := cachepolicyMixinFields0[0].Descriptor()
 	// cachepolicy.DefaultID holds the default value on creation for the id field.
 	cachepolicy.DefaultID = cachepolicyDescID.Default.(func() uuid.UUID)
+	cacheprofileMixin := schema.CacheProfile{}.Mixin()
+	cacheprofileMixinFields0 := cacheprofileMixin[0].Fields()
+	_ = cacheprofileMixinFields0
+	cacheprofileFields := schema.CacheProfile{}.Fields()
+	_ = cacheprofileFields
+	// cacheprofileDescCreatedAt is the schema descriptor for created_at field.
+	cacheprofileDescCreatedAt := cacheprofileMixinFields0[1].Descriptor()
+	// cacheprofile.DefaultCreatedAt holds the default value on creation for the created_at field.
+	cacheprofile.DefaultCreatedAt = cacheprofileDescCreatedAt.Default.(func() time.Time)
+	// cacheprofileDescUpdatedAt is the schema descriptor for updated_at field.
+	cacheprofileDescUpdatedAt := cacheprofileMixinFields0[2].Descriptor()
+	// cacheprofile.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	cacheprofile.DefaultUpdatedAt = cacheprofileDescUpdatedAt.Default.(func() time.Time)
+	// cacheprofile.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	cacheprofile.UpdateDefaultUpdatedAt = cacheprofileDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// cacheprofileDescID is the schema descriptor for id field.
+	cacheprofileDescID := cacheprofileMixinFields0[0].Descriptor()
+	// cacheprofile.DefaultID holds the default value on creation for the id field.
+	cacheprofile.DefaultID = cacheprofileDescID.Default.(func() uuid.UUID)
 	capturesettingMixin := schema.CaptureSetting{}.Mixin()
 	capturesettingMixinHooks1 := capturesettingMixin[1].Hooks()
 	capturesetting.Hooks[0] = capturesettingMixinHooks1[0]

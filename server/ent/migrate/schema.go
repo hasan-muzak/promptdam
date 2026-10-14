@@ -119,6 +119,27 @@ var (
 			},
 		},
 	}
+	// CacheProfilesColumns holds the columns for the "cache_profiles" table.
+	CacheProfilesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "doc", Type: field.TypeBytes},
+		{Name: "models", Type: field.TypeInt},
+	}
+	// CacheProfilesTable holds the schema information for the "cache_profiles" table.
+	CacheProfilesTable = &schema.Table{
+		Name:       "cache_profiles",
+		Columns:    CacheProfilesColumns,
+		PrimaryKey: []*schema.Column{CacheProfilesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "cacheprofile_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{CacheProfilesColumns[1]},
+			},
+		},
+	}
 	// CaptureSettingsColumns holds the columns for the "capture_settings" table.
 	CaptureSettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -533,6 +554,7 @@ var (
 		AlertRulesTable,
 		BudgetsTable,
 		CachePoliciesTable,
+		CacheProfilesTable,
 		CaptureSettingsTable,
 		FamilyLabelsTable,
 		FirewallSettingsTable,
