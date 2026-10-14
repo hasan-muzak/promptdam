@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hasan-muzak/keel-core/pkg/events"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 	"github.com/hasan-muzak/keel-core/pkg/safehttp"
 
 	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
@@ -250,4 +251,62 @@ func TestPoliciesComeBeforeTheDecisionModel(t *testing.T) {
 		m.Firewall.Policy == "" || m.Sampled {
 		t.Fatalf("asked %d→%d, served %s, meta %+v", before, asked.Load(), h.Get(brand.HeaderServedModel), m)
 	}
+}
+
+// The decision model is asked without a temperature, which current models
+// refuse; a Claude model that thinks unless told not to is told not to, and
+// one that always thinks gets room to at its least effort. Claude answers
+// unconstrained, faster than under a schema.
+func TestDecideOnModelsThatThink(t *testing.T) {
+	var got []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		got = append(got, req)
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/messages") {
+			_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"{\"tier\":\"smart\"}"}],"usage":{"input_tokens":80,"output_tokens":5}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"tier\": \"fast\"}"}}],"usage":{"prompt_tokens":80,"completion_tokens":5}}`))
+	}))
+	defer srv.Close()
+	d := decide.New(safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true}))
+	ask := func(target gateway.Target) map[string]any {
+		t.Helper()
+		q := question(srv.URL, time.Second)
+		q.Target, q.Request = target, target.Model // a new question each time
+		if _, _, err := d.Decide(context.Background(), q); err != nil {
+			t.Fatal(err)
+		}
+		req := got[len(got)-1]
+		if _, set := req["temperature"]; set {
+			t.Fatalf("%s was sent a temperature: %v", target.Model, req)
+		}
+		return req
+	}
+	claude := gateway.Target{Provider: "anthropic", Kind: "anthropic", BaseURL: srv.URL, Format: wire.AnthropicMessages}
+
+	haiku := claude
+	haiku.Model, haiku.ThinkingOff = "claude-haiku-5-5", "disabled"
+	req := ask(haiku)
+	thinking, _ := req["thinking"].(map[string]any)
+	if thinking["type"] != "disabled" || req["output_config"] != nil || req["max_tokens"] != 64.0 {
+		t.Fatalf("haiku 5.5: %v", req)
+	}
+
+	opus := claude
+	opus.Model, opus.AlwaysThinks = "claude-opus-5-5", true
+	req = ask(opus)
+	config, _ := req["output_config"].(map[string]any)
+	if _, set := req["thinking"]; set || config["effort"] != "low" || config["format"] != nil || req["max_tokens"] != 1024.0 {
+		t.Fatalf("opus 5.5: %v", req)
+	}
+
+	older := claude
+	older.Model = "claude-haiku-4-5"
+	if req = ask(older); req["thinking"] != nil || req["max_tokens"] != 64.0 {
+		t.Fatalf("haiku 4.5: %v", req)
+	}
+	ask(gateway.Target{Provider: "openai", Kind: "openai", BaseURL: srv.URL, Model: "gpt-5-nano"})
 }

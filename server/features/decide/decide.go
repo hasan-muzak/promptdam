@@ -142,15 +142,31 @@ func (d *Decider) ask(ctx context.Context, q resolver.Question) (string, wire.Us
 	schema := map[string]any{"type": "object", "properties": map[string]any{"tier": map[string]any{"type": "string", "enum": names}},
 		"required": []string{"tier"}, "additionalProperties": false}
 	system, user := Prompt(q)
+	// No temperature: current models refuse one (Anthropic's since Opus
+	// 4.7, OpenAI's reasoning models), and answers are cached anyway.
 	var req map[string]any
 	if f.Anthropic() {
-		req = map[string]any{"model": t.Model, "max_tokens": 64, "temperature": 0, "system": system,
+		req = map[string]any{"model": t.Model, "max_tokens": 64, "system": system,
 			"messages": []map[string]string{{"role": "user", "content": user}}}
-		if q.Schema {
-			req["output_config"] = map[string]any{"format": map[string]any{"type": "json_schema", "schema": schema}}
+		config := map[string]any{}
+		switch {
+		case t.ThinkingOff != "":
+			// A model that thinks unless told not to would spend the
+			// answer's few tokens thinking, and the timeout waiting.
+			req["thinking"] = map[string]string{"type": t.ThinkingOff}
+		case t.AlwaysThinks:
+			req["max_tokens"] = 1024
+			config["effort"] = "low"
+		}
+		// No schema: Anthropic's structured outputs held Haiku 5.5's
+		// answer back by 0.4 s at the median and up to 2.2 s (2026-10-14,
+		// against 1.1 s at most without); the answer the prompt asks for
+		// reads as well.
+		if len(config) > 0 {
+			req["output_config"] = config
 		}
 	} else {
-		req = map[string]any{"model": t.Model, "temperature": 0, "messages": []map[string]string{
+		req = map[string]any{"model": t.Model, "messages": []map[string]string{
 			{"role": "system", "content": system}, {"role": "user", "content": user}}}
 		if t.Kind == "openai" {
 			req["max_completion_tokens"] = 256

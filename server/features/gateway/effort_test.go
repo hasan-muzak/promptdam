@@ -74,3 +74,26 @@ func TestTierEffortReachesTheProvider(t *testing.T) {
 		t.Fatalf("a model that doesn't reason got an effort: %v", lastBody(t, e))
 	}
 }
+
+// A call moved to a model that refuses sampling parameters loses those set
+// for the model asked for, and the client is told; a call that asked for
+// that model itself keeps them (the provider's answer is the client's).
+func TestMovedCallsLoseRefusedSampling(t *testing.T) {
+	route := func(base string) gateway.Resolver {
+		return routeResolver{gateway.Route{Targets: []gateway.Target{{Provider: "anthropic", Kind: "anthropic", BaseURL: base + "/v1",
+			Model: "claude-sonnet-5-5", NoSampling: true}}}}
+	}
+	e := setup(t, fakeupstream.Options{}, route)
+	res, _ := e.post(t, "/v1/messages", `{"model":"claude-haiku-4-5","max_tokens":9,"temperature":0.3,"top_p":0.9,
+		"messages":[{"role":"user","content":"hi"}]}`)
+	body := lastBody(t, e)
+	_, temp := body["temperature"]
+	_, topP := body["top_p"]
+	if res.StatusCode != 200 || temp || topP || res.Header.Get(brand.HeaderDropped) != "temperature,top_p" {
+		t.Fatalf("%d, dropped %q, body %v", res.StatusCode, res.Header.Get(brand.HeaderDropped), body)
+	}
+	_, _ = e.post(t, "/v1/messages", `{"model":"claude-sonnet-5-5","max_tokens":9,"temperature":0.3,"messages":[{"role":"user","content":"hi"}]}`)
+	if lastBody(t, e)["temperature"] != 0.3 {
+		t.Fatalf("a call to the model it asked for lost its temperature: %v", lastBody(t, e))
+	}
+}

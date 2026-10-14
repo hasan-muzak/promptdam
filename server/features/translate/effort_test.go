@@ -2,6 +2,7 @@ package translate
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
@@ -76,5 +77,22 @@ func TestSetEffort(t *testing.T) {
 	withEffort := []byte(`{"model":"gpt-4.1","reasoning_effort":"high","messages":[]}`)
 	if out, ok := StripEffort(withEffort); !ok || HasEffort(out, wire.OpenAIChat, "openai") || field(t, out, "model") != "gpt-4.1" {
 		t.Fatalf("strip: %s", out)
+	}
+}
+
+// A call moved to a model that refuses sampling parameters loses them; a
+// null one goes unnamed, and a call without any is left as it is.
+func TestStripSampling(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-5-5","temperature":0.2,"top_k":null,"max_tokens":9,"messages":[{"role":"user","content":"<b>"}]}`)
+	out, gone := StripSampling(body)
+	if strings.Join(gone, ",") != "temperature" || strings.Contains(string(out), "top_k") || strings.Contains(string(out), "temperature") {
+		t.Fatalf("%s, gone %v", out, gone)
+	}
+	if !strings.Contains(string(out), `"content":"<b>"`) || !strings.Contains(string(out), `"model":"claude-sonnet-5-5"`) {
+		t.Fatalf("the rest of the call changed: %s", out)
+	}
+	plain := []byte(`{"model":"x","messages":[]}`)
+	if out, gone := StripSampling(plain); gone != nil || string(out) != string(plain) {
+		t.Fatalf("nothing to strip: %s %v", out, gone)
 	}
 }

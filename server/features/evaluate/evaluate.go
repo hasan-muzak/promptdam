@@ -429,6 +429,9 @@ func (e *Evaluator) callTier(ctx context.Context, t gateway.Target, f wire.Forma
 		}
 	}
 	payload, _, _ = gateway.ApplyEffort(payload, tf, t, true)
+	if t.NoSampling {
+		payload, _ = translate.StripSampling(payload)
+	}
 	resp, status, err := e.send(ctx, t, tf, payload)
 	if err != nil {
 		return Answer{}, wire.Usage{}, status, err
@@ -581,7 +584,11 @@ func (e *Evaluator) judgeOnce(ctx context.Context, t gateway.Target, prompt stri
 	schema = schema || !known || md.Features == nil
 	var req map[string]any
 	if f.Anthropic() {
-		req = map[string]any{"model": t.Model, "max_tokens": 1024, "system": judgeSystem,
+		limit := 1024
+		if md.ThinkingOff != "" || md.AlwaysThinks {
+			limit = 4096 // the model thinks first
+		}
+		req = map[string]any{"model": t.Model, "max_tokens": limit, "system": judgeSystem,
 			"messages": []map[string]string{{"role": "user", "content": prompt}}}
 		if schema {
 			req["output_config"] = map[string]any{"format": map[string]any{"type": "json_schema", "schema": verdictSchema}}

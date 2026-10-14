@@ -42,3 +42,21 @@ func TestTranslatedTargets(t *testing.T) {
 		t.Fatal("count_tokens calls aren't translated")
 	}
 }
+
+// A target knows how its model thinks and whether it takes sampling: from
+// the price list, else, for a model the list doesn't have yet, from the
+// docs' table.
+func TestTargetsKnowThinking(t *testing.T) {
+	cat := &llm.Catalog{Models: []llm.Model{{ID: "claude-opus-5-5", Provider: "anthropic", AlwaysThinks: true, NoSampling: true}}}
+	r := New(Config{Prices: prices.Static{Catalog: cat}})
+	anthropic := snapshot.Opened{Provider: snapshot.Provider{Name: "a", Kind: "anthropic", Format: providers.FormatAnthropic}}
+	if tg, _ := r.target(anthropic, wire.AnthropicMessages, "claude-opus-5-5"); !tg.AlwaysThinks || !tg.NoSampling || tg.ThinkingOff != "" {
+		t.Fatalf("listed: %+v", tg)
+	}
+	if tg, _ := r.target(anthropic, wire.AnthropicMessages, "claude-haiku-5-5"); tg.ThinkingOff != "disabled" || !tg.NoSampling || tg.MinCache != 512 {
+		t.Fatalf("unlisted: %+v", tg)
+	}
+	if tg, _ := r.target(anthropic, wire.AnthropicMessages, "claude-haiku-4-5"); tg.ThinkingOff != "" || tg.NoSampling {
+		t.Fatalf("an older model: %+v", tg)
+	}
+}

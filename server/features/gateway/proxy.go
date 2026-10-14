@@ -350,6 +350,12 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 	if effortDropped {
 		dropped = append(dropped, "effort")
 	}
+	if t.NoSampling && t.Model != req.Model {
+		// Set for the model asked for; the one serving refuses them.
+		var gone []string
+		body, gone = translate.StripSampling(body)
+		dropped = append(dropped, gone...)
+	}
 	if c.promptCache {
 		body = c.cachePrompt(body, format, t, req)
 	}

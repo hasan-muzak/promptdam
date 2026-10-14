@@ -568,8 +568,12 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 		// when a call is moved to it.
 		reasons, sure := m.Has(llm.FeatureReasoning)
 		t.NoReasoning = sure && !reasons
-		t.MinCache = int(m.MinCacheTokens)
+	} else {
+		// A model the price list doesn't have yet: what its docs say.
+		m = llm.Known(model)
 	}
+	t.MinCache = int(m.MinCacheTokens)
+	t.ThinkingOff, t.AlwaysThinks, t.NoSampling = m.ThinkingOff, m.AlwaysThinks, m.NoSampling
 	if p.Format == apiFormat(f) {
 		return t, true
 	}

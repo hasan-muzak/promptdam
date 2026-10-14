@@ -138,6 +138,13 @@ type Target struct {
 	// MinCache is the shortest prefix the model's provider caches (0:
 	// unknown), below which prompt cache breakpoints aren't added.
 	MinCache int
+	// ThinkingOff is how a call stops the model thinking, for one that
+	// thinks unless told not to; AlwaysThinks marks one that can't be
+	// stopped (llm.Model's). NoSampling marks a model that refuses
+	// temperature, top_p and top_k: a call moved to it has them taken out.
+	ThinkingOff  string
+	AlwaysThinks bool
+	NoSampling   bool
 }
 
 // formatOf is the API format a target is called in for a call of format f.

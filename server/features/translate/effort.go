@@ -122,22 +122,51 @@ func SetEffort(body []byte, f wire.Format, kind, effort string) (out []byte, ok 
 // StripEffort removes an OpenAI-format request's reasoning_effort, for a
 // model known not to reason (which may refuse it). ok reports a removal.
 func StripEffort(body []byte) (out []byte, ok bool) {
-	raw, found, err := wire.Field(body, "reasoning_effort")
-	if err != nil || !found || null(raw) {
-		return body, false
+	out, gone := strip(body, "reasoning_effort")
+	return out, len(gone) > 0
+}
+
+// Sampling are the parameters a model may refuse other than at their
+// defaults (llm.Model.NoSampling), in either format.
+var Sampling = []string{"temperature", "top_p", "top_k"}
+
+// StripSampling removes a request's sampling parameters, for a call moved
+// to a model that refuses them. gone names those removed that were set.
+func StripSampling(body []byte) (out []byte, gone []string) { return strip(body, Sampling...) }
+
+// strip removes the request's top-level fields; gone names those that were
+// set (a null one is removed unnamed).
+func strip(body []byte, fields ...string) (out []byte, gone []string) {
+	seen := false
+	for _, f := range fields {
+		raw, found, err := wire.Field(body, f)
+		if err != nil {
+			return body, nil
+		}
+		if found {
+			seen = true
+			if !null(raw) {
+				gone = append(gone, f)
+			}
+		}
+	}
+	if !seen {
+		return body, nil
 	}
 	var top map[string]json.RawMessage
 	if json.Unmarshal(body, &top) != nil {
-		return body, false
+		return body, nil
 	}
-	delete(top, "reasoning_effort")
+	for _, f := range fields {
+		delete(top, f)
+	}
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
 	if enc.Encode(top) != nil {
-		return body, false
+		return body, nil
 	}
-	return bytes.TrimRight(b.Bytes(), "\n"), true
+	return bytes.TrimRight(b.Bytes(), "\n"), gone
 }
 
 // member reports a non-null member key of the object at field.
