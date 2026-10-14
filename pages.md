@@ -521,7 +521,8 @@ resolved, channels. Its history from the activity (`subject=alr_…`).
 **Purpose:** the project's own LLM accounts (BYOK). Customers pay their providers directly; Promptdam never resells
 tokens. Say this on the page.
 
-**Shows:** name, kind (with logo), API format, base URL (regional or custom), key (set, with its last characters),
+**Shows:** name, kind (with logo), API format, base URL (regional or custom; a cloud's region, project and
+location, or resource), key (set, with its last characters, or a service account's email),
 models (the catalog's for its kind, or the listed ones), priority among providers serving the same model, enabled, last
 check (passed when, or the provider's error).
 
@@ -529,6 +530,23 @@ check (passed when, or the provider's error).
 - **Add provider:** pick a kind (OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Groq, Together, xAI, Fireworks,
   OpenRouter, or custom for any OpenAI- or Anthropic-compatible endpoint), name, key, base URL (custom or regional), models, priority.
   Checked on save.
+- **A cloud account** (kinds with `cloud: true`: AWS Bedrock, Google Vertex AI, Azure AI Foundry) asks where the
+  account is and how it signs in, instead of a base URL and key. One provider serves Claude and the cloud's own
+  family, each through the cloud's API for it:
+  - **AWS Bedrock:** the region (eu-west-1). Sign-in is a Bedrock API key, or an IAM access key id and secret (and a
+    session token for temporary keys). Help: "AWS calls long-term API keys exploration-only; an IAM user with
+    `bedrock:InvokeModel` on the models you use is the production choice." Claude models are called by their plain
+    names (claude-haiku-5-5); Promptdam adds Bedrock's `anthropic.` prefix.
+  - **Google Vertex AI:** the project (taken from the key file if left empty) and location: global (default), eu,
+    us, or a region such as europe-west4. Sign-in: upload the service account's JSON key file; the hint shows its
+    email. Help: "Give the service account the Vertex AI User role, and enable the Claude models in Model Garden."
+  - **Azure AI Foundry:** the resource name ({resource}.services.ai.azure.com) and its API key. Models are the
+    resource's deployment names: GPT deployments go to Azure OpenAI's API, deployments whose name contains "claude" to
+    Foundry's Anthropic API. Help: "Keep the deployment names the models' own (gpt-…, claude-…) so routers and prices
+    recognise them."
+  - The check makes one tiny call to the first listed model (Claude Haiku if none; Azure lists its models) and says
+    what went wrong in the cloud's terms: a missing permission, a model not enabled in that region, a key Google
+    refuses. Show it under the form, with a link to the cloud's console page for the fix.
 - **Edit:** the key is write-only; leaving it empty keeps it. Changing the base URL or kind needs the key again (the
   API answers `api_key_required`): explain why (a key only goes where it was given for).
 - **Check now**, enable or disable, delete.

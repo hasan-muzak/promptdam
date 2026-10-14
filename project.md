@@ -98,7 +98,8 @@ Basic routing and logging are free elsewhere, so Promptdam's plans are priced on
   - OpenAI and Anthropic.
   - Google Gemini via its OpenAI-compatible endpoint.
   - Mistral, DeepSeek, Groq, Together, xAI and Fireworks (OpenAI-compatible).
-  - Azure OpenAI, Bedrock and Vertex come post-launch.
+  - AWS Bedrock, Google Vertex AI and Azure AI Foundry as cloud accounts (moved into the MVP 2026-10-15, ADR 0004):
+    Claude and each cloud's own family through the customer's account, signed per request (SigV4, Google tokens).
 - **Routing across API formats (moved into the MVP, decided 2026-10-08):** an OpenAI Chat Completions request can be served by an Anthropic model and an Anthropic Messages request by any OpenAI-compatible one. The gateway translates requests, answers and streams, tools and images included, so fallbacks, rules and router tiers can name any provider. The Responses API stays passthrough to OpenAI-format providers.
 - **Promptdam keys** (`pd_sk_…`, via `pkg/apikeys`):
   - per project, team or developer
@@ -223,6 +224,7 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 - **Conversations (ADR 0002):** a call's turn (its human message and the calls continuing it) is read off the request (core `wire.Turn`), keyed alike on every replica, and kept per replica and in Valkey (`features/conversation`): a turn's placement, its calls' tokens and cache state, and how long after the conversation's previous call each started. Clients may name the conversation (`x-promptdam-session`, or Claude Code's session header).
 - **Thinking heal:** a Messages call whose history the firewall rewrote can carry a thinking block bound to the history before it ("bound to a different conversation"); it is sent once more with the provider asked to drop the block, else without the history's thinking (`healed` in the log).
 - **Caching heals (ADR 0003):** a 400 naming `cache_control` on a call the gateway marked sends it once more as it was before marking (`healed = unmarked`); when that answers on a kind that can cache without markers (OpenRouter, custom), markers are switched off for the model in every replica for seven days (a Valkey hash, announced). OpenRouter's 404 when every backend was ignored sends the call once more to any backend (`unavoided`).
+- **Cloud accounts (ADR 0004):** a call to Bedrock, Vertex or Azure goes to the cloud's API for its model's family (`gateway.UpstreamURL`; Claude on Vertex loses `model` from its body and gains `anthropic_version`, every other byte kept) and is signed as its last step over the exact bytes sent (`cloudauth`): a Bedrock API key, SigV4 with IAM keys, or a Google token minted from the service-account key, cached per key and refreshed five minutes early. Signing adds no I/O to a call except the hourly token fetch, which concurrent calls share.
 
 ### 6.2 Model routers: tiers, the cascade, evaluation and learning (`features/routers`, `features/evaluate`, `features/classifier`, `features/translate`)
 
@@ -763,6 +765,13 @@ Model routers replace per-family savings experiments, and cross-format translati
   each call reading everything the previous one sent; Claude the same); whether to keep a conversation on one
   backend is learned per model (`+session` strategies), and the learner weighs any number of candidates, trying
   each until judged. `PROMPTDAM_DEMO_LEARNED` starts the demo from learned profiles.
+- [x] Round E (2026-10-15, ADR 0004): AWS Bedrock, Google Vertex AI and Azure AI Foundry as providers. A cloud
+  account serves Claude through the cloud's Anthropic API (Bedrock's mantle, Vertex's rawPredict with the model in
+  the URL, Foundry's) and its own family through the OpenAI-compatible one; credentials sealed as JSON and checked
+  (a service-account key's token URL must be Google's); each request signed as the last step (a Bedrock API key,
+  SigV4 with IAM keys, Google tokens minted from the key and kept an hour across snapshots); Claude's conversations
+  cached with message breakpoints; the provider check answers one token. Tested against fake clouds; `task
+  demo:clouds` runs on the owner's test accounts when `.env` has them. Core: `wire.DeleteField`.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
 - **Exit:** ≥ 5 design partners in production, ≥ 2 willing to pay for Team or Business. → **Beta Mon Apr 26**.
 
@@ -782,7 +791,8 @@ Model routers replace per-family savings experiments, and cross-format translati
 - S6.3 and S6.4 (cross-format translation, the learned per-request router) moved to S3 on 2026-10-08.
 - [ ] S6.4b Router extras (§4.2): the Responses API through routers, learning from decision-model choices, bandit exploration, a Promptdam-paid judge.
 - [ ] S6.5 Fixwire span export; coding-agent pack (per-developer SSO keys); employee-chat guides (Open WebUI, LibreChat).
-- [ ] S6.6 SSO/SCIM; Azure OpenAI, Bedrock and Vertex providers.
+- [ ] S6.6 SSO/SCIM; the clouds' other sign-ins (Azure Entra, AWS role assumption, Google workload identity) and
+  Bedrock's legacy InvokeModel stream (models up to Opus 4.6).
 
 ### S7: Enterprise firewall (Q3 2027)
 - [ ] S7.1 EU data-plane region + residency routing.
