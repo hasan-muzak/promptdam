@@ -76,3 +76,17 @@ Options considered:
   at a small cost.
 - Costs in the ledger are the provider's own figures where reported (OpenRouter, BYOK included); the price list's
   figure stays in `computed_micros`.
+
+## Addendum (2026-10-14, round D)
+
+- **A conversation's previous breakpoint stays where it was.** Gemini finds a cache entry only at a breakpoint, and
+  the gateway marked just the newest message, so each call read only the instructions. The previous call's last
+  message now keeps its breakpoint too (three at most, with the instructions'). Measured: each Gemini call read
+  everything the previous call sent (89% of a chat's input, against 42%); Claude through OpenRouter reads the same
+  and writes only what is new.
+- **Whether to keep a conversation on one backend is learned, not a rule.** A session is part of the strategy
+  (`markers+session`, `auto+session`), offered where several backends serve a model, which is also where a new model
+  starts with one. The learner weighs any number of candidates: each is judged on 300 calls, the cheapest takes over
+  below 0.9 of the one in use, and the least tried unjudged candidate is the trial, on a tenth of conversations.
+  Trying stops once every candidate is judged, not when the one in use reads well: a session's cost shows in
+  conversations' first calls, which no read share sees.

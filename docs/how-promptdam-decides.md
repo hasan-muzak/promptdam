@@ -137,8 +137,9 @@ keeps no list of them. It learns:
 
 - **Every call records what it should have read from the cache and what it did read.** A call should read when its
   conversation's previous call was recent and went to the same model on the same backend.
-- **Every hour, the counts from all customers are pooled into a profile per model:** whether to mark the request, and
-  which backends never cache it. Only counts are pooled, never what anyone wrote, and a customer sees a pooled figure
+- **Every hour, the counts from all customers are pooled into a profile per model:** whether to mark the request,
+  which backends never cache it, and whether keeping a conversation on one backend helps. Marks are placed so each
+  message reads the whole conversation before it from the cache, not just the instructions. Only counts are pooled, never what anyone wrote, and a customer sees a pooled figure
   only when at least three customers contributed.
 - **While the evidence is thin, one conversation in ten tries the other way.** The other way takes over only once both
   have 300 data points and it is at least 10% cheaper, so the choice doesn't flip on noise.

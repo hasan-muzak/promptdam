@@ -221,7 +221,8 @@ later.
   more: drop_block or strip_thinking (the firewall's rewrite invalidated its thinking), unmarked (the provider refused
   the gateway's cache breakpoints; the model gets none from then on), unavoided (no backend was left once those that
   never cache were taken out).
-- **Caching:** the strategy the gateway used (`cache_strategy`: markers or auto; "trial" when the call's conversation
+- **Caching:** the strategy the gateway used (`cache_strategy`: markers or auto, `+session` when the conversation was
+  kept on one backend; "trial" when the call's conversation
   tried the other one), the backend a router of providers sent it to (`backend`, e.g. OpenRouter's "Google AI
   Studio"), whether its conversation's previous call means it should have read from the cache
   (`cache_expected_tokens`) and what it read; its cost as the provider reported it (`cost_reported`) against the
