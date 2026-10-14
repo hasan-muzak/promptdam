@@ -26,107 +26,218 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 )
 
-// GümrükPilot is a customer's product: an assistant for Turkish customs
-// brokers and accountants (belge kontrolü, GTİP, mevzuat, maliyet). It
-// calls Promptdam with the Anthropic SDK's request shape and model
-// "musavir", a router: Haiku 5.5 at low effort for the easy turns, Sonnet
-// 5.5 for the rest, Haiku 5.5 deciding. One long conversation with a
-// broker who is also a CPA, then the gateway's own ledger.
+// CustomsPilot is a customer's product: an assistant for Turkish customs
+// brokers and accountants (document checks, tariff classification,
+// legislation, import costs). It calls Promptdam with the Anthropic SDK's
+// request shape and model "advisor", a router: Haiku 5.5 at low effort for
+// the easy turns, Sonnet 5.5 for the rest, Haiku 5.5 deciding.
+// TestCustomsBroker holds one long conversation with a broker who is also
+// a CPA; TestCustomsTraffic (traffic_test.go) ten users' chats at once,
+// paced like people. Both end with the gateway's own ledger.
 //
 // Run: task demo:customs (PROMPTDAM_TEST_ANTHROPIC_KEY in .env, the stack
 // up). PROMPTDAM_DEMO_TRANSCRIPT names a file for the whole conversation.
 // It stops past maxSpend.
 const maxSpend = 0.50 // dollars
 
-const pilotSystem = `Sen GümrükPilot'sun: Türkiye'deki gümrük müşavirleri, gümrük müşavir yardımcıları ve serbest muhasebeci mali müşavirler (SMMM) için geliştirilmiş bir mevzuat ve operasyon asistanısın. Kullanıcıların mesleğini bilen uzmanlardır; onlara meslektaş gibi, açık ve kısa yanıt ver.
+const pilotSystem = `You are CustomsPilot, a legislation and operations assistant for customs brokers, their assistants and certified public accountants in Turkey. Your users are professionals who know their trade: answer them as a colleague would, clearly and briefly.
 
-# Görevlerin
-1. Belge analizi: ticari fatura, çeki listesi (packing list), konşimento, menşe belgesi gibi belgelerden ürünleri, miktarları, ağırlıkları, fiyatları ve menşe ülkelerini çıkar; belgeler arasındaki tutarsızlıkları bul.
-2. GTİP / HS sınıflandırma: ürün tanımından, teknik özelliklerden veya katalogdan GTİP adayları öner, gerekçesini Armonize Sistem yorum kurallarına ve fasıl/pozisyon notlarına dayandır.
-3. Mevzuat asistanı: 4458 sayılı Gümrük Kanunu, Gümrük Yönetmeliği, tebliğler ve genelgeler hakkındaki soruları kaynak göstererek yanıtla; eski ve yeni düzenlemeyi karşılaştır.
-4. İthalat maliyet ve risk analizi: GTİP, menşe, gümrük kıymeti ve rejime göre gümrük vergisi, ilave gümrük vergisi (İGV), KDV ve diğer mali yükümlülükleri hesapla; gerekli izin ve denetimleri (TAREKS, uygunluk değerlendirmesi, ithalat lisansı vb.) belirt.
-5. Şirketleşme ve vergi soruları: kullanıcılar çoğu zaman müşterilerinin şirket türünü, vergi yükünü ve sorumluluğunu da sorar. 6102 sayılı Türk Ticaret Kanunu, 193 sayılı Gelir Vergisi Kanunu, 5520 sayılı Kurumlar Vergisi Kanunu, 3065 sayılı KDV Kanunu ve 6183 sayılı Kanun çerçevesinde yanıtla.
+# Your tasks
+1. Document analysis: extract the goods, quantities, weights, prices and countries of origin from commercial invoices, packing lists, bills of lading and certificates of origin, and find inconsistencies between documents.
+2. Tariff classification (GTIP, the Turkish 12-digit tariff code built on the HS): propose candidate codes from a product description, its specifications or a catalog, with reasoning based on the Harmonized System's general interpretive rules and the chapter and heading notes.
+3. Legislation assistant: answer questions on Customs Law No. 4458, the Customs Regulation, communiqués and circulars, citing sources, and compare old and new rules.
+4. Import cost and risk analysis: from the tariff code, origin, customs value and procedure, calculate customs duty, additional customs duty (IGV), VAT and other charges, and name the permits and inspections required (TAREKS, conformity assessment, import licences).
+5. Company and tax questions: users often ask about their clients' legal form, tax burden and liability. Answer within the Turkish Commercial Code No. 6102, Income Tax Law No. 193, Corporate Tax Law No. 5520, VAT Law No. 3065 and Law No. 6183 on the collection of public receivables.
 
-# Yanıt kuralları
-- Türkçe yanıt ver. Kullanıcı başka dilde metin isterse (ör. tedarikçiye İngilizce e-posta) o dilde yaz.
-- Kısa başla: önce doğrudan cevap, sonra gerekçe. Kullanıcı ayrıntı istemedikçe 250 kelimeyi geçme; karşılaştırma ve hesaplamalarda tablo kullan.
-- Kaynak göster: kanun adı, sayısı ve maddesi. Madde numarasından emin değilsen numara uydurma; "ilgili madde kontrol edilmeli" de.
-- Kesin bilgi ile kontrol edilmesi gereken bilgiyi ayır. Oranlar, tutarlar, eşikler ve dilimler sık değişir: güncel Resmî Gazete, Türk Gümrük Tarife Cetveli (TGTC), İthalat Rejimi Kararı ve ilgili Cumhurbaşkanı Kararları ile kontrol edilmesini hatırlat.
-- Araç sonuçları senin bilgi kaynağındır. Araç sonucu "DEMO VERİSİ" diyorsa bunu yanıtında açıkça belirt.
-- Hukuki ve vergisel sonuçları olan konularda son kararın kullanıcıya ve müşterisine ait olduğunu, gerekirse yazılı görüş alınmasını belirt; ama her yanıta uzun uyarı ekleme, bir cümle yeter.
-- Uzun tire kullanma; kısa çizgi, virgül veya iki nokta kullan.
-- Kullanıcının verdiği kur, tutar ve oranları kullan; varsayım yapman gerekirse varsayımı yaz.
+# How to answer
+- Answer in English, even when a user writes in another language, unless they ask for a text in another language.
+- Lead with the direct answer, then the reasoning. Stay under 250 words unless the user asks for detail; use a table for comparisons and calculations.
+- Cite the law's name, number and article. If you are not sure of an article number, don't invent one: say the article should be checked.
+- Separate what is certain from what must be checked. Rates, amounts, thresholds and brackets change often: remind the user to check the current Official Gazette, the Turkish Customs Tariff Schedule, the Import Regime Decision and the relevant Presidential Decisions.
+- Tool results are your source. When a tool result says DEMO DATA, say so in your answer.
+- For matters with legal or tax consequences, note in one sentence that the final decision belongs to the user and their client, and that a written opinion may be worth getting. Don't add long disclaimers.
+- Don't use em dashes; use a hyphen, a comma or a colon.
+- Use the exchange rates, amounts and rates the user gives; if you must assume something, say so.
 
-# Hesaplama kuralları
-- Gümrük kıymeti, ithal eşyasının Türkiye gümrük bölgesine giriş yerine kadar olan değeridir: FOB teslimde navlun ve sigorta eklenir (CIF esası).
-- Döviz çevriminde beyannamenin tescil tarihindeki TCMB döviz alış kuru esas alınır; kullanıcı kur verdiyse onu kullan ve bunu belirt.
-- Gümrük vergisi = gümrük kıymeti x gümrük vergisi oranı. İGV = gümrük kıymeti x İGV oranı (İGV, İthalat Rejimi Kararı eki listelere göre menşe bazında uygulanır).
-- İthalde KDV matrahı (3065 sayılı Kanun md. 21): gümrük vergisine esas değer + ithalat sırasında ödenen vergi, resim, harç ve benzeri (gümrük vergisi, İGV, varsa ÖTV) + mal teslim edilinceye kadar yapılan ve faturada yer almayan diğer giderler. Genel KDV oranı %20'dir; malın oranını kontrol et.
-- Her hesabı adım adım göster: kalem, formül, tutar. Sonda toplam vergi yükünü ve gümrük kıymetine oranını ver. Yuvarlamayı kuruş düzeyinde yap.
+# Calculation rules
+- The customs value is the value of the goods delivered to the place of entry into the Turkish customs territory: for FOB or EXW terms, add freight and insurance up to that point (the CIF basis).
+- Currency is converted at the Central Bank of Turkey's buying rate on the day the declaration is registered; if the user gives a rate, use it and say so.
+- Customs duty = customs value x the duty rate. Additional customs duty (IGV) = customs value x the IGV rate (IGV applies by origin, under the lists annexed to the Import Regime Decision).
+- The VAT base on imports (VAT Law No. 3065, art. 21): the value for customs duty + taxes, duties and charges paid on import (customs duty, IGV, any special consumption tax) + other costs incurred until the goods are delivered that the invoice doesn't include. The general VAT rate is 20%; check the rate for the goods.
+- Show every calculation step by step: item, formula, amount. End with the total tax burden and its share of the customs value. Round to two decimal places.
 
-# Belge kontrolü kuralları
-Faturayı, çeki listesini ve diğer belgeleri şu alanlarda karşılaştır: belge numarası ve tarihi, satıcı ve alıcı, mal tanımı ve model, miktar ve birim, kap adedi ve cinsi, net ve brüt ağırlık, birim fiyat ve toplam, teslim şekli (Incoterms), menşe ülke, GTİP. Her tutarsızlık için: alan, belge A'daki değer, belge B'deki değer, risk (yüksek/orta/düşük) ve önerilen işlem. Menşe, miktar ve kıymet farklarını yüksek risk say: yanlış beyan, eksik vergi, menşe ispatı ve ceza riski doğurur.
+# Document check rules
+Compare invoices, packing lists and other documents on: document number and date, seller and buyer, description and model, quantity and unit, number and kind of packages, net and gross weight, unit price and total, delivery terms (Incoterms), country of origin and tariff code. For each inconsistency give: the field, the value in document A, the value in document B, the risk (high, medium, low) and the action to take. Treat differences in origin, quantity and value as high risk: they mean a false declaration, unpaid duty, origin proof problems and penalties.
 
-# Şirket türleri: başvuru notları (6102 sayılı TTK ve vergi kanunları)
-- Şahıs işletmesi: tüzel kişiliği yoktur; işletme sahibi tüm borçlardan şahsen ve sınırsız sorumludur. Kazanç, Gelir Vergisi Kanunu'na göre artan oranlı tarifeyle (dilimler her yıl güncellenir) vergilendirilir. Kuruluşu hızlı ve ucuzdur.
-- Kollektif şirket: gerçek kişi ortaklar şirket borçlarından sınırsız ve müteselsil sorumludur. Az kullanılır.
-- Komandit şirket: en az bir ortağın sorumluluğu sınırsız (komandite), diğerlerinin sınırlıdır (komanditer). Az kullanılır.
-- Limited şirket: 1 ile 50 arasında ortak. Asgari esas sermaye 50.000 TL (1.1.2024'ten itibaren, Cumhurbaşkanı Kararı). Ortaklar şirkete karşı sermaye taahhüdüyle sorumludur; ancak şirketten tahsil edilemeyen amme alacaklarından sermaye payları oranında sorumlu tutulabilirler (6183 sayılı Kanun md. 35). Kurumlar vergisine tabidir.
-- Anonim şirket: tek pay sahibiyle kurulabilir. Asgari esas sermaye 250.000 TL, kayıtlı sermaye sisteminde başlangıç sermayesi 500.000 TL (1.1.2024'ten itibaren). Pay sahibi kural olarak yalnız şirkete karşı ve taahhüt ettiği sermaye ile sorumludur; kanuni temsilcilerin amme alacağı sorumluluğu 6183 sayılı Kanun mükerrer md. 35'e göre doğabilir. Kurumlar vergisine tabidir. Pay devri limited şirkete göre kolaydır.
-- Kooperatif: ortaklarının ekonomik menfaatlerini karşılıklı yardımla sağlamayı amaçlar; ticari ithalat için nadiren uygundur.
-- Kurumlar vergisi genel oranı %25'tir; ihracat ve üretim kazançları için indirimli oranlar olabilir, güncel durumu kontrol et. Dağıtılan kâr ayrıca stopaja tabidir.
-- Şirket türü seçiminde şunları birlikte değerlendir: sorumluluk, kazanç düzeyine göre efektif vergi yükü, kâr dağıtımı stopajı, kuruluş ve muhasebe maliyetleri, sermaye ihtiyacı, ortak sayısı ve pay devri, banka ve tedarikçi nezdinde güvenilirlik, ileride Yetkilendirilmiş Yükümlü Sertifikası (YYS) gibi statülere başvuru.
+# Legal forms: reference notes (Commercial Code No. 6102 and the tax laws)
+- Sole proprietorship: no legal personality; the owner is personally and fully liable for all debts. Profit is taxed under the Income Tax Law at progressive rates (the brackets change every year). Quick and cheap to set up.
+- General partnership (kollektif şirket): the partners, natural persons, are jointly and fully liable for its debts. It pays no corporate tax: each partner's share of the profit is their business income under the Income Tax Law (art. 37). Rarely used.
+- Limited partnership (komandit şirket): at least one partner has unlimited liability, the others limited. An ordinary one pays no corporate tax (the unlimited partners' shares are their business income); one with its capital divided into shares is a corporate taxpayer. Rarely used.
+- Limited liability company (limited şirket): 1 to 50 partners. Minimum capital TRY 50,000 (from 1 January 2024, by Presidential Decision). Partners are liable to the company up to their capital commitment, but may be held liable for public receivables the company can't pay, in proportion to their shares (Law No. 6183, art. 35). A corporate taxpayer.
+- Joint-stock company (anonim şirket): can be founded by one shareholder. Minimum capital TRY 250,000, or TRY 500,000 initial capital under the registered capital system (from 1 January 2024). Shareholders are as a rule liable only to the company, up to their committed capital; legal representatives may be liable for public receivables under Law No. 6183, art. 35 (repeated). A corporate taxpayer. Shares transfer more easily than in a limited company.
+- Cooperative: serves its members' economic interests through mutual help; rarely suitable for commercial imports.
+- The general corporate tax rate is 25%; reduced rates may apply to export and manufacturing profits, so check the current rules. Distributed profit is also subject to withholding tax.
+- When choosing a legal form, weigh together: liability, the effective tax burden at the expected profit, withholding on distributions, set-up and accounting costs, capital needs, the number of partners and share transfers, standing with banks and suppliers, and later applications for statuses such as Authorized Economic Operator (YYS).
 
-# Gümrük müşavirliği notları (4458 sayılı Gümrük Kanunu)
-- Temsil: herkes gümrük idaresi nezdindeki işlemleri için bir temsilci atayabilir; temsil doğrudan (başkası adına ve hesabına) veya dolaylı (kendi adına, başkası hesabına) olabilir (4458 sayılı Kanun md. 5).
-- Gümrük müşavirleri ve yardımcıları, Kanun'un gümrük müşavirliğine ilişkin hükümleri (md. 227 ve devamı) ile Gümrük Yönetmeliği çerçevesinde çalışır; beyanın doğruluğu ve belgelerin saklanması konusundaki yükümlülüklerini hatırlat.
-- Yükümlülük ve ceza konularında (ör. md. 234 ve 235 kapsamındaki vergi farkı ve para cezaları) somut olayın koşullarına göre değerlendirme yapılması gerektiğini belirt.
+# Customs brokerage notes (Customs Law No. 4458)
+- Representation: anyone may appoint a representative before the customs authorities; representation is direct (in another's name and on their account) or indirect (in one's own name, on another's account) (Law No. 4458, art. 5).
+- Customs brokers and their assistants work under the Law's provisions on customs brokerage (art. 227 onward) and the Customs Regulation; remind users of their duties on the accuracy of declarations and keeping documents.
+- On liability and penalties (for example the duty differences and fines under arts. 234 and 235), note that the facts of the case decide.
 
-# Çıktı biçimleri
-- Karşılaştırma: Markdown tablosu, sonra "Öneri" başlığıyla 2-3 madde.
-- Hesaplama: "Varsayımlar", "Hesap" (tablo), "Sonuç" başlıkları.
-- Belge kontrolü: tablo (Alan | Fatura | Çeki listesi | Risk | Öneri), sonra "İlk yapılacaklar".
-- E-posta: konu satırı ve gövde; kibar, kısa, maddeli.
-- Özet ve yapılacaklar: numaralı liste, her maddede sorumlu ve öncelik.`
+# Output formats
+- Comparison: a Markdown table, then "Recommendation" with 2 or 3 points.
+- Calculation: "Assumptions", "Calculation" (a table), "Result".
+- Document check: a table (Field | Invoice | Packing list | Risk | Action), then "First steps".
+- Email: a subject line and a body; polite, short, with points.
+- Summaries and to-do lists: a numbered list, each item with an owner and a priority.`
 
-// The tools GümrükPilot gives the model; their answers are demo data.
+// The tools CustomsPilot gives the model; their answers are demo data.
 const pilotTools = `[
- {"name":"gtip_ara","description":"Türk Gümrük Tarife Cetveli'nde ürün tanımına göre GTİP adaylarını arar. Sınıflandırma sorularında önce bunu kullan.",
-  "input_schema":{"type":"object","properties":{"sorgu":{"type":"string","description":"Ürün tanımı ve ayırt edici özellikleri"}},"required":["sorgu"]}},
- {"name":"tarife_sorgula","description":"Bir GTİP ve menşe ülke için gümrük vergisi, İGV, KDV oranlarını ve ithalat denetimlerini getirir.",
-  "input_schema":{"type":"object","properties":{"gtip":{"type":"string"},"mense":{"type":"string","description":"Menşe ülke"}},"required":["gtip","mense"]}}
+ {"name":"tariff_search","description":"Searches the Turkish Customs Tariff Schedule for candidate tariff codes (GTIP) matching a product description. Use it first for classification questions.",
+  "input_schema":{"type":"object","properties":{"query":{"type":"string","description":"The product's description and distinguishing features"}},"required":["query"]}},
+ {"name":"tariff_rates","description":"Gets the customs duty, additional customs duty (IGV) and VAT rates and the import inspections for a tariff code and country of origin.",
+  "input_schema":{"type":"object","properties":{"code":{"type":"string"},"origin":{"type":"string","description":"Country of origin"}},"required":["code","origin"]}}
 ]`
 
 func runTool(name string, input json.RawMessage) string {
 	switch name {
-	case "gtip_ara":
-		return `DEMO VERİSİ (gerçek tarife sorgusu değildir). Adaylar:
-1. 8422.19.00.00.00 Bulaşık yıkama makineleri: diğerleri (ev tipi olmayanlar). Endüstriyel, tünel ve kapaklı tipler buraya girer.
-2. 8422.11.00.00.00 Bulaşık yıkama makineleri: ev tipi olanlar.
-3. 8419.89.98.00.19 Isı değişimi yoluyla madde işleyen diğer makineler (kurutma ünitesi ayrı gelirse değerlendirilir).`
-	case "tarife_sorgula":
-		var in struct{ GTIP, Mense string }
+	case "tariff_search":
+		var in struct{ Query string }
 		_ = json.Unmarshal(input, &in)
-		return fmt.Sprintf(`DEMO VERİSİ (gerçek tarife sorgusu değildir). GTİP %s, menşe %s:
-- Gümrük vergisi: %%2,2
-- İlave gümrük vergisi (İGV): %%20 (menşe Çin için, demo)
-- KDV: %%20
-- ÖTV: yok
-- Denetim: TAREKS kaydı, makine emniyeti (CE uygunluk beyanı ve teknik dosya) istenir.
-- Not: Menşe Vietnam olsaydı İGV oranı farklı olabilirdi; menşe ispatı belgesi gerekir.`, in.GTIP, in.Mense)
+		q := strings.ToLower(in.Query)
+		for _, c := range demoCandidates {
+			for _, word := range c.words {
+				if strings.Contains(q, word) {
+					return "DEMO DATA (not a real tariff search). Candidates:\n" + c.list
+				}
+			}
+		}
+		return "DEMO DATA: no match. Describe the product's material, function and use."
+	case "tariff_rates":
+		var in struct{ Code, Origin string }
+		_ = json.Unmarshal(input, &in)
+		rates := demoRates[""]
+		for prefix, r := range demoRates {
+			if prefix != "" && strings.HasPrefix(strings.ReplaceAll(in.Code, ".", ""), prefix) {
+				rates = r
+			}
+		}
+		return fmt.Sprintf("DEMO DATA (not a real tariff search). Code %s, origin %s:\n%s", in.Code, in.Origin, rates)
 	}
-	return "Bilinmeyen araç."
+	return "Unknown tool."
+}
+
+// The tariff tools' demo data, by what a query names.
+var demoCandidates = []struct {
+	words []string
+	list  string
+}{
+	{[]string{"dishwasher"}, `1. 8422.19.00.00.00 Dishwashing machines: other (not household). Commercial, tunnel and hood types belong here.
+2. 8422.11.00.00.00 Dishwashing machines: household.
+3. 8419.89.98.00.19 Other machinery treating materials by a change of temperature (if a drying unit comes separately).`},
+	{[]string{"headphone", "earbud", "earphone"}, `1. 8518.30.95.00.00 Headphones and earphones, combined or not with a microphone: other.
+2. 8517.62.00.00.39 Machines for the reception and transmission of voice, images or other data (if data transmission is the main function).
+3. 8504.40.83.00.00 Chargers (if the charging case is presented separately).`},
+	{[]string{"toy", "block"}, `1. 9503.00.70.00.00 Other toys, put up in sets or outfits.
+2. 9503.00.99.00.00 Other toys.
+3. 9504.50.00.00.00 Video game consoles and machines (electronic games).`},
+	{[]string{"phone case", "case", "cover"}, `1. 3926.90.97.90.18 Other articles of plastics (phone cases of plastic).
+2. 4202.32.10.00.00 Articles of a kind carried in the pocket or handbag, outer surface of plastic sheeting.
+3. 4202.31.00.00.00 Articles of a kind carried in the pocket or handbag, outer surface of leather.`},
+}
+
+var demoRates = map[string]string{
+	"": `- Customs duty: 3.0%
+- Additional customs duty (IGV): none (demo)
+- VAT: 20%`,
+	"8422": `- Customs duty: 2.2%
+- Additional customs duty (IGV): 20% (for China origin, demo)
+- VAT: 20%
+- Inspections: TAREKS registration; machinery safety (CE declaration of conformity and technical file).
+- Note: for Vietnam origin the IGV rate could differ; proof of origin is needed.`,
+	"8518": `- Customs duty: 2.0%
+- Additional customs duty (IGV): 20% (for China origin, demo)
+- VAT: 20%
+- Inspections: TAREKS registration; radio equipment (Bluetooth) and EMC conformity, CE marking; registration with the ICT Authority may be required.`,
+	"9503": `- Customs duty: 4.7%
+- Additional customs duty (IGV): 30% (for China origin, demo)
+- VAT: 20%
+- Inspections: toy safety, TAREKS registration and a CE declaration of conformity; sample testing may be required.`,
+	"3926": `- Customs duty: 6.5%
+- Additional customs duty (IGV): 30% (for China origin, demo)
+- VAT: 20%
+- Inspections: none (demo).`,
+	"4202": `- Customs duty: 9.7%
+- Additional customs duty (IGV): 30% (for China origin, demo)
+- VAT: 20%
+- Inspections: none (demo).`,
+}
+
+// pilotGateway is a gateway serving CustomsPilot's project: an Anthropic
+// provider on key, router "advisor" (Haiku 5.5 at low effort, Sonnet 5.5
+// at medium, Haiku 5.5 deciding within the auto timeout), prompt caching
+// on, and the prices production syncs daily. With no key it serves the
+// same router on the fake provider, for checking a demo for free.
+func pilotGateway(t *testing.T, key string) (*gatewaytest.World, *llm.Catalog) {
+	t.Helper()
+	ctx := context.Background()
+	opts := gatewaytest.Options{ClickHouse: true}
+	if key == "" {
+		opts.Upstream.Reply = func(model string, body []byte) string {
+			if strings.Contains(string(body), "You route requests") {
+				return `{"tier": "fast"}`
+			}
+			return "Answered by " + model
+		}
+	}
+	w := gatewaytest.New(t, opts)
+	w.Grant(catalog.Routers, catalog.RoutingLearned, catalog.PromptCaching)
+	fast, expert := "main/fast-model", "main/expert-model"
+	if key != "" {
+		if err := w.App.Prices.Sync(ctx, true); err != nil {
+			t.Fatalf("syncing prices: %v", err)
+		}
+		for _, m := range []string{"claude-haiku-5-5", "claude-sonnet-5-5"} {
+			p, ok := w.App.Prices.Current().Lookup("anthropic", m)
+			if !ok {
+				t.Fatalf("no price for %s", m)
+			}
+			t.Logf("price %s: input $%g, cache write $%g (one hour $%g), cache read $%g, output $%g per million", m,
+				p.Input, p.CacheWrite, p.CacheWrite1h, p.CachedInput, p.Output)
+		}
+		if _, err := w.App.Providers.Create(w.Scoped(), w.Org, w.Project, providers.Input{Name: "anthropic", Kind: "anthropic",
+			APIKey: &key, Enabled: true}); err != nil {
+			t.Fatal(err)
+		}
+		fast, expert = "anthropic/claude-haiku-5-5", "anthropic/claude-sonnet-5-5"
+	}
+	if _, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "advisor", Status: tiers.Active,
+		DecisionModel: fast,
+		Spec: tiers.Spec{Tiers: []tiers.Tier{
+			{Name: "fast", Model: fast, Effort: "low",
+				Description: "Definitions and single facts, rewording, translations, short emails, summaries and to-do lists of what the conversation already covered.",
+				Examples:    []string{"How many partners can a limited company have at most?", "Can you sum this up in three points?"}},
+			{Name: "expert", Model: expert, Effort: "medium",
+				Description: "Legal analysis and comparisons across laws, tax and liability trade-offs, customs value and tax calculations, tariff classification with reasoning, checking documents against each other.",
+				Examples:    []string{"Compare a sole proprietorship and a limited company on tax and liability."}},
+		}, Default: "expert"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{Name: "default", PromptCache: true}); err != nil {
+		t.Fatal(err)
+	}
+	return w, w.App.Prices.Current()
 }
 
 // The broker's side of the conversation: a CPA who is also a customs
 // broker, helping a client start importing.
 var brokerTurns = []string{
-	"Merhaba. Ben İzmir'de SMMM ve gümrük müşaviriyim. Bir müşterim endüstriyel mutfak ekipmanı ithalatına başlayacak. Türkiye'deki şirket türlerini kısaca listeler misin?",
-	"Müşterim tek kişi, ilk yıl yaklaşık 15 milyon TL ithalat ve 1,5 milyon TL civarında vergi öncesi kâr bekliyor. Şahıs işletmesi, limited şirket ve anonim şirketi; sorumluluk, asgari sermaye, vergi yükü ve ileride YYS başvurusu açısından karşılaştırır mısın? Önerin ne olur?",
-	"Limited şirkette ortak sayısı en fazla kaç olabiliyordu?",
-	"Müşterinin ilk ithalatı Çin menşeli, AISI 304 paslanmaz çelik, saatte 60 sepet kapasiteli tünel tipi endüstriyel bulaşık makinesi. GTİP önerir misin? Tarife veritabanına bak, sonra Çin menşei için oranları da getir.",
-	"Fatura 4 set için toplam 18.400 USD, FOB Şanghay. Navlun 2.150 USD, sigorta 160 USD. Kuru 1 USD = 41,20 TL varsayalım. Gümrük vergisi, İGV ve KDV'yi adım adım hesaplar mısın?",
-	`Tedarikçiden belgeler geldi. Karşılaştırır mısın?
+	"Hello. I'm a CPA and customs broker in Izmir. A client of mine is starting to import commercial kitchen equipment. Can you briefly list the legal forms of company in Turkey?",
+	"My client is on their own and expects about TRY 15 million of imports and around TRY 1.5 million of pre-tax profit in the first year. Can you compare a sole proprietorship, a limited company and a joint-stock company on liability, minimum capital, tax burden and a later Authorized Economic Operator application? What would you recommend?",
+	"What was the maximum number of partners in a limited company again?",
+	"The client's first import: a tunnel-type commercial dishwasher from China, AISI 304 stainless steel, 60 racks an hour. Can you suggest a tariff code? Check the tariff database, then get the rates for China origin too.",
+	"The invoice is USD 18,400 for 4 sets, FOB Shanghai. Freight USD 2,150, insurance USD 160. Let's assume USD 1 = TRY 41.20. Can you calculate the customs duty, IGV and VAT step by step?",
+	`The supplier's documents arrived. Can you compare them?
 
 COMMERCIAL INVOICE No: SH-26-0917  Date: 2026-09-17
 Seller: Shanghai Hengli Kitchen Equipment Co., Ltd.
@@ -142,11 +253,11 @@ Quantity: 3 sets in 4 wooden cases
 Net weight: 1,240 kg   Gross weight: 1,480 kg
 Country of origin: Vietnam
 Marks: EGE-IZM-01/04`,
-	"Teşekkürler. Bu tutarsızlıklar için tedarikçiye gönderilecek kısa bir İngilizce e-posta taslağı yazar mısın?",
-	"Bu ithalatı müşterim adına ben yapacağım. 4458 sayılı Kanun'a göre doğrudan temsil ile dolaylı temsil arasındaki fark nedir, gümrük müşaviri olarak sorumluluğum hangisinde nasıl değişir?",
-	"Bunu müşterime anlatacağım; üç maddelik sade bir özet yapar mısın?",
-	"Menşe Vietnam çıkarsa hesap nasıl değişir? Sadece değişen kalemleri söyle.",
-	"Son olarak bugün konuştuklarımızdan bir yapılacaklar listesi çıkarır mısın?",
+	"Thanks. Can you draft a short email to the supplier about these inconsistencies?",
+	"I'll handle this import on my client's behalf. Under Law No. 4458, what's the difference between direct and indirect representation, and how does my liability as a customs broker change in each?",
+	"I'll explain this to my client; can you write a plain three-point summary?",
+	"If the origin turns out to be Vietnam, how does the calculation change? Only tell me the items that change.",
+	"Finally, can you make a to-do list from everything we discussed today?",
 }
 
 type pilotUsage struct {
@@ -181,52 +292,19 @@ func TestCustomsBroker(t *testing.T) {
 		t.Skip("no PROMPTDAM_TEST_ANTHROPIC_KEY")
 	}
 	ctx := context.Background()
-	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true})
-	w.Grant(catalog.Routers, catalog.RoutingLearned, catalog.PromptCaching)
-	// The prices production syncs daily.
-	if err := w.App.Prices.Sync(ctx, true); err != nil {
-		t.Fatalf("syncing prices: %v", err)
-	}
-	list := w.App.Prices.Current()
-	for _, m := range []string{"claude-haiku-5-5", "claude-sonnet-5-5"} {
-		p, ok := list.Lookup("anthropic", m)
-		if !ok {
-			t.Fatalf("no price for %s", m)
-		}
-		t.Logf("price %s: input $%g, cache write $%g, cache read $%g, output $%g per million", m, p.Input, p.CacheWrite, p.CachedInput, p.Output)
-	}
-
-	if _, err := w.App.Providers.Create(w.Scoped(), w.Org, w.Project, providers.Input{Name: "anthropic", Kind: "anthropic",
-		APIKey: &key, Enabled: true}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "musavir", Status: tiers.Active,
-		DecisionModel: "anthropic/claude-haiku-5-5", DecisionTimeoutMS: 2000,
-		Spec: tiers.Spec{Tiers: []tiers.Tier{
-			{Name: "fast", Model: "anthropic/claude-haiku-5-5", Effort: "low",
-				Description: "Definitions and single facts, rewording, translations, short emails, summaries and to-do lists of what the conversation already covered.",
-				Examples:    []string{"Limited şirkette ortak sayısı en fazla kaç olabilir?", "Bunu üç maddede özetler misin?"}},
-			{Name: "expert", Model: "anthropic/claude-sonnet-5-5", Effort: "medium",
-				Description: "Legal analysis and comparisons across laws, tax and liability trade-offs, customs value and tax calculations, tariff classification with reasoning, checking documents against each other.",
-				Examples:    []string{"Şahıs şirketi ile limited şirketi vergi ve sorumluluk açısından karşılaştır."}},
-		}, Default: "expert"}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{Name: "default", PromptCache: true}); err != nil {
-		t.Fatal(err)
-	}
+	w, list := pilotGateway(t, key)
 
 	system, _ := json.Marshal(pilotSystem)
 	var history []json.RawMessage
 	var spent float64
 	var transcript strings.Builder
-	transcript.WriteString("# GümrükPilot through Promptdam: the conversation\n\n")
+	transcript.WriteString("# CustomsPilot through Promptdam: the conversation\n\n")
 	start := time.Now()
 
 	call := func() (pilotAnswer, string) {
 		t.Helper()
 		msgs, _ := json.Marshal(history)
-		body := `{"model":"musavir","max_tokens":4000,"system":` + string(system) + `,"tools":` + pilotTools + `,"messages":` + string(msgs) + `}`
+		body := `{"model":"advisor","max_tokens":4000,"system":` + string(system) + `,"tools":` + pilotTools + `,"messages":` + string(msgs) + `}`
 		status, h, out := w.Call("/v1/messages", body, brand.HeaderSession, "pilot-conv-42", brand.HeaderUser, "smmm-izmir")
 		if status != 200 {
 			t.Fatalf("status %d: %s", status, out)
@@ -277,7 +355,7 @@ func TestCustomsBroker(t *testing.T) {
 			history = append(history, user)
 			a, tier = call()
 		}
-		fmt.Fprintf(&transcript, "**GümrükPilot** (%s)\n\n%s\n\n", tier, a.text())
+		fmt.Fprintf(&transcript, "**CustomsPilot** (%s)\n\n%s\n\n", tier, a.text())
 	}
 	t.Logf("the conversation took %s; the app's own count of spend: $%.4f", time.Since(start).Round(time.Second), spent)
 

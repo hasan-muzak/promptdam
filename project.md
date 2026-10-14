@@ -726,6 +726,11 @@ Model routers replace per-family savings experiments, and cross-format translati
     parameters failed. The catalog now says how each model thinks and whether it takes
     sampling (`llm.Known` for models a price list doesn't have yet); a moved call loses the sampling its model
     refuses, listed in `X-Promptdam-Dropped`.
+  - **Ten users' traffic (2026-10-14, `task demo:traffic`):** the same assistant, ten users chatting at once for 21
+    minutes, paced like people (seven breaks past the 5-minute cache): 50 messages, 24 to Haiku, $0.41 against $1.00
+    on Sonnet without caching (59%; $0.40 routing, $0.19 caching); the decision model answered all 50 in time
+    (median 0.93 s, p99 1.44 s). Users share the instructions' cache; a one-hour cache would have cost more here
+    ($0.43). The demos are in English.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
 - **Exit:** ≥ 5 design partners in production, ≥ 2 willing to pay for Team or Business. → **Beta Mon Apr 26**.
 
