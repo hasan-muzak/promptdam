@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/hasan-muzak/promptdam/server/features/translate"
 )
 
 // Limits of a router.
@@ -63,6 +65,11 @@ type Tier struct {
 	// Examples are requests the tier is for, as the decision model sees
 	// them.
 	Examples []string `json:"examples,omitempty"`
+	// Effort is the reasoning effort the tier's calls are sent with (none,
+	// minimal, low, medium, high, xhigh, max), fitted to each model: the
+	// same model at a lower effort is often the cheapest tier that holds
+	// up. "" leaves the client's.
+	Effort string `json:"effort,omitempty"`
 }
 
 // Rule sends the calls its condition (CEL over request, as routing rules
@@ -117,7 +124,10 @@ func (s *Spec) Check() error {
 	for i := range s.Tiers {
 		t := &s.Tiers[i]
 		t.Name, t.Model, t.Description = strings.TrimSpace(t.Name), strings.TrimSpace(t.Model), strings.TrimSpace(t.Description)
+		t.Effort = strings.ToLower(strings.TrimSpace(t.Effort))
 		switch {
+		case !translate.ValidEffort(t.Effort):
+			return invalid("tier %q: an effort is none, minimal, low, medium, high, xhigh or max", t.Name)
 		case !nameRE.MatchString(t.Name):
 			return invalid("%q: a tier's name is 1 to 32 lowercase letters, digits, - or _", t.Name)
 		case seen[t.Name]:

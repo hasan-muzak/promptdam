@@ -118,6 +118,13 @@ type Target struct {
 	// MaxTokens caps a translated Messages call that set no limit (0: the
 	// translation's default).
 	MaxTokens int
+	// Effort is the reasoning effort the call is sent with (a router
+	// tier's, fitted to the model), "" to leave the client's;
+	// DefaultEffort is the model's own, which needn't be set unless the
+	// client set another. NoReasoning marks a model known not to reason:
+	// a client's effort is taken out.
+	Effort, DefaultEffort string
+	NoReasoning           bool
 }
 
 // formatOf is the API format a target is called in for a call of format f.
@@ -179,6 +186,9 @@ type Record struct {
 	// format, translated; Dropped lists the parameters it left out.
 	Translated bool
 	Dropped    []string
+	// Effort is the reasoning effort the gateway sent the call with ("":
+	// the client's own, or none).
+	Effort string
 	// Body and Answer are a sampled or captured call's request (as the
 	// provider got it) and the answer the client got (a whole response or
 	// its stream, in the client's format), held in memory; Answer is nil

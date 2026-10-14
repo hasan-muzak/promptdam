@@ -334,6 +334,11 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 		}
 		body = swapped
 	}
+	var effortDropped bool
+	body, c.rec.Effort, effortDropped = ApplyEffort(body, format, t, t.Model != req.Model)
+	if effortDropped {
+		dropped = append(dropped, "effort")
+	}
 	ctx, cancel := context.WithCancel(c.r.Context())
 	defer cancel()
 	// Whether the whole request reached the provider: one that did may be
@@ -423,6 +428,31 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 	return answered, retryable(res.StatusCode) || c.streamFailed
 }
 
+// ApplyEffort sends a call to t with t's reasoning effort, in the target's
+// dialect (body is in format f, t's): a router tier's effort replaces the
+// client's, except that the model's own default needn't be written when
+// the client set none. A call moved to another model (moved) that is known
+// not to reason has the client's reasoning_effort taken out: it was meant
+// for the model asked for. applied is the effort set ("" for none);
+// dropped reports a tier's effort the target's provider has no known way
+// to take.
+func ApplyEffort(body []byte, f wire.Format, t Target, moved bool) (out []byte, applied string, dropped bool) {
+	if t.NoReasoning {
+		if moved && !f.Anthropic() {
+			body, _ = translate.StripEffort(body)
+		}
+		return body, "", false
+	}
+	if t.Effort == "" || t.Effort == t.DefaultEffort && !translate.HasEffort(body, f, t.Kind) {
+		return body, "", false
+	}
+	out, ok, err := translate.SetEffort(body, f, t.Kind, t.Effort)
+	if err != nil || !ok {
+		return body, "", err == nil
+	}
+	return out, t.Effort, false
+}
+
 // errorRedactor masks secrets and personal data in providers' errors.
 var errorRedactor = redact.Default()
 
@@ -456,6 +486,9 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	}
 	if len(dropped) > 0 {
 		h.Set(brand.HeaderDropped, strings.Join(dropped, ","))
+	}
+	if c.rec.Effort != "" {
+		h.Set(brand.HeaderEffort, c.rec.Effort)
 	}
 	switch {
 	case c.rec.Cache != "":

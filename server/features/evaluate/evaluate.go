@@ -361,7 +361,10 @@ func (e *Evaluator) retention(ctx context.Context, org uuid.UUID) uint16 {
 func (e *Evaluator) replay(ctx context.Context, m *resolver.Meta, snap *snapshot.Snapshot, t tiers.Tier, f wire.Format, body []byte) tierRun {
 	var targets []gateway.Target
 	for _, model := range append([]string{t.Model}, t.Fallbacks...) {
-		targets = append(targets, e.cfg.Resolver.Targets(snap, f, model)...)
+		for _, tg := range e.cfg.Resolver.Targets(snap, f, model) {
+			// A replay runs at the tier's effort, as the tier's calls do.
+			targets = append(targets, e.cfg.Resolver.WithEffort(tg, t.Effort))
+		}
 	}
 	if len(targets) == 0 {
 		return tierRun{err: errors.New("evaluate: no provider serves tier " + t.Name)}
@@ -409,6 +412,7 @@ func (e *Evaluator) callTier(ctx context.Context, t gateway.Target, f wire.Forma
 			return Answer{}, wire.Usage{}, 0, err
 		}
 	}
+	payload, _, _ = gateway.ApplyEffort(payload, tf, t, true)
 	resp, status, err := e.send(ctx, t, tf, payload)
 	if err != nil {
 		return Answer{}, wire.Usage{}, status, err

@@ -29,9 +29,9 @@ func placing(t testing.TB, status string) (*Resolver, *snapshot.Snapshot, *route
 	t.Helper()
 	cat := &llm.Catalog{Models: []llm.Model{
 		{ID: "gpt-5-nano", Provider: "openai", ContextWindow: 1_000, Features: []string{}},
-		{ID: "gpt-5-mini", Provider: "openai", ContextWindow: 400_000, Features: []string{llm.FeatureTools}},
+		{ID: "gpt-5-mini", Provider: "openai", ContextWindow: 400_000, Features: []string{llm.FeatureTools, llm.FeatureReasoning}},
 		{ID: "claude-opus-5-5", Provider: "anthropic", ContextWindow: 200_000,
-			Features: []string{llm.FeatureTools, llm.FeatureImages, llm.FeatureJSONSchema}},
+			Features: []string{llm.FeatureTools, llm.FeatureImages, llm.FeatureJSONSchema, llm.FeatureReasoning}},
 	}}
 	r := New(Config{Prices: prices.Static{Catalog: cat}})
 	snap := &snapshot.Snapshot{Providers: []snapshot.Opened{
@@ -245,5 +245,25 @@ func TestTurnsPreferTheirProvider(t *testing.T) {
 	preferFirst(ts, "z", "m")
 	if ts[0].Provider != "c" {
 		t.Fatalf("an unknown provider moved %+v", ts)
+	}
+}
+
+// Each tier's targets carry its reasoning effort, fitted to their model:
+// OpenAI-compatible models whose levels the price list doesn't know take
+// low to high.
+func TestTargetsCarryTheirTiersEffort(t *testing.T) {
+	r, snap, rt := placing(t, tiers.Active)
+	rt.Spec.Tiers[1].Effort, rt.Spec.Tiers[2].Effort = "xhigh", "xhigh"
+	two := `{"model":"auto","messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}]}`
+	pl, err := r.Explain(snap, rt, "mid", call(t, two), &Meta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, tg := range pl.Targets {
+		got[tg.Model] = tg.Effort
+	}
+	if got["gpt-5-mini"] != "high" || got["claude-opus-5-5"] != "xhigh" {
+		t.Fatalf("efforts %v", got)
 	}
 }

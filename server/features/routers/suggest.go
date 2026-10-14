@@ -38,6 +38,8 @@ type Suggestion struct {
 	// Picks say, per tier, what serves it and how it was picked.
 	Picks []Pick
 	Notes []string
+
+	model map[string]llm.Model // the tiers' models, by their reference
 }
 
 // Pick is how a suggested tier was picked.
@@ -47,8 +49,8 @@ type Pick struct {
 	Input    float64
 	Output   float64
 	// How: "family" (the newest of a known family), "price" (by price
-	// among the provider's models) or "current" (the model the project
-	// uses most).
+	// among the provider's models), "current" (the model the project uses
+	// most) or "effort" (the default tier's model at a lower effort).
 	How string
 }
 
@@ -252,7 +254,7 @@ func Suggest(n int, cands []Candidate, current *Candidate) (Suggestion, error) {
 			others++
 		}
 	}
-	s := Suggestion{}
+	s := Suggestion{model: map[string]llm.Model{}}
 	names := make([]string, 0, len(built))
 	defName, j := "", 0
 	for _, t := range built {
@@ -276,6 +278,7 @@ func Suggest(n int, cands []Candidate, current *Candidate) (Suggestion, error) {
 			desc = descriptions["current"]
 		}
 		tt := tiers.Tier{Name: name, Description: desc, Model: t.main.ref()}
+		s.model[tt.Model] = t.main.Model
 		for _, a := range t.alts {
 			tt.Fallbacks = append(tt.Fallbacks, a.ref())
 		}
@@ -290,11 +293,42 @@ func Suggest(n int, cands []Candidate, current *Candidate) (Suggestion, error) {
 		def = names[len(names)-1]
 	}
 	s.Spec.Default = def
+	notes = lighter(&s, notes)
 	s.Judge = judgeOf(usable, s.Spec)
 	notes = append(notes, "Start in shadow mode: the router decides and evaluates your calls but serves the default tier, and "+
 		"its report shows what each tier would save and how well it holds up, before it routes anything.")
 	s.Notes = notes
 	return s, nil
+}
+
+// lighter adds, below the default tier, its model at the effort below the
+// model's own default, when the price list knows the model's efforts: the
+// same model thinking less is often the cheapest tier that holds up, and
+// the router's evaluation measures it before it serves anything.
+func lighter(s *Suggestion, notes []string) []string {
+	d := slices.IndexFunc(s.Spec.Tiers, func(t tiers.Tier) bool { return t.Name == s.Spec.Default })
+	if d < 0 || len(s.Spec.Tiers) >= tiers.MaxTiers {
+		return notes
+	}
+	var pick *Pick
+	for i := range s.Picks {
+		if s.Picks[i].Tier == s.Spec.Default {
+			pick = &s.Picks[i]
+		}
+	}
+	m := s.Spec.Tiers[d]
+	model := s.model[m.Model]
+	at := slices.Index(model.Efforts, model.DefaultEffort)
+	if at < 1 || pick == nil {
+		return notes
+	}
+	light := tiers.Tier{Name: m.Name + "-light", Description: "As " + m.Name + ", thinking less: the same model at a lower " +
+		"reasoning effort, for the requests that don't need all of it.", Model: m.Model, Fallbacks: m.Fallbacks,
+		Effort: model.Efforts[at-1]}
+	s.Spec.Tiers = slices.Insert(s.Spec.Tiers, d, light)
+	s.Picks = append(s.Picks, Pick{Tier: light.Name, Provider: pick.Provider, Input: pick.Input, Output: pick.Output, How: "effort"})
+	return append(notes, "Tier "+light.Name+" is "+m.Name+"'s model at "+light.Effort+" effort instead of its default "+
+		model.DefaultEffort+": the same model thinking less often holds up, at a fraction of the output.")
 }
 
 // judgeOf is a suggested judge: the newest Claude Sonnet a provider

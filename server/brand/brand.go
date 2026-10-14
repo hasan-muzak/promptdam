@@ -64,6 +64,9 @@ const (
 	// HeaderErrorCode is the stable code of an error the gateway itself
 	// answered with (not the provider).
 	HeaderErrorCode = HeaderPrefix + "Error-Code"
+	// HeaderEffort is the reasoning effort the gateway sent the call with,
+	// when a router's tier set one.
+	HeaderEffort = HeaderPrefix + "Effort"
 	// HeaderDropped lists, comma-separated, the request's parameters a
 	// provider of the other API format had no equivalent for (seed, top_k…).
 	HeaderDropped = HeaderPrefix + "Dropped"

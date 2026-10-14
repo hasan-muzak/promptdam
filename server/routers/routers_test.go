@@ -593,10 +593,13 @@ func TestSuggestRouter(t *testing.T) {
 	}
 	s := testclient.Decoded[handlers.SuggestRouterOut](e.client.Get(base+"/routers/suggest", alice).AssertStatus(http.StatusOK))
 	r := s.Router
-	if r.Name != "auto" || r.Status != "shadow" || len(r.Tiers) != 3 || r.Tiers[0].Model != "claude/claude-haiku-4-5" ||
-		r.Tiers[1].Model != "claude/claude-sonnet-5-5" || r.Tiers[2].Model != "claude/claude-opus-5-5" ||
-		len(r.Tiers[2].Fallbacks) != 1 || r.Tiers[2].Fallbacks[0] != "openai/gpt-5" || r.DefaultTier != "expert" ||
-		r.Judge != "claude/claude-sonnet-5-5" || len(s.Tiers) != 3 || s.Tiers[0].Picked != "family" || len(s.Notes) == 0 {
+	// The default tier's model (Opus 5.5, whose efforts the price list
+	// knows) also comes one effort lighter, just below it.
+	if r.Name != "auto" || r.Status != "shadow" || len(r.Tiers) != 4 || r.Tiers[0].Model != "claude/claude-haiku-4-5" ||
+		r.Tiers[1].Model != "claude/claude-sonnet-5-5" || r.Tiers[3].Model != "claude/claude-opus-5-5" ||
+		r.Tiers[2].Name != "expert-light" || r.Tiers[2].Model != "claude/claude-opus-5-5" || r.Tiers[2].Effort != "low" ||
+		len(r.Tiers[3].Fallbacks) != 1 || r.Tiers[3].Fallbacks[0] != "openai/gpt-5" || r.DefaultTier != "expert" ||
+		r.Judge != "claude/claude-sonnet-5-5" || len(s.Tiers) != 4 || s.Tiers[0].Picked != "family" || len(s.Notes) < 2 {
 		t.Fatalf("suggested %+v", s)
 	}
 	// The model used today becomes the default tier.

@@ -81,3 +81,27 @@ func TestSuggest(t *testing.T) {
 		t.Fatalf("no usable model: %v", err)
 	}
 }
+
+// A default tier whose model's efforts the price list knows gets a lighter
+// sibling below it: the same model, one effort below its default.
+func TestSuggestALighterTier(t *testing.T) {
+	opus := cand("claude", "claude-opus-5-5", 4, 20)
+	opus.Model.Efforts, opus.Model.DefaultEffort = []string{"low", "medium", "high", "xhigh", "max"}, "medium"
+	s, err := Suggest(3, []Candidate{cand("claude", "claude-haiku-5-5", 0.1, 0.5), cand("claude", "claude-sonnet-5-5", 2, 10), opus}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := []string{}
+	for _, tier := range s.Spec.Tiers {
+		names = append(names, tier.Name+"="+tier.Effort)
+	}
+	if got := strings.Join(names, " "); got != "fast= standard= expert-light=low expert=" || s.Spec.Default != "expert" {
+		t.Fatalf("tiers %s, default %s", got, s.Spec.Default)
+	}
+	if light := s.Spec.Tiers[2]; light.Model != "claude/claude-opus-5-5" || s.Picks[len(s.Picks)-1].How != "effort" {
+		t.Fatalf("the lighter tier %+v", light)
+	}
+	if err := s.Spec.Check(); err != nil {
+		t.Fatalf("not a valid router: %v", err)
+	}
+}

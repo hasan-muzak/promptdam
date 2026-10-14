@@ -43,6 +43,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/routes"
 	"github.com/hasan-muzak/promptdam/server/features/rules"
 	"github.com/hasan-muzak/promptdam/server/features/snapshot"
+	"github.com/hasan-muzak/promptdam/server/features/translate"
 )
 
 // KeyTTL is how long a gateway trusts a key it checked: a revoked key
@@ -546,6 +547,13 @@ func crossFormat(f wire.Format) wire.Format {
 // whether the provider can take the call at all.
 func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gateway.Target, bool) {
 	t := gateway.Target{ID: p.ID.String() + ":" + model, Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL, Model: model, Header: p.Header}
+	m, known := r.model(p.Kind, model)
+	if known {
+		// A model known not to reason has a client's effort taken out
+		// when a call is moved to it.
+		reasons, sure := m.Has(llm.FeatureReasoning)
+		t.NoReasoning = sure && !reasons
+	}
 	if p.Format == apiFormat(f) {
 		return t, true
 	}
@@ -555,11 +563,32 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 	}
 	// Translation passes a reasoning effort on to models that take one,
 	// and lets Messages answers run as long as the model writes.
-	if m, ok := r.model(p.Kind, model); ok {
+	if known {
 		t.Reasoning, _ = m.Has(llm.FeatureReasoning)
 		t.MaxTokens = int(min(m.MaxOutput, maxTranslatedTokens))
 	}
 	return t, true
+}
+
+// WithEffort is t sent with a router tier's reasoning effort, fitted to
+// its model: the nearest level the model takes (a tie going to the
+// stronger), none for a model known not to reason or to take efforts, and
+// the model's default, which the gateway needn't write.
+func (r *Resolver) WithEffort(t gateway.Target, effort string) gateway.Target {
+	if effort == "" || t.NoReasoning {
+		return t
+	}
+	f := t.Format
+	if f == 0 {
+		f = wire.OpenAIChat
+		if t.Kind == "anthropic" {
+			f = wire.AnthropicMessages
+		}
+	}
+	m, known := r.model(t.Kind, t.Model)
+	t.Effort = translate.FitEffort(effort, m.Efforts, known && m.Efforts != nil, f)
+	t.DefaultEffort = m.DefaultEffort
+	return t
 }
 
 // maxTranslatedTokens caps the answer of a Chat call that set no limit,

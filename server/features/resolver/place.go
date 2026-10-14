@@ -185,10 +185,11 @@ func (r *Resolver) placeCall(ctx context.Context, snap *snapshot.Snapshot, rt *r
 		base, _ := spec.Choose(tiers.Call{Serves: serves})
 		pl.Served = base.Tier
 	}
+	// Each tier's targets go with its reasoning effort.
 	for i := pl.Served; i < len(spec.Tiers); i++ {
 		for _, t := range p.fit(i).Targets {
 			if !tried(pl.Targets, t.Provider, t.Model) {
-				pl.Targets = append(pl.Targets, t)
+				pl.Targets = append(pl.Targets, r.WithEffort(t, spec.Tiers[i].Effort))
 			}
 		}
 	}

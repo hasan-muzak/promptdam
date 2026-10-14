@@ -61,6 +61,7 @@ type TierOut struct {
 	Model       string   `json:"model" doc:"The tier's model: model, or provider/model, of either API format"`
 	Fallbacks   []string `json:"fallbacks" doc:"Tried in order when the model fails, before the next stronger tier"`
 	Examples    []string `json:"examples" doc:"Requests the tier is for, as the decision model sees them"`
+	Effort      string   `json:"effort,omitempty" doc:"The reasoning effort the tier's calls are sent with: none, minimal, low, medium, high, xhigh or max, fitted to each model (the nearest level it takes). Empty keeps the client's. The same model at a lower effort is often the cheapest tier that holds up."`
 }
 
 // TierRuleOut sends calls to a tier.
@@ -111,7 +112,7 @@ func routerOut(r *pdent.ModelRouter) RouterOut {
 	}
 	for i, t := range r.Tiers {
 		out.Tiers[i] = TierOut{Name: t.Name, Description: t.Description, Model: t.Model, Fallbacks: orEmpty(t.Fallbacks),
-			Examples: orEmpty(t.Examples)}
+			Examples: orEmpty(t.Examples), Effort: t.Effort}
 	}
 	for i, ru := range r.Rules {
 		out.Rules[i] = TierRuleOut(ru)
@@ -160,7 +161,7 @@ func (in RouterIn) input() routers.Input {
 	}
 	for _, t := range in.Tiers {
 		out.Spec.Tiers = append(out.Spec.Tiers, tiers.Tier{Name: t.Name, Description: t.Description, Model: t.Model,
-			Fallbacks: t.Fallbacks, Examples: t.Examples})
+			Fallbacks: t.Fallbacks, Examples: t.Examples, Effort: t.Effort})
 	}
 	for _, r := range in.Rules {
 		out.Spec.Rules = append(out.Spec.Rules, tiers.Rule(r))
@@ -409,6 +410,7 @@ type ExplainTierOut struct {
 	Provider string `json:"provider" doc:"The provider that would serve the tier's model first"`
 	Serves   bool   `json:"serves"`
 	Lacks    string `json:"lacks" doc:"What keeps its model from the call: no_provider, tools, images, files, json_schema or context"`
+	Effort   string `json:"effort,omitempty" doc:"The reasoning effort the tier's model would get, fitted to it"`
 }
 
 // ExplainTargetOut is a provider and model the gateway would try.
@@ -416,6 +418,7 @@ type ExplainTargetOut struct {
 	Provider   string `json:"provider"`
 	Model      string `json:"model"`
 	Translated bool   `json:"translated" doc:"The provider speaks the other API format: the call would be translated"`
+	Effort     string `json:"effort,omitempty" doc:"The reasoning effort the call would be sent with (its tier's, fitted to the model)"`
 }
 
 // ExplainRouterOut is how the router would place the call.
@@ -491,11 +494,12 @@ func (h *Handlers) ExplainRouter(ctx *muzak.Context, in ExplainRouterIn) (Explai
 		et := ExplainTierOut{Name: t.Name, Model: t.Model, Serves: f.Lacks == "", Lacks: f.Lacks}
 		if len(f.Targets) > 0 {
 			et.Provider = f.Targets[0].Provider
+			et.Effort = h.RouterDeps.Explainer.WithEffort(f.Targets[0], t.Effort).Effort
 		}
 		out.Tiers[i] = et
 	}
 	for i, t := range pl.Targets {
-		out.Targets[i] = ExplainTargetOut{Provider: t.Provider, Model: t.Model, Translated: t.Format != 0}
+		out.Targets[i] = ExplainTargetOut{Provider: t.Provider, Model: t.Model, Translated: t.Format != 0, Effort: t.Effort}
 	}
 	return out, nil
 }

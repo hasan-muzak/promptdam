@@ -106,7 +106,7 @@ func (h *Handlers) SuggestRouter(ctx *muzak.Context, in SuggestRouterIn) (Sugges
 		Tiers: make([]TierOut, len(s.Spec.Tiers))}, Notes: s.Notes}
 	for i, t := range s.Spec.Tiers {
 		out.Router.Tiers[i] = TierOut{Name: t.Name, Description: t.Description, Model: t.Model, Fallbacks: orEmpty(t.Fallbacks),
-			Examples: []string{}}
+			Examples: []string{}, Effort: t.Effort}
 	}
 	for _, p := range s.Picks {
 		out.Tiers = append(out.Tiers, SuggestTierOut{Name: p.Tier, Provider: p.Provider, InputPerMillion: p.Input,
