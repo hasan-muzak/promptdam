@@ -202,6 +202,7 @@ func TestCustomsTraffic(t *testing.T) {
 	if st.model == "advisor" {
 		routerReport(t, w, start, report)
 	}
+	cachingByBackend(t, w, report)
 	t.Log("\n" + report.String())
 	if path := os.Getenv("PROMPTDAM_DEMO_TRANSCRIPT"); path != "" {
 		var out strings.Builder
@@ -481,6 +482,42 @@ func routerReport(t *testing.T, w *gatewaytest.World, start time.Time, b *string
 	}
 	fmt.Fprintf(b, "The savings report (what the dashboard reads): cost $%.4f, without Promptdam $%.4f, saved $%.4f.\n",
 		usd(savings.Total.Cost), usd(savings.Total.Counterfactual), usd(savings.Total.Savings))
+}
+
+// cachingByBackend adds how each model's calls used the prompt cache, by
+// the backend that answered (a router of providers') and the gateway's
+// strategy: the calls that should have read their conversation's cache and
+// those that did, the share of input read, and whether the provider
+// reported each call's cost.
+func cachingByBackend(t *testing.T, w *gatewaytest.World, b *strings.Builder) {
+	t.Helper()
+	var rows []struct {
+		Model    string `ch:"target_model"`
+		Backend  string `ch:"backend"`
+		Strategy string `ch:"cache_strategy"`
+		Healed   string `ch:"healed"`
+		Calls    uint64 `ch:"calls"`
+		Expects  uint64 `ch:"expects"`
+		Hits     uint64 `ch:"hits"`
+		Input    uint64 `ch:"input"`
+		Read     uint64 `ch:"was_read"`
+		Reported uint64 `ch:"reported"`
+		Cost     int64  `ch:"cost"`
+	}
+	if err := w.C.Events.Select(context.Background(), &rows, events.Project(w.Project), `SELECT target_model, backend,
+		cache_strategy, healed, count() AS calls, countIf(cache_expected_tokens > 0) AS expects,
+		countIf(cache_expected_tokens > 0 AND cache_read_tokens > 0) AS hits, sum(input_tokens) AS input,
+		sum(cache_read_tokens) AS was_read, countIf(cost_reported) AS reported, sum(cost_micros) AS cost
+		FROM requests WHERE {tenant} AND usage_known GROUP BY target_model, backend, cache_strategy, healed
+		ORDER BY target_model, backend, cache_strategy, healed`); err != nil {
+		t.Fatal(err)
+	}
+	b.WriteString("\n| Model | Backend | Caching | Healed | Calls | Expected a cache read | Read it | Input read from cache | Cost reported | Cost |\n" +
+		"|---|---|---|---|---|---|---|---|---|---|\n")
+	for _, r := range rows {
+		fmt.Fprintf(b, "| %s | %s | %s | %s | %d | %d | %d | %.0f%% | %d | $%.4f |\n", r.Model, r.Backend, r.Strategy, r.Healed,
+			r.Calls, r.Expects, r.Hits, 100*float64(r.Read)/float64(max(r.Input, 1)), r.Reported, usd(r.Cost))
+	}
 }
 
 func pct(part, whole int64) float64 { return 100 * float64(part) / float64(max(whole, 1)) }

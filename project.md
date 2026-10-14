@@ -112,7 +112,7 @@ Basic routing and logging are free elsewhere, so Promptdam's plans are priced on
   - per-key rate limits.
 - **Cost levers:**
   - **Exact response cache:** opt-in per route; key = normalised request hash, project-scoped, TTL.
-  - **Auto prompt caching:** for Anthropic calls without `cache_control`, breakpoints at the end of the tools and the system prompt (the target model's minimum prefix from the price list), and Anthropic's automatic breakpoint on a conversation's tail; each family's lifetime (five minutes or an hour) learned from its calls' gaps. For OpenAI, a conversation's `prompt_cache_key`.
+  - **Auto prompt caching:** for Anthropic calls without `cache_control`, breakpoints at the end of the tools and the system prompt (the target model's minimum prefix from the price list), and Anthropic's automatic breakpoint on a conversation's tail; each family's lifetime (five minutes or an hour) learned from its calls' gaps. For OpenAI, a conversation's `prompt_cache_key`. For every other model, whether to mark the prompt and which backends to avoid is learned per model from all projects' calls (ADR 0003): no per-model code, so a model released today is cached right within days.
   - **Cache doctor:** detects unstable prefixes across requests in a family and explains the fix.
   - **Routes and manual routing rules:** CEL conditions, e.g. `request.input_tokens < 1500 && !request.has_tools` routes the request to a cheaper model.
   - **Model routers (§6.2):** tiers the project describes (a model and a reasoning effort), called like a model (`"model": "auto"`) or attached to a route. Each conversation turn gets a tier from: the client's explicit choice, the models' capabilities, rules, a classifier learned from judged samples of the project's traffic, an opt-in decision model when the classifier is unsure, else the "unsure" tier; the calls continuing a turn (an agent's tool loop) keep it, and a warm conversation stays on its tier unless switching pays for rebuilding its cache. Shadow mode first (decide and evaluate, serve the strong tier), then active, with a canary that demotes a tier whose quality drifts.
@@ -222,6 +222,7 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 - **Answers name the model asked for:** an answer the gateway moved to another model (a router, a rule, a fallback) names the model the client asked for, whole or streamed (agents keep state, thinking included, by the model they called); `x-promptdam-served-model` and the log name the served one, and `x-promptdam-answer-model: served` keeps it in the answer.
 - **Conversations (ADR 0002):** a call's turn (its human message and the calls continuing it) is read off the request (core `wire.Turn`), keyed alike on every replica, and kept per replica and in Valkey (`features/conversation`): a turn's placement, its calls' tokens and cache state, and how long after the conversation's previous call each started. Clients may name the conversation (`x-promptdam-session`, or Claude Code's session header).
 - **Thinking heal:** a Messages call whose history the firewall rewrote can carry a thinking block bound to the history before it ("bound to a different conversation"); it is sent once more with the provider asked to drop the block, else without the history's thinking (`healed` in the log).
+- **Caching heals (ADR 0003):** a 400 naming `cache_control` on a call the gateway marked sends it once more as it was before marking (`healed = unmarked`); when that answers on a kind that can cache without markers (OpenRouter, custom), markers are switched off for the model in every replica for seven days (a Valkey hash, announced). OpenRouter's 404 when every backend was ignored sends the call once more to any backend (`unavoided`).
 
 ### 6.2 Model routers: tiers, the cascade, evaluation and learning (`features/routers`, `features/evaluate`, `features/classifier`, `features/translate`)
 
@@ -308,7 +309,11 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
   - OpenAI calls of a conversation get its `prompt_cache_key`.
 - **Lifetimes, learned (`features/cachettl`, `features/cachepolicy`):** every six hours the worker weighs each family's call gaps over three days, by cached tokens: returns 5 to 60 minutes after the conversation's (or prefix's) previous call, against writes within five minutes and after an hour. An hour (written at twice the input price instead of 1.25 times) is kept where it pays 15% more than it costs, backed by at least 20 returns, until it pays 15% less. The doctor shows each family's lifetimes and what they are worth.
 - **Calls written together:** the doctor counts calls that wrote a prefix within 10 seconds of another and read none of it (a cache entry is readable once the first answer begins), with what sending one first would save.
-- **OpenAI and Gemini** cache implicitly. There the doctor only reports prefix-stability problems.
+- **Caching per model, learned (`features/cacheprofile`, ADR 0003):** each call gets a plan: a strategy (`markers`: the gateway's breakpoints, spliced into Chat content too; `auto`: the provider's own caching) and, on OpenRouter, backends to avoid (`provider.ignore`, never `provider.order`). A small table says what each provider kind takes (Anthropic markers, OpenAI auto with `prompt_cache_key`, OpenRouter either, with `X-Session-Id` only for a model several backends serve, since each session gets a cache of its own; custom either). Before anything is learned, a model's price list decides: a listed cache-write price means it caches what a request marks. Only calls to a kind's own public API (`pooled`) teach or follow the profiles: a project's own endpoint could teach everyone anything.
+  - Every call logs the backend that answered, the provider's own cost (`usage.include`), the cache writes, the strategy and arm, and `cache_expected_tokens`: what it should have read, when its conversation's previous call used the same model, kind, backend and strategy within the cache's lifetime with a prefix long enough to cache. `cache_health_hourly` rolls it up.
+  - Hourly, the worker pools a week of every project's calls (counts per kind, model, backend and strategy; never content or project ids) and keeps the strategy in use until the other one, judged on 300 calls that expected a read each, costs under 0.9 of it per input token (write premiums included). While the one in use has under 300 such calls or reads under half, a tenth of the model's conversations try the other (a hash of the conversation: same arm on every replica). A backend that read on under 5% of 100 calls while another read on half gets avoided.
+  - What is learned weighs prices: holding a conversation on its warm tier prices the reads a model misses at the input price, and the router report shows each tier's cache rate and cost per call, its fallbacks apart.
+- **The doctor's pooled findings** (shown only from three projects up): `model_never_caches`, `backend_never_caches`, and `no_breakpoints` for OpenRouter models that need markers.
 - **Economics shown to the user:** cache reads cost about 0.1× base input (lower on some models), writes 1.25× for the 5-min TTL or 2× for the 1-hour TTL.
 
 ### 6.4 Firewall (`features/firewall`)
@@ -733,6 +738,27 @@ Model routers replace per-family savings experiments, and cross-format translati
     on Sonnet without caching (59%; $0.40 routing, $0.19 caching); the decision model answered all 50 in time
     (median 0.93 s, p99 1.44 s). Users share the instructions' cache; a one-hour cache would have cost more here
     ($0.43). The demos are in English.
+- [x] Round C (2026-10-14, ADR 0003): prompt caching that learns every model, after Gemini through OpenRouter read
+  0% of its cache.
+  - **Measured per call:** the backend that answered, the provider's own cost (the ledger's `cost_micros` where
+    reported; the list's in `computed_micros`), cache writes, the strategy and its arm, and what the call should have
+    read; `cache_health_hourly`.
+  - **Learned hourly, pooled across projects** (owner decision): markers or the provider's own caching per model,
+    tried on up to 10% of conversations while evidence is missing; backends that never cache avoided
+    (`provider.ignore`); a session only for models several backends serve. Only calls to providers' public APIs count.
+  - **Errors are cheap:** refused markers are dropped at once and switched off for the model for a week; a call with
+    no backend left goes to any.
+  - **Used:** warm-tier holds price the reads a model misses; the router report shows each tier's cache rate and cost
+    per call, fallbacks apart; the cache doctor names models that never cache and backends kept off.
+  - **Live (`task demo:traffic` on OpenRouter, Luna deciding, same 50 messages as before):** Gemini read 42% of its
+    input from cache instead of 0% (its input cost down 36%); GPT-6.1 Sol 86%, as before. Total $0.219 against $0.566
+    without Promptdam (61%); the earlier run's $0.200 differs by longer answers (output is about 80% of the bill),
+    not by caching. A first build kept every conversation on one backend with a session from its first call: on
+    OpenAI's models each session got a cache of its own and Sol fell to 70% (probed: three sessions on one new
+    prompt all missed). Fixed before release; a review also closed a way for one project's own endpoint to teach
+    every project's profiles.
+  - **Next:** Gemini reads the shared instructions but not each conversation's history (a breakpoint that moves
+    every call); learning whether to keep a conversation on one backend per model, as an experiment.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
 - **Exit:** ≥ 5 design partners in production, ≥ 2 willing to pay for Team or Business. → **Beta Mon Apr 26**.
 

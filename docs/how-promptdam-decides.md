@@ -127,6 +127,27 @@ compares what the next few turns (up to four) would save on the cheaper model ag
 the conversation's cache there. If the switch doesn't pay, the conversation stays where it is, and the request log
 says so (`held`). Moves to a stronger tier are never held back.
 
+## Caching that learns every model
+
+Providers keep the start of a conversation (its instructions and earlier messages) in a cache and charge about a
+tenth of the normal price to read it again. Each provider caches its own way. Anthropic caches only what a request
+marks. OpenAI caches on its own. A model served through a marketplace like OpenRouter may cache marked requests on
+one of its backends and nothing on another. Thousands of models exist and new ones ship every day, so Promptdam
+keeps no list of them. It learns:
+
+- **Every call records what it should have read from the cache and what it did read.** A call should read when its
+  conversation's previous call was recent and went to the same model on the same backend.
+- **Every hour, the counts from all customers are pooled into a profile per model:** whether to mark the request, and
+  which backends never cache it. Only counts are pooled, never what anyone wrote, and a customer sees a pooled figure
+  only when at least three customers contributed.
+- **While the evidence is thin, one conversation in ten tries the other way.** The other way takes over only once both
+  have 300 data points and it is at least 10% cheaper, so the choice doesn't flip on noise.
+- **Mistakes are cheap.** A provider that refuses the markers gets the request again without them at once, and the
+  markers go off for that model everywhere within seconds.
+
+A model released today starts with a guess from its price list (a listed price for writing the cache means it caches
+what a request marks), then its own traffic corrects it.
+
 ## Quality is proven before any money is saved
 
 A new router starts in **shadow mode**: it decides, but every request is still served by the strong tier, so users
@@ -251,9 +272,11 @@ Promptdam saved 61% to 67%. What the runs show:
 - **Whether Jev Router's cheaper answers held up wasn't measured here.** At least 21 of the 25 messages our decision
   models sent to the strong model went to cheaper ones under Jev Router. Promptdam's judge can compare them; until it
   does, the comparison above is about cost, not quality.
-- **A finding for us:** Gemini read nothing from its cache through OpenRouter, so the medium tier cost about as much
-  per message as the cached strong model. Adding cache markers for Gemini through OpenRouter is the fix to make next;
-  until then, a two-tier router (DeepSeek, then GPT-6.1 Sol) would serve this customer as well.
+- **A finding for us, since fixed:** Gemini read nothing from its cache through OpenRouter, so the medium tier cost
+  about as much per message as the cached strong model. With caching that learns every model (above), the same 50
+  messages had Gemini reading 42% of its input from cache, its input cost down 36%; the calls that still read
+  nothing landed on a Google backend that never caches, which Promptdam learns to avoid once it has seen enough of
+  them. The total ($0.219, 61% saved) moved with the length of the answers, which is most of the bill.
 
 ## What makes this hard to copy
 

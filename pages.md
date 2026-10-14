@@ -217,8 +217,15 @@ later.
 - **Where it went:** requested model, served model, provider, attempts, fallback used; for router calls: the router,
   the tier that served, the tier it decided, the step that decided (`held`: a new turn kept on its conversation's warm
   tier) and its confidence, shadow or not, the reasoning effort sent; the routing rule that matched. A link: "Explain
-  how the router places a request like this". A healed call (`healed`: drop_block or strip_thinking) says the
-  firewall's rewrite invalidated its thinking, so it was sent once more without it.
+  how the router places a request like this". A healed call (`healed`, comma-separated) says why it was sent once
+  more: drop_block or strip_thinking (the firewall's rewrite invalidated its thinking), unmarked (the provider refused
+  the gateway's cache breakpoints; the model gets none from then on), unavoided (no backend was left once those that
+  never cache were taken out).
+- **Caching:** the strategy the gateway used (`cache_strategy`: markers or auto; "trial" when the call's conversation
+  tried the other one), the backend a router of providers sent it to (`backend`, e.g. OpenRouter's "Google AI
+  Studio"), whether its conversation's previous call means it should have read from the cache
+  (`cache_expected_tokens`) and what it read; its cost as the provider reported it (`cost_reported`) against the
+  price list's (`computed_micros`).
 - **Conversation:** whether the call started its turn or continued it (an agent's tool loop), the conversation's human
   turns so far, and how long after its previous call it came (`conversation`, `turn_kind`, `human_turns`,
   `chain_gap_ms`); a link to the conversation's other calls (filter by `conversation`).
@@ -351,6 +358,10 @@ Tabs:
   - money: cost of its calls, what they would have cost on the decided tiers, the monthly projection, ledger savings,
     evaluation cost, unpriced calls;
   - calls per tier: served vs. decided (they differ in shadow mode), as stacked bars;
+  - per tier: the cost per call and the share of input read from providers' caches (`cost_per_call_micros`,
+    `cache_rate`), and its calls by the model that answered them (`models`): the tier's own model first, then each
+    fallback that served, with its calls, cost per call and cache rate. A fallback that answers often, or a tier whose
+    cache rate is near 0%, is worth a sentence: "Gemini 3.8 Flash read 0% of its cache: see the cache doctor";
   - how calls were placed: explicit, rule, classifier, decision, default, held (new turns kept on a warm tier because
     switching would have cost more in cache than it saved);
   - the decision model (when the router has one): calls asked per outcome (answered, cached, timeout, error,
@@ -408,10 +419,19 @@ detail and the fix ("A date changes in the system prompt every day: move it to t
 **potential monthly saving**. Sorted by that saving. Each family's cache lifetimes (`prefix_ttl`, `tail_ttl`: 5m or
 1h, learned from its calls' gaps; `kept_one_hour` says what the hour is worth), and calls written together
 (`parallel_cold_writes`: calls that wrote the prefix within 10 seconds of another and read none of it, with the fix:
-send one first).
+send one first). What every project's calls showed of the family's model, learned hourly and shown only when three or
+more projects contributed (never one other customer's traffic):
+- `no_breakpoints` also for OpenRouter models that cache only marked prompts (Gemini's, Anthropic's), when the calls
+  carry none;
+- `model_never_caches` (warning): across N projects the model read under 5% of what its cache should have served;
+  prompt changes won't help, the fix is a model that caches for long conversations;
+- `backend_never_caches` (info): OpenRouter backends (by slug) that never cached the model while another did; nothing
+  to do, the gateway keeps calls off them unless the calls set their own provider preferences.
+A stable prefix the cache never served is no longer shown as "Caching well" but as "The prefix is stable" with why
+it may not read.
 
-**Actions:** open the family; "Turn on prompt caching for route X" when the fix is the gateway's own (Anthropic
-breakpoints), linking to the route.
+**Actions:** open the family; "Turn on prompt caching for route X" when the fix is the gateway's own (breakpoints, on
+Anthropic or on an OpenRouter model that needs them), linking to the route.
 
 **Plan:** Pro. On Free the API answers with each diagnosis `locked`: the family, hit rate, the findings' titles and the
 potential monthly saving, without the detail and the fix. Show it as the upsell: "Fixing this would save ~$310/month".
