@@ -111,6 +111,17 @@ tasks:
     cmds:
       - go test ./server/livecheck -run TestCustomsBroker -v -count=1 -timeout 20m
 
+  demo:clouds:
+    desc: "Claude and each cloud's own models through Bedrock, Vertex and Azure providers, on the test accounts in .env (PROMPTDAM_TEST_BEDROCK_*, _VERTEX_*, _AZURE_*; a cloud without them is skipped): a few cents, stops past $0.25"
+    dotenv: [".env"]
+    env:
+      KEEL_TEST_DATABASE_URL: postgres://keel:keel@localhost:25432/keel_test?sslmode=disable
+      KEEL_TEST_VALKEY_URL: redis://localhost:26379/15
+      KEEL_TEST_CLICKHOUSE_URL: clickhouse://keel:keel@localhost:29000/keel_test
+      KEEL_TEST_S3_ENDPOINT: http://localhost:29100
+    cmds:
+      - go test ./server/livecheck -run TestClouds -v -count=1 -timeout 10m
+
   demo:traffic:
     desc: "Ten users chatting with the customs assistant at once, paced like people (breaks past the 5-minute cache), on PROMPTDAM_TEST_ANTHROPIC_KEY (.env), then the ledger (about $1 and 30 minutes, stops past $3)"
     dotenv: [".env"]
