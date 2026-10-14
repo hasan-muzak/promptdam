@@ -32,6 +32,7 @@ import (
 //	never     a stable prompt to a model that, across projects, never
 //	          reads its cache
 //	few       the same, learned from too few projects to be shown
+//	bedrock   a stable prompt to Claude on Bedrock, unmarked
 func TestDiagnose(t *testing.T) {
 	ctx := context.Background()
 	db := testkit.ClickHouse(t, migrations.ClickHouse())
@@ -63,6 +64,7 @@ func TestDiagnose(t *testing.T) {
 	insert("avoided", "a", false, families.GatewayBreakpoints, 3000, 2900, "openrouter", "google/gemini-3.8-flash")
 	insert("never", "n", false, 0, 3000, 0, "openrouter", "acme/never-caches")
 	insert("few", "f", false, 0, 3000, 0, "openrouter", "acme/rarely-used")
+	insert("bedrock", "b", false, 0, 3000, 0, "bedrock", "anthropic.claude-sonnet-5-5")
 
 	profiles := profiles{Models: map[string]cacheprofile.Profile{
 		cacheprofile.Key("openrouter", "google/gemini-3.8-flash"): {Use: promptcache.Markers, Avoid: []string{"google-vertex"},
@@ -82,12 +84,13 @@ func TestDiagnose(t *testing.T) {
 		t.Logf("%-8s %-22s prefixes %3d hit %.2f potential $%.4f/month", d.Family, d.Findings[0].Code, d.Prefixes,
 			d.HitRate, float64(d.PotentialMonthlyMicros)/1e6)
 	}
-	if len(got) != 8 {
+	if len(got) != 9 {
 		t.Fatalf("%d diagnoses", len(got))
 	}
 	want := map[string][]string{"dated": {cachedoctor.Timestamps}, "marked": {cachedoctor.NoBreakpoints},
 		"healthy": {cachedoctor.OK}, "short": {cachedoctor.TooShort}, "gemini": {cachedoctor.NoBreakpoints, cachedoctor.BackendNeverCaches},
-		"avoided": {cachedoctor.OK, cachedoctor.BackendNeverCaches}, "never": {cachedoctor.ModelNeverCaches}, "few": {cachedoctor.OK}}
+		"avoided": {cachedoctor.OK, cachedoctor.BackendNeverCaches}, "never": {cachedoctor.ModelNeverCaches}, "few": {cachedoctor.OK},
+		"bedrock": {cachedoctor.NoBreakpoints}}
 	for family, codes := range want {
 		d := got[family]
 		var have []string

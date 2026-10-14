@@ -451,3 +451,21 @@ func TestRoundTrip(t *testing.T) {
 		{"role":"tool","tool_call_id":"call_1","content":"R"},{"role":"user","content":"Q2"}],
 		"tools":[{"type":"function","function":{"name":"f","parameters":{"type":"object"}}}],"tool_choice":"auto"}`)
 }
+
+// Azure OpenAI's Chat API takes max_completion_tokens, as OpenAI's does;
+// other OpenAI-format kinds take max_tokens.
+func TestMaxCompletionTokensByKind(t *testing.T) {
+	in := `{"model":"claude-x","max_tokens":700,"messages":[{"role":"user","content":"hi"}]}`
+	for kind, field := range map[string]string{"openai": "max_completion_tokens", "azure": "max_completion_tokens",
+		"vertex": "max_tokens", "bedrock": "max_tokens", "groq": "max_tokens"} {
+		out, _, err := Request(wire.AnthropicMessages, wire.OpenAIChat, []byte(in), Options{Model: "m", Kind: kind})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var b map[string]any
+		_ = json.Unmarshal(out, &b)
+		if b[field] != float64(700) {
+			t.Errorf("%s: %s", kind, out)
+		}
+	}
+}

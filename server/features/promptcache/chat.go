@@ -1,6 +1,7 @@
 package promptcache
 
 import (
+	"bytes"
 	"sort"
 
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
@@ -38,22 +39,8 @@ func MarkChat(body []byte, req wire.Request, p Plan) ([]byte, bool) {
 	if len(msgs) == 0 {
 		return body, false
 	}
-	// Each edit replaces a message's content with the content marked.
-	type edit struct {
-		start, end int
-		with       []byte
-	}
-	var edits []edit
-	mark := func(msg [2]int, cc []byte) {
-		cs, ce, ok := member(body[msg[0]:msg[1]], "content")
-		if !ok {
-			return
-		}
-		cs, ce = msg[0]+cs, msg[0]+ce
-		if marked, ok := markSystem(body[cs:ce], cc); ok {
-			edits = append(edits, edit{cs, ce, marked})
-		}
-	}
+	var e contentEdits
+	mark := func(msg [2]int, cc []byte) { e.mark(body, msg, cc) }
 	system := -1
 	if p.Prefix != "" && estimateTokens(req.Prefix) >= minTokens {
 		for i, m := range msgs {
@@ -74,19 +61,76 @@ func MarkChat(body []byte, req wire.Request, p Plan) ([]byte, bool) {
 			}
 		}
 	}
-	if len(edits) == 0 {
+	return e.apply(body)
+}
+
+// MarkConversation puts breakpoints on a Messages request's conversation:
+// its last message (a user's) and where the previous call's last stood
+// (previousLast). It is for Claude on a cloud, where Anthropic's top-level
+// automatic breakpoint isn't taken (Bedrock refuses it): the conversation
+// so far is read from the cache, its new turn written. With Mark's two (the
+// tools and the system prompt), a call carries four, Anthropic's most. A
+// request the client marked anywhere is left alone.
+func MarkConversation(body []byte, ttl string) ([]byte, bool) {
+	if bytes.Contains(body, []byte(`"cache_control"`)) {
 		return body, false
 	}
-	sort.Slice(edits, func(i, j int) bool { return edits[i].start < edits[j].start })
+	ms, me, ok := member(body, "messages")
+	if !ok {
+		return body, false
+	}
+	msgs := elements(body, ms, me)
+	last := len(msgs) - 1
+	if last < 0 || roleOf(body, msgs[last]) != "user" {
+		return body, false
+	}
+	var e contentEdits
+	cc := marker(ttl)
+	e.mark(body, msgs[last], cc)
+	if prev := previousLast(body, msgs); prev >= 0 {
+		e.mark(body, msgs[prev], cc)
+	}
+	return e.apply(body)
+}
+
+// contentEdits replace messages' contents with the contents marked, every
+// other byte kept.
+type contentEdits []struct {
+	start, end int
+	with       []byte
+}
+
+// mark adds a breakpoint to the content of the message at doc[msg]: a
+// string becomes one text part, an array gets it on its last part.
+func (e *contentEdits) mark(doc []byte, msg [2]int, cc []byte) {
+	cs, ce, ok := member(doc[msg[0]:msg[1]], "content")
+	if !ok {
+		return
+	}
+	cs, ce = msg[0]+cs, msg[0]+ce
+	if marked, ok := markSystem(doc[cs:ce], cc); ok {
+		*e = append(*e, struct {
+			start, end int
+			with       []byte
+		}{cs, ce, marked})
+	}
+}
+
+// apply makes the edits in one pass; false when there are none.
+func (e contentEdits) apply(body []byte) ([]byte, bool) {
+	if len(e) == 0 {
+		return body, false
+	}
+	sort.Slice(e, func(i, j int) bool { return e[i].start < e[j].start })
 	size := len(body)
-	for _, e := range edits {
-		size += len(e.with) - (e.end - e.start)
+	for _, x := range e {
+		size += len(x.with) - (x.end - x.start)
 	}
 	out, at := make([]byte, 0, size), 0
-	for _, e := range edits {
-		out = append(out, body[at:e.start]...)
-		out = append(out, e.with...)
-		at = e.end
+	for _, x := range e {
+		out = append(out, body[at:x.start]...)
+		out = append(out, x.with...)
+		at = x.end
 	}
 	return append(out, body[at:]...), true
 }

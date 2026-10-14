@@ -180,3 +180,40 @@ func TestCloudCalls(t *testing.T) {
 		t.Fatalf("unsigned: %d %s, %d sent", res.StatusCode, out, len(e.fake.Requests()))
 	}
 }
+
+// Claude on a cloud caches its conversation with breakpoints on the
+// messages (Anthropic's top-level one is first-party only), within
+// Anthropic's four; Azure OpenAI takes the conversation's prompt_cache_key.
+func TestCloudCaching(t *testing.T) {
+	system, _ := json.Marshal(strings.Repeat("Follow the house style and cite the clauses. ", 150))
+	conv := `{"model":"claude-haiku-5-5","max_tokens":9,"system":` + string(system) + `,"tools":[{"name":"ls","input_schema":{"type":"object"}}],` +
+		`"messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}]}`
+	e := setup(t, fakeupstream.Options{}, func(base string) gateway.Resolver {
+		return routeResolver{gateway.Route{PromptCache: true, Targets: []gateway.Target{{Provider: "bedrock", Kind: "bedrock",
+			BaseURL: base, Model: "anthropic.claude-haiku-5-5", MinCache: 512, Auth: &recorder{}}}}}
+	})
+	if res, out := e.post(t, "/v1/messages", conv); res.StatusCode != 200 {
+		t.Fatalf("%d %s", res.StatusCode, out)
+	}
+	reqs := e.fake.Requests()
+	sent := string(reqs[len(reqs)-1].Body)
+	var top map[string]json.RawMessage
+	_ = json.Unmarshal([]byte(sent), &top)
+	if n := strings.Count(sent, `"cache_control"`); n != 4 || top["cache_control"] != nil {
+		t.Fatalf("%d breakpoints, top-level %s: %s", n, top["cache_control"], sent)
+	}
+	if !e.record(t).PromptCached {
+		t.Fatal("not recorded as cached")
+	}
+
+	chat := `{"model":"gpt-6","messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}]}`
+	azure := setup(t, fakeupstream.Options{}, func(base string) gateway.Resolver {
+		return routeResolver{gateway.Route{PromptCache: true, PromptKey: "pd-conv", Targets: []gateway.Target{{Provider: "azure",
+			Kind: "azure", BaseURL: base, Model: "gpt-6", Header: http.Header{"Api-Key": {"k"}}}}}}
+	})
+	_, _ = azure.post(t, "/v1/chat/completions", chat)
+	reqs = azure.fake.Requests()
+	if body := string(reqs[len(reqs)-1].Body); !strings.Contains(body, `"prompt_cache_key":"pd-conv"`) || strings.Contains(body, "cache_control") {
+		t.Fatalf("azure: %s", body)
+	}
+}

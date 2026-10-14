@@ -200,6 +200,10 @@ func vendorOf(model string) string {
 	if i := strings.LastIndexByte(name, '/'); i >= 0 {
 		name = name[i+1:]
 	}
+	// Bedrock names a vendor's models after it: anthropic.claude-….
+	for _, v := range []string{"anthropic.", "openai.", "meta.", "mistral.", "deepseek."} {
+		name = strings.TrimPrefix(name, v)
+	}
 	for _, v := range vendors {
 		if strings.HasPrefix(name, v.prefix) {
 			return v.vendor

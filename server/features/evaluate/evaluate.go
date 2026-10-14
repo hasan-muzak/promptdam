@@ -601,7 +601,7 @@ func (e *Evaluator) judgeOnce(ctx context.Context, t gateway.Target, prompt stri
 			{"role": "system", "content": judgeSystem}, {"role": "user", "content": prompt}}}
 		reasons, _ := md.Has(llm.FeatureReasoning)
 		switch {
-		case t.Kind == "openai":
+		case translate.MaxCompletionTokens(t.Kind):
 			req["max_completion_tokens"] = 4096 // reasoning models think first
 		case reasons:
 			req["max_tokens"] = 4096

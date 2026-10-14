@@ -350,7 +350,8 @@ func lifetimes(d *Diagnosis, f cachettl.Family) {
 // the shortest prefix its model's provider caches.
 func findings(d Diagnosis, flags families.Flags, minTokens int) []Finding {
 	var out []Finding
-	anthropic := d.Kind == "anthropic" || (d.Kind == providers.Custom && len(d.Model) > 7 && d.Model[:7] == "claude-")
+	anthropic := d.Kind == "anthropic" ||
+		(d.Kind == providers.Custom || providers.IsCloud(d.Kind)) && strings.Contains(strings.ToLower(d.Model), "claude")
 	if d.PrefixTokens < uint64(minTokens) {
 		return []Finding{{Code: TooShort, Severity: "info", Title: "The prefix is too short to cache",
 			Detail: fmt.Sprintf("Providers cache prefixes from about %d tokens; this family's are about %d.",

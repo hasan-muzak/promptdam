@@ -227,7 +227,7 @@ func (d *Decider) ask(ctx context.Context, q resolver.Question, timeout time.Dur
 		if t.Reasoning {
 			limit = 1024
 		}
-		if t.Kind == "openai" {
+		if translate.MaxCompletionTokens(t.Kind) {
 			req["max_completion_tokens"] = max(limit, 256)
 		} else {
 			req["max_tokens"] = limit

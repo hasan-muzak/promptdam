@@ -9,6 +9,9 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 )
 
+// cloudKind reports a cloud account's kind (providers.IsCloud).
+func cloudKind(kind string) bool { return kind == "bedrock" || kind == "vertex" || kind == "azure" }
+
 // vertexVersion is the API version Claude on Vertex AI takes in the body.
 const vertexVersion = `"vertex-2023-10-16"`
 

@@ -595,7 +595,7 @@ func messagesToChat(body []byte, o Options) ([]byte, []string, error) {
 	}
 	var maxTokens int
 	_ = json.Unmarshal(top["max_tokens"], &maxTokens)
-	if o.Kind == "openai" {
+	if MaxCompletionTokens(o.Kind) {
 		out.MaxCompletionTokens = maxTokens
 	} else {
 		out.MaxTokens = maxTokens

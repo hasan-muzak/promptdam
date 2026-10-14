@@ -69,8 +69,14 @@ const (
 )
 
 // chatEffortKinds are the OpenAI-format providers known to take
-// reasoning_effort.
-var chatEffortKinds = map[string]bool{"openai": true, "gemini": true, "xai": true, "groq": true}
+// reasoning_effort (the clouds' OpenAI-compatible APIs among them).
+var chatEffortKinds = map[string]bool{"openai": true, "gemini": true, "xai": true, "groq": true, "azure": true, "vertex": true,
+	"bedrock": true}
+
+// MaxCompletionTokens reports a provider kind whose Chat API takes
+// max_completion_tokens, not max_tokens (OpenAI's own and Azure OpenAI's:
+// reasoning models refuse max_tokens).
+func MaxCompletionTokens(kind string) bool { return kind == "openai" || kind == "azure" }
 
 func dialect(f wire.Format, kind string) int {
 	switch {

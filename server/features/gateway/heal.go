@@ -35,15 +35,28 @@ func (c *call) cachePrompt(body []byte, format wire.Format, t Target, req wire.R
 			return body
 		}
 		plan := promptcache.Plan{Prefix: or(c.promptTTL.Prefix, promptcache.FiveMinutes), MinTokens: t.MinCache}
-		// The conversation's tail, with Anthropic's automatic breakpoint,
-		// on its own API: a conversation that goes on, or an agent's tool
-		// loop (tools offered). A single question's tail is never read
-		// again: writing it would only cost. Lifetimes are the family's,
-		// learned from its calls' gaps (five minutes until then).
-		if t.Kind == "anthropic" && (req.Turn.Humans >= 2 || req.Turn.Continuation || req.Tools) {
-			plan.Tail = or(c.promptTTL.Tail, promptcache.FiveMinutes)
+		// The conversation's tail: a conversation that goes on, or an
+		// agent's tool loop (tools offered). A single question's tail is
+		// never read again: writing it would only cost. Lifetimes are the
+		// family's, learned from its calls' gaps (five minutes until then).
+		// Anthropic's own API takes its automatic breakpoint; Claude on a
+		// cloud gets the last message and the previous call's marked
+		// instead.
+		conversation := req.Turn.Humans >= 2 || req.Turn.Continuation || req.Tools
+		tail := or(c.promptTTL.Tail, promptcache.FiveMinutes)
+		var tailMarked bool
+		switch {
+		case conversation && t.Kind == "anthropic":
+			plan.Tail = tail
+		case conversation && cloudKind(t.Kind):
+			body, tailMarked = promptcache.MarkConversation(body, tail)
+			if tailMarked && tail == promptcache.OneHour {
+				plan.Prefix = promptcache.OneHour // an hour's breakpoints come first
+			}
 		}
-		body, c.rec.PromptCached = promptcache.Mark(body, prefix, plan)
+		var marked bool
+		body, marked = promptcache.Mark(body, prefix, plan)
+		c.rec.PromptCached = marked || tailMarked
 	case format == wire.OpenAIChat && promptcache.Marks(strategy):
 		prefix, ok := prefix()
 		if !ok {
@@ -54,7 +67,7 @@ func (c *call) cachePrompt(body []byte, format wire.Format, t Target, req wire.R
 			plan.Tail = or(c.promptTTL.Tail, promptcache.FiveMinutes)
 		}
 		body, c.rec.PromptCached = promptcache.MarkChat(body, prefix, plan)
-	case format == wire.OpenAIChat && t.Kind == "openai" && c.promptKey != "":
+	case format == wire.OpenAIChat && CacheDialectOf(t.Kind, false).affinity == affinityKey && c.promptKey != "":
 		if _, set, err := wire.Field(body, "prompt_cache_key"); err == nil && !set {
 			key, _ := json.Marshal(c.promptKey)
 			if out, err := wire.SetField(body, "prompt_cache_key", key); err == nil {

@@ -199,3 +199,51 @@ func BenchmarkMarkChat(b *testing.B) {
 		promptcache.MarkChat(body, req, plan)
 	}
 }
+
+// Claude on a cloud gets its conversation marked on the messages: the last
+// one, and the one the previous call's breakpoint stood on; a request the
+// client marked anywhere, or whose last message isn't the user's, is left
+// alone.
+func TestMarkConversation(t *testing.T) {
+	marked := func(body string) []int {
+		t.Helper()
+		out, _ := promptcache.MarkConversation([]byte(body), promptcache.FiveMinutes)
+		var b struct {
+			Messages []json.RawMessage `json:"messages"`
+		}
+		if err := json.Unmarshal(out, &b); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		var at []int
+		for i := range b.Messages {
+			if markedPart(t, content(t, out, i)) != "" {
+				at = append(at, i)
+			}
+		}
+		return at
+	}
+	toolLoop := `{"model":"m","max_tokens":9,"messages":[{"role":"user","content":"list the files"},` +
+		`{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"ls","input":{}}]},` +
+		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"a.go"}]}]}`
+	for _, tt := range []struct {
+		name, body string
+		want       []int
+	}{
+		{"a first call", `{"model":"m","max_tokens":9,"messages":[{"role":"user","content":"hi"}]}`, []int{0}},
+		{"a conversation", `{"model":"m","max_tokens":9,"messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b"},` +
+			`{"role":"user","content":"c"}]}`, []int{0, 2}},
+		{"a tool loop", toolLoop, []int{0, 2}},
+		{"a prefilled answer", `{"model":"m","max_tokens":9,"messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b"}]}`, nil},
+		{"the client's own breakpoint", `{"model":"m","max_tokens":9,"messages":[{"role":"user","content":[{"type":"text","text":"a",` +
+			`"cache_control":{"type":"ephemeral"}}]},{"role":"assistant","content":"b"},{"role":"user","content":"c"}]}`, []int{0}},
+	} {
+		if got := marked(tt.body); !slices.Equal(got, tt.want) {
+			t.Errorf("%s: marked %v, want %v", tt.name, got, tt.want)
+		}
+	}
+	// A tool result keeps its bytes: the breakpoint goes on its block.
+	out, _ := promptcache.MarkConversation([]byte(toolLoop), promptcache.OneHour)
+	if !strings.Contains(string(out), `{"type":"tool_result","tool_use_id":"t1","content":"a.go","cache_control":{"type":"ephemeral","ttl":"1h"}}`) {
+		t.Fatalf("tool result: %s", out)
+	}
+}

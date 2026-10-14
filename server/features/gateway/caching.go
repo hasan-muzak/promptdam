@@ -74,12 +74,15 @@ var (
 )
 
 // CacheDialectOf is the dialect of a provider kind; anthropic is a custom
-// endpoint's or a translated call's speaking Anthropic Messages.
+// endpoint's, a cloud's or a translated call's speaking Anthropic Messages
+// (Claude on a cloud: breakpoints; Azure OpenAI takes OpenAI's
+// prompt_cache_key; Gemini on Vertex and Bedrock's OpenAI-compatible
+// models cache on their own).
 func CacheDialectOf(kind string, anthropic bool) CacheDialect {
 	switch {
-	case kind == "anthropic" || kind == "custom" && anthropic:
+	case kind == "anthropic" || (kind == "custom" || cloudKind(kind)) && anthropic:
 		return CacheDialect{Strategies: markersOnly}
-	case kind == "openai":
+	case kind == "openai" || kind == "azure":
 		return CacheDialect{Strategies: autoOnly, affinity: affinityKey}
 	case kind == "openrouter":
 		return CacheDialect{Strategies: withSessions, Avoids: true, affinity: affinitySession}
