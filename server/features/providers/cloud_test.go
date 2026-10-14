@@ -96,3 +96,26 @@ func TestCredentialCheck(t *testing.T) {
 		}
 	}
 }
+
+// A cloud calls Claude in Anthropic's API, the others in the
+// OpenAI-compatible one, each by the cloud's own name.
+func TestCloudModels(t *testing.T) {
+	for _, tt := range []struct {
+		kind, model, format, id string
+	}{
+		{Bedrock, "claude-haiku-5-5", FormatAnthropic, "anthropic.claude-haiku-5-5"},
+		{Bedrock, "anthropic.claude-haiku-5-5", FormatAnthropic, "anthropic.claude-haiku-5-5"},
+		{Bedrock, "openai.gpt-oss-120b", FormatOpenAI, "openai.gpt-oss-120b"},
+		{Vertex, "gemini-3.8-flash", FormatOpenAI, "google/gemini-3.8-flash"},
+		{Vertex, "claude-haiku-4-5@20251001", FormatAnthropic, "claude-haiku-4-5@20251001"},
+		{Azure, "my-gpt", FormatOpenAI, "my-gpt"},
+		{"openai", "claude-x", FormatOpenAI, "claude-x"},
+	} {
+		if f := FormatFor(tt.kind, FormatOpenAI, tt.model); f != tt.format {
+			t.Errorf("%s %s: format %s", tt.kind, tt.model, f)
+		}
+		if id := CloudModel(tt.kind, tt.model); id != tt.id {
+			t.Errorf("%s %s: id %s", tt.kind, tt.model, id)
+		}
+	}
+}

@@ -18,8 +18,10 @@ type Kind struct {
 	Prefixes []string `json:"-"`
 	// Cloud marks a cloud account (Bedrock, Vertex, Azure): where its models
 	// are (Cloud) and how it signs in (Credential) replace a base URL and a
-	// key, and its models' prices are their vendors'.
-	Cloud bool `json:"cloud"`
+	// key, and its models' prices are their vendors'. Vendors are the
+	// catalogs whose models it serves.
+	Cloud   bool     `json:"cloud"`
+	Vendors []string `json:"-"`
 }
 
 // API formats.
@@ -51,11 +53,11 @@ var Kinds = []Kind{
 		Prefixes: []string{"grok-"}},
 	{Name: "fireworks", Label: "Fireworks AI", Format: FormatOpenAI, BaseURL: "https://api.fireworks.ai/inference/v1", Catalog: "fireworks"},
 	{Name: "openrouter", Label: "OpenRouter", Format: FormatOpenAI, BaseURL: "https://openrouter.ai/api/v1", Catalog: "openrouter"},
-	{Name: Bedrock, Label: "AWS Bedrock", Format: FormatAnthropic, Cloud: true,
+	{Name: Bedrock, Label: "AWS Bedrock", Format: FormatAnthropic, Cloud: true, Vendors: []string{"anthropic"},
 		Prefixes: []string{"claude-", "anthropic.", "openai.", "gpt-oss"}},
-	{Name: Vertex, Label: "Google Vertex AI", Format: FormatAnthropic, Cloud: true,
+	{Name: Vertex, Label: "Google Vertex AI", Format: FormatAnthropic, Cloud: true, Vendors: []string{"anthropic", "gcp.gemini"},
 		Prefixes: []string{"claude-", "gemini-", "google/"}},
-	{Name: Azure, Label: "Azure AI Foundry", Format: FormatOpenAI, Cloud: true,
+	{Name: Azure, Label: "Azure AI Foundry", Format: FormatOpenAI, Cloud: true, Vendors: []string{"openai", "anthropic"},
 		Prefixes: []string{"gpt-", "o1", "o3", "o4", "claude-", "text-embedding-"}},
 	{Name: Custom, Label: "Custom endpoint"},
 }

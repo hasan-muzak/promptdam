@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/hasan-muzak/keel-core/pkg/llm"
@@ -93,5 +94,67 @@ func TestTargetsDefaultCacheStrategy(t *testing.T) {
 		if tg, _ := r.target(tt.p, wire.OpenAIChat, tt.model); tg.Cache.Strategy != tt.want {
 			t.Errorf("%s %s: %q, want %q", tt.p.Kind, tt.model, tg.Cache.Strategy, tt.want)
 		}
+	}
+}
+
+// A cloud account calls each model in its family's API, by the cloud's
+// own name for it: Claude in Anthropic's (Messages calls as they are, Chat
+// calls translated), the others in the OpenAI-compatible one; and it
+// serves the models of the vendors it hosts.
+func TestCloudTargets(t *testing.T) {
+	cat := &llm.Catalog{Models: []llm.Model{
+		{ID: "claude-haiku-5-5", Provider: "anthropic", MaxOutput: 64_000, Features: []string{llm.FeatureReasoning}},
+		{ID: "gemini-3.8-flash", Provider: "gcp.gemini", MaxOutput: 64_000},
+		{ID: "gpt-6", Provider: "openai", MaxOutput: 128_000},
+	}}
+	r := New(Config{Prices: prices.Static{Catalog: cat}})
+	cloud := func(kind, format string) snapshot.Opened {
+		return snapshot.Opened{Provider: snapshot.Provider{Name: kind, Kind: kind, Format: format}}
+	}
+	bedrock, vertex, azure := cloud(providers.Bedrock, providers.FormatAnthropic), cloud(providers.Vertex, providers.FormatAnthropic),
+		cloud(providers.Azure, providers.FormatOpenAI)
+	for _, tt := range []struct {
+		name   string
+		p      snapshot.Opened
+		f      wire.Format
+		model  string
+		want   string
+		format wire.Format
+	}{
+		{"Claude on Bedrock, a Messages call", bedrock, wire.AnthropicMessages, "claude-haiku-5-5", "anthropic.claude-haiku-5-5", 0},
+		{"Claude on Bedrock, a Chat call", bedrock, wire.OpenAIChat, "claude-haiku-5-5", "anthropic.claude-haiku-5-5", wire.AnthropicMessages},
+		{"Bedrock's own id", bedrock, wire.AnthropicMessages, "anthropic.claude-haiku-5-5", "anthropic.claude-haiku-5-5", 0},
+		{"Gemini on Vertex", vertex, wire.OpenAIChat, "gemini-3.8-flash", "google/gemini-3.8-flash", 0},
+		{"Gemini on Vertex, a Messages call", vertex, wire.AnthropicMessages, "gemini-3.8-flash", "google/gemini-3.8-flash", wire.OpenAIChat},
+		{"Claude on Vertex", vertex, wire.AnthropicMessages, "claude-haiku-5-5", "claude-haiku-5-5", 0},
+		{"GPT on Azure", azure, wire.OpenAIChat, "gpt-6", "gpt-6", 0},
+		{"Claude on Azure", azure, wire.AnthropicMessages, "claude-haiku-5-5", "claude-haiku-5-5", 0},
+	} {
+		tg, ok := r.target(tt.p, tt.f, tt.model)
+		if !ok || tg.Model != tt.want || tg.Format != tt.format {
+			t.Errorf("%s: %+v %v", tt.name, tg, ok)
+		}
+	}
+	for _, tt := range []struct {
+		p      snapshot.Opened
+		model  string
+		serves bool
+	}{
+		{bedrock, "claude-haiku-5-5", true}, {bedrock, "gpt-6", false}, {bedrock, "gemini-3.8-flash", false},
+		{vertex, "gemini-3.8-flash", true}, {vertex, "claude-opus-9", true}, {vertex, "gpt-6", false},
+		{azure, "gpt-6", true}, {azure, "claude-haiku-5-5", true}, {azure, "gemini-3.8-flash", false},
+	} {
+		if got := r.serves(tt.p.Provider, tt.model); got != tt.serves {
+			t.Errorf("%s serves %s: %v", tt.p.Kind, tt.model, got)
+		}
+	}
+	// The model list shows each cloud's vendors' models.
+	models, open := r.ServedModels(&snapshot.Snapshot{Providers: []snapshot.Opened{vertex}}, providers.FormatOpenAI)
+	var ids []string
+	for _, m := range models {
+		ids = append(ids, m.ID)
+	}
+	if !slices.Equal(ids, []string{"claude-haiku-5-5", "gemini-3.8-flash"}) || len(open) != 0 {
+		t.Errorf("vertex lists %v (open %d)", ids, len(open))
 	}
 }

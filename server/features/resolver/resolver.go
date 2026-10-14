@@ -645,8 +645,11 @@ func crossFormat(f wire.Format) wire.Format {
 // target is a provider's target for a model and a call of format f, and
 // whether the provider can take the call at all.
 func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gateway.Target, bool) {
-	t := gateway.Target{ID: p.ID.String() + ":" + model, Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL, Model: model,
-		Header: p.Header, Auth: p.Auth}
+	// On a cloud account, the model's family picks the API, and the cloud
+	// names the model its own way.
+	format := providers.FormatFor(p.Kind, p.Format, model)
+	t := gateway.Target{ID: p.ID.String() + ":" + model, Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL,
+		Model: providers.CloudModel(p.Kind, model), Header: p.Header, Auth: p.Auth}
 	m, known := r.model(p.Kind, model)
 	if known {
 		// A model known not to reason has a client's effort taken out
@@ -664,8 +667,8 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 	// A project's own endpoint is marked only where its kind takes nothing
 	// else: what it does with breakpoints is its own.
 	t.Pooled = r.cfg.Pooled(p.Kind, p.BaseURL)
-	t.Cache.Strategy = gateway.DefaultCacheStrategy(p.Kind, p.Format == providers.FormatAnthropic, m.CacheWritePriced && t.Pooled)
-	if p.Format == apiFormat(f) {
+	t.Cache.Strategy = gateway.DefaultCacheStrategy(p.Kind, format == providers.FormatAnthropic, m.CacheWritePriced && t.Pooled)
+	if format == apiFormat(f) {
 		return t, true
 	}
 	t.Format = crossFormat(f)
@@ -692,7 +695,7 @@ func (r *Resolver) WithEffort(t gateway.Target, effort string) gateway.Target {
 	f := t.Format
 	if f == 0 {
 		f = wire.OpenAIChat
-		if t.Kind == "anthropic" {
+		if t.Kind == "anthropic" || providers.FormatFor(t.Kind, "", t.Model) == providers.FormatAnthropic {
 			f = wire.AnthropicMessages
 		}
 	}
@@ -781,7 +784,8 @@ func (r *Resolver) serves(p snapshot.Provider, model string) bool {
 	if !ok {
 		return false
 	}
-	if m, ok := r.cfg.Prices.Current().Lookup(kind.Catalog, model); ok && m.Provider == kind.Catalog {
+	if m, ok := r.cfg.Prices.Current().Lookup(kind.Catalog, model); ok && (m.Provider == kind.Catalog ||
+		kind.Cloud && slices.Contains(kind.Vendors, m.Provider)) {
 		return true
 	}
 	for _, pre := range kind.Prefixes {
@@ -862,7 +866,7 @@ func (r *Resolver) ServedModels(snap *snapshot.Snapshot, format string) (models 
 			continue
 		}
 		for _, cm := range r.cfg.Prices.Current().Models {
-			if cm.Provider == kind.Catalog {
+			if cm.Provider == kind.Catalog || kind.Cloud && slices.Contains(kind.Vendors, cm.Provider) {
 				add(cm.ID, p)
 			}
 		}

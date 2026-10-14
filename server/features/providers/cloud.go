@@ -22,6 +22,33 @@ const (
 // IsCloud reports a cloud kind.
 func IsCloud(kind string) bool { return kind == Bedrock || kind == Vertex || kind == Azure }
 
+// FormatFor is the API a provider calls a model in: its own, or, on a
+// cloud account, Anthropic's for Claude and the OpenAI-compatible one for
+// the others.
+func FormatFor(kind, format, model string) string {
+	if !IsCloud(kind) {
+		return format
+	}
+	if strings.Contains(strings.ToLower(model), "claude") {
+		return FormatAnthropic
+	}
+	return FormatOpenAI
+}
+
+// CloudModel is a model's id on a cloud account: Claude on Bedrock is
+// "anthropic."-prefixed, Gemini on Vertex "google/"-prefixed (a client may
+// name them either way); Azure's are the project's deployment names, as
+// called.
+func CloudModel(kind, model string) string {
+	switch {
+	case kind == Bedrock && strings.HasPrefix(model, "claude-"):
+		return "anthropic." + model
+	case kind == Vertex && strings.HasPrefix(model, "gemini-"):
+		return "google/" + model
+	}
+	return model
+}
+
 // Cloud is where a cloud account's models are: Bedrock's region, Vertex's
 // project and location (global, eu, us, or a region), Azure AI Foundry's
 // resource.
