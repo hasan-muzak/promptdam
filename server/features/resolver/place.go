@@ -315,7 +315,7 @@ func (r *Resolver) turnOf(ctx context.Context, rt *routers.Router, m *Meta) *tur
 		if !m.Turn.Prev.IsZero() {
 			if prev, ok := r.cfg.Turns.Fresh(ctx, m.Project, m.Turn.Prev); ok && prev.Placed() && prev.Version == rt.Version() {
 				ts.prev = &prev
-				ts.provider, ts.model = prev.Provider, prev.Model
+				ts.provider, ts.model = prev.Provider, prev.Asked()
 			}
 		}
 		return ts
@@ -329,7 +329,7 @@ func (r *Resolver) turnOf(ctx context.Context, rt *routers.Router, m *Meta) *tur
 			ts.inherit = &tiers.Choice{Tier: i, Source: rec.Source, Confidence: rec.Confidence}
 		}
 	}
-	ts.provider, ts.model = rec.Provider, rec.Model
+	ts.provider, ts.model = rec.Provider, rec.Asked()
 	return ts
 }
 

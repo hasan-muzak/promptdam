@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hasan-muzak/keel-core/pkg/apikeys"
 
@@ -394,7 +395,12 @@ func TestTurnsAcrossReplicas(t *testing.T) {
 	loop := `{"model":"auto","messages":[{"role":"user","content":"list the files"},
 		{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"ls","arguments":"{}"}}]},
 		{"role":"tool","tool_call_id":"c1","content":"a.go b.go"}]}`
-	w.Eventually(func() bool { // the placement reached Valkey
+	// The placement reaches Valkey in the store's next batch (every 10
+	// ms). A call to the other replica before it would place the turn
+	// itself, and the first placement wins: an agent's next call comes
+	// after its tool ran, never this soon.
+	time.Sleep(100 * time.Millisecond)
+	w.Eventually(func() bool {
 		_, h, _ := w.CallOn(other, "/v1/chat/completions", loop)
 		return h.Get(brand.HeaderTier) == "fast"
 	})
@@ -411,5 +417,38 @@ func TestTurnsAcrossReplicas(t *testing.T) {
 		{"role":"user","content":"is b.go safe to delete?"}]}`
 	if _, h, _ := w.CallOn(other, "/v1/chat/completions", next); h.Get(brand.HeaderTier) != "smart" {
 		t.Fatalf("the next turn: %s", h.Get(brand.HeaderTier))
+	}
+}
+
+// A plain route's turn that fell back keeps the fallback for the rest of
+// the turn (an agent's tool loop), where its prompt is cached, though the
+// route's first model answers again; the next human message starts from
+// the first model.
+func TestTurnsKeepTheirFallback(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true})
+	w.Provider("local", providers.FormatOpenAI, []string{"llama-local"})
+	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{Name: "default",
+		Fallbacks: []string{"local/llama-local"}}); err != nil {
+		t.Fatal(err)
+	}
+	start := `{"model":"gpt-5-mini","messages":[{"role":"user","content":"list the files"}]}`
+	w.Eventually(func() bool { // the route reached the gateway
+		w.Fake.Fail(503)
+		_, h, _ := w.Call("/v1/chat/completions", start)
+		return h.Get(brand.HeaderProvider) == "local"
+	})
+	time.Sleep(100 * time.Millisecond) // the call's turn is recorded off its path
+	loop := `{"model":"gpt-5-mini","messages":[{"role":"user","content":"list the files"},
+		{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"ls","arguments":"{}"}}]},
+		{"role":"tool","tool_call_id":"c1","content":"a.go b.go"}]}`
+	if _, h, _ := w.Call("/v1/chat/completions", loop); h.Get(brand.HeaderProvider) != "local" {
+		t.Fatalf("the tool loop went to %q, not the turn's fallback", h.Get(brand.HeaderProvider))
+	}
+	next := `{"model":"gpt-5-mini","messages":[{"role":"user","content":"list the files"},
+		{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"ls","arguments":"{}"}}]},
+		{"role":"tool","tool_call_id":"c1","content":"a.go b.go"},{"role":"assistant","content":"a.go and b.go"},
+		{"role":"user","content":"is b.go safe to delete?"}]}`
+	if _, h, _ := w.Call("/v1/chat/completions", next); h.Get(brand.HeaderProvider) != "main" {
+		t.Fatalf("the next turn went to %q, not the route's first model", h.Get(brand.HeaderProvider))
 	}
 }

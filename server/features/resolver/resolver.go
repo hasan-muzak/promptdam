@@ -455,6 +455,17 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	for _, f := range fallbacks {
 		targets = append(targets, r.fallback(snap, format, f, targets)...)
 	}
+	// A turn that fell back keeps the target that served its latest call
+	// for the rest of the turn (an agent's tool loop): its prompt is cached
+	// there, and its thinking was made there. The next human message starts
+	// from the route's first model again. A router keeps its turn's target
+	// within its tier (place).
+	if rt == nil && len(targets) > 1 && m.InTurn && m.Turn.Continuation && r.cfg.Turns != nil &&
+		(m.Firewall == nil || m.Firewall.RouteTo == "") {
+		if rec, ok := r.cfg.Turns.Get(ctx, m.Project, m.Turn.Turn); ok {
+			preferFirst(targets, rec.Provider, rec.Asked())
+		}
+	}
 	// The plan's requests, counted once a call can go somewhere: hard on
 	// Free, and on paid plans at the spend cap. If usage can't be counted,
 	// the call goes through.

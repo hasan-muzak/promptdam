@@ -127,15 +127,21 @@ func TestStore(t *testing.T) {
 	// The turn's calls: the first starts the chain; the next is 40 s
 	// later; one that started earlier but finished later moves nothing back.
 	t0 := time.Now().UnixMilli()
-	if gap, state := a.Finish(ctx, scope.Project, k1.Turn, k1.Prev, conversation.Finished{Start: t0, Input: 100, CacheWrite: 90,
-		Output: 10, Model: "claude-haiku-4-5", Provider: "anthropic", Kind: "anthropic", TTL: "5m"}); gap != 0 || state != conversation.ChainStart {
-		t.Fatalf("first call %d %s", gap, state)
+	if gap, state, prev := a.Finish(ctx, scope.Project, k1.Turn, k1.Prev, conversation.Finished{Start: t0, Input: 100, CacheWrite: 90,
+		Output: 10, Model: "claude-haiku-4-5-20251001", Provider: "anthropic", Kind: "anthropic", TTL: "5m", Target: "claude-haiku-4-5",
+		Strategy: "markers"}); gap != 0 || state != conversation.ChainStart || prev != (conversation.Previous{}) {
+		t.Fatalf("first call %d %s %+v", gap, state, prev)
 	}
-	if gap, state := b.Finish(ctx, scope.Project, k1.Turn, k1.Prev, conversation.Finished{Start: t0 + 40_000, Input: 120,
-		CacheRead: 90, CacheWrite: 25, Output: 20, Model: "claude-haiku-4-5", Provider: "anthropic", TTL: "5m"}); gap != 40_000 || state != conversation.ChainContinued {
-		t.Fatalf("second call %d %s", gap, state)
+	// The second call learns what the first was (from Valkey: another
+	// replica finished it).
+	gap, state, prev := b.Finish(ctx, scope.Project, k1.Turn, k1.Prev, conversation.Finished{Start: t0 + 40_000, Input: 120,
+		CacheRead: 90, CacheWrite: 25, Output: 20, Model: "claude-haiku-4-5", Provider: "anthropic", Kind: "anthropic", TTL: "5m",
+		Target: "claude-haiku-4-5", Backend: "b1", Strategy: "markers"})
+	if gap != 40_000 || state != conversation.ChainContinued ||
+		prev != (conversation.Previous{Target: "claude-haiku-4-5", Kind: "anthropic", Strategy: "markers", TTL: "5m", Input: 100}) {
+		t.Fatalf("second call %d %s %+v", gap, state, prev)
 	}
-	if _, state := a.Finish(ctx, scope.Project, k1.Turn, k1.Prev, conversation.Finished{Start: t0 + 10_000, Input: 1}); state != conversation.ChainContinued {
+	if _, state, _ := a.Finish(ctx, scope.Project, k1.Turn, k1.Prev, conversation.Finished{Start: t0 + 10_000, Input: 1}); state != conversation.ChainContinued {
 		t.Fatalf("a late call %s", state)
 	}
 	r, _ := c.Fresh(ctx, scope.Project, k1.Turn)
@@ -143,10 +149,11 @@ func TestStore(t *testing.T) {
 		r.Start != t0 || r.Model != "claude-haiku-4-5" {
 		t.Fatalf("the turn %+v", r)
 	}
-	// The next turn's first call is timed from the previous turn's last.
-	if gap, state := b.Finish(ctx, scope.Project, k2.Turn, k2.Prev, conversation.Finished{Start: t0 + 700_000}); gap != 660_000 ||
-		state != conversation.ChainContinued {
-		t.Fatalf("the next turn %d %s", gap, state)
+	// The next turn's first call is timed from the previous turn's last,
+	// and learns what it was.
+	if gap, state, prev := c.Finish(ctx, scope.Project, k2.Turn, k2.Prev, conversation.Finished{Start: t0 + 700_000}); gap != 660_000 ||
+		state != conversation.ChainContinued || prev.Backend != "b1" || prev.Input != 120 {
+		t.Fatalf("the next turn %d %s %+v", gap, state, prev)
 	}
 }
 
@@ -163,10 +170,10 @@ func TestStoreInMemory(t *testing.T) {
 	if r, ok := s.Get(ctx, scope.Project, k1.Turn); !ok || r.Tier != "fast" {
 		t.Fatalf("%+v", r)
 	}
-	if _, state := s.Finish(ctx, scope.Project, k1.Turn, k1.Prev, conversation.Finished{Start: 1000}); state != conversation.ChainStart {
+	if _, state, _ := s.Finish(ctx, scope.Project, k1.Turn, k1.Prev, conversation.Finished{Start: 1000}); state != conversation.ChainStart {
 		t.Fatal(state)
 	}
-	if gap, state := s.Finish(ctx, scope.Project, k1.Turn, k1.Prev, conversation.Finished{Start: 3000}); gap != 2000 ||
+	if gap, state, _ := s.Finish(ctx, scope.Project, k1.Turn, k1.Prev, conversation.Finished{Start: 3000}); gap != 2000 ||
 		state != conversation.ChainContinued {
 		t.Fatal(gap, state)
 	}

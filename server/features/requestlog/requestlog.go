@@ -28,6 +28,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/resolver"
 )
@@ -64,7 +65,9 @@ type Row struct {
 	Tags                                                    []string
 	APIFormat, Provider, Kind, RequestedModel, ServedModel  string
 	Backend, TargetModel, CacheStrategy                     string
-	CacheTrial                                              bool
+	CacheTrial, CostReported                                bool
+	CacheExpected                                           uint32
+	InputMicros                                             int64
 	ComputedMicros                                          int64
 	Stream, Translated                                      bool
 	Status                                                  uint16
@@ -88,7 +91,8 @@ var columns = []string{
 	"prefix_flags", "prefix_tokens", "est_input_tokens", "messages", "max_tokens", "has_tools", "json_output", "rule",
 	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "effort", "healed", "router_micros", "decision", "decision_ms",
 	"firewall_action", "firewall_kinds", "payload_ref", "api_format", "provider",
-	"kind", "requested_model", "served_model", "backend", "target_model", "computed_micros", "cache_strategy", "cache_trial", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
+	"kind", "requested_model", "served_model", "backend", "target_model", "computed_micros", "cache_strategy", "cache_trial",
+	"cost_reported", "cache_expected_tokens", "input_micros", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
 	"upstream_ms", "usage_known", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
 	"reasoning_tokens", "cost_micros", "priced", "counterfactual_micros", "savings_micros", "savings_reason",
 	"savings_basis", "cache", "request_bytes", "response_bytes", "retention_days",
@@ -101,7 +105,8 @@ func values(r Row) []any {
 		r.PrefixFlags, r.PrefixTokens, r.EstInput, r.Messages, r.MaxTokens, r.HasTools, r.JSONOutput, r.Rule,
 		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.Effort, r.Healed, r.RouterMicros, r.Decision, r.DecisionMs,
 		r.FirewallAction, r.FirewallKinds, r.PayloadRef, r.APIFormat, r.Provider,
-		r.Kind, r.RequestedModel, r.ServedModel, r.Backend, r.TargetModel, r.ComputedMicros, r.CacheStrategy, r.CacheTrial, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
+		r.Kind, r.RequestedModel, r.ServedModel, r.Backend, r.TargetModel, r.ComputedMicros, r.CacheStrategy, r.CacheTrial,
+		r.CostReported, r.CacheExpected, r.InputMicros, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
 		r.UpstreamMs, r.UsageKnown, r.InputTokens, r.OutputTokens, r.CacheRead, r.CacheWrite, r.Think, r.CostMicros,
 		r.Priced, r.Counterfactual, r.Savings, r.SavingsReason, r.SavingsBasis, r.Cache, r.RequestBytes, r.ResponseBytes,
 		r.RetentionDays,
@@ -185,7 +190,8 @@ func (l *Log) Record(r *gateway.Record) {
 	if !ok {
 		return
 	}
-	var cost, computed int64
+	var cost, computed, input int64
+	minCache := int64(promptcache.DefaultMinTokens)
 	var led Ledger
 	// priced is false when a model without a price served the call and
 	// its provider didn't say what it cost: the cost is unknown, so it
@@ -197,6 +203,14 @@ func (l *Log) Record(r *gateway.Record) {
 			price, known := l.price(m, r.Provider, r.Kind, r.ServedModel)
 			if known {
 				computed = CostAt(price, r.Usage)
+				// The input's part, cache reads and writes included: what
+				// a prompt-cache strategy is scored by.
+				in := r.Usage
+				in.Output, in.Reasoning = 0, 0
+				input = CostAt(price, in)
+				if price.MinCacheTokens > 0 {
+					minCache = int64(price.MinCacheTokens)
+				}
 			}
 			switch {
 			case r.Usage.CostReported:
@@ -236,7 +250,8 @@ func (l *Log) Record(r *gateway.Record) {
 		TierConfidence: float32(m.TierConfidence), Shadow: m.Shadow, Effort: r.Effort, Healed: r.Healed, RouterMicros: routerMicros, Decision: m.Decision.Outcome,
 		DecisionMs: ms(m.Decision.Took), APIFormat: r.Format.String(),
 		Provider: r.Provider, Kind: r.Kind, Backend: r.Backend, TargetModel: r.TargetModel, ComputedMicros: computed,
-		CacheStrategy: r.CacheStrategy, CacheTrial: r.CacheTrial,
+		CacheStrategy: r.CacheStrategy, CacheTrial: r.CacheTrial, CostReported: r.Usage.CostReported && r.Cache != "hit",
+		InputMicros:    input,
 		RequestedModel: r.RequestedModel, ServedModel: r.ServedModel, Stream: r.Stream, Translated: r.Translated, Status: uint16(min(r.Status, 65535)),
 		ErrorCode: r.ErrorCode, Attempts: uint8(min(r.Attempts, 255)), TTFBms: ms(r.TTFB), LatencyMs: ms(r.Latency),
 		UpstreamMs: ms(r.Upstream), UsageKnown: r.UsageKnown, InputTokens: u32(r.Usage.Input),
@@ -260,9 +275,10 @@ func (l *Log) Record(r *gateway.Record) {
 		}
 		if r.UsageKnown && r.Cache != "hit" {
 			u := r.Usage
-			turn = &turnCall{project: m.Project, keys: m.Turn, f: conversation.Finished{Start: r.Start.UnixMilli(),
+			turn = &turnCall{project: m.Project, keys: m.Turn, minCache: minCache, f: conversation.Finished{Start: r.Start.UnixMilli(),
 				Input: int64(u.Input), CacheRead: int64(u.CacheRead), CacheWrite: int64(u.CacheWrite), Output: int64(u.Output),
-				Model: r.ServedModel, Provider: r.Provider, Kind: r.Kind, TTL: cacheTTL(u)}}
+				Model: r.ServedModel, Provider: r.Provider, Kind: r.Kind, TTL: cacheTTL(u),
+				Target: r.TargetModel, Backend: r.Backend, Strategy: r.CacheStrategy}}
 		}
 	}
 	var fw []firewall.Event
@@ -300,6 +316,32 @@ type turnCall struct {
 	project uuid.UUID
 	keys    conversation.Keys
 	f       conversation.Finished
+	// minCache is the shortest prefix the call's model caches.
+	minCache int64
+}
+
+// expected is the cached prefix a call should have read: its
+// conversation's previous call's input, when that call asked the same
+// model of the same kind, went to the same backend with the same
+// prompt-cache strategy, started within the cache's lifetime (less a
+// margin for its own time) and was long enough to cache, and this call is
+// at least as long. 0 otherwise: what a call read when it expected
+// nothing says nothing of its model's caching.
+func expected(state string, gap int64, prev conversation.Previous, f conversation.Finished, minCache int64) int64 {
+	if state != conversation.ChainContinued || gap <= 0 || f.Strategy == "" {
+		return 0
+	}
+	if prev.Target != f.Target || prev.Kind != f.Kind || prev.Backend != f.Backend || prev.Strategy != f.Strategy {
+		return 0
+	}
+	life := 5 * time.Minute
+	if prev.TTL == promptcache.OneHour {
+		life = time.Hour
+	}
+	if gap > (life-15*time.Second).Milliseconds() || prev.Input < minCache || f.Input < prev.Input {
+		return 0
+	}
+	return prev.Input
 }
 
 // cacheTTL is how long a call's prompt cache entries live: an hour when it
@@ -393,8 +435,9 @@ func (l *Log) write(org uuid.UUID, row Row, fw []firewall.Event, keep *payloads.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if turn != nil && l.cfg.Turns != nil {
-		gap, state := l.cfg.Turns.Finish(ctx, turn.project, turn.keys.Turn, turn.keys.Prev, turn.f)
+		gap, state, prev := l.cfg.Turns.Finish(ctx, turn.project, turn.keys.Turn, turn.keys.Prev, turn.f)
 		row.ChainGapMs, row.ChainState = uint32(min(max(gap, 0), 1<<31)), state
+		row.CacheExpected = uint32(min(expected(state, gap, prev, turn.f, turn.minCache), 1<<31))
 	}
 	row.RetentionDays = defaultRetention
 	if e, err := l.cfg.Entitlements(ctx, org); err == nil {

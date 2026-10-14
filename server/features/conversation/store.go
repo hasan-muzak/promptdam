@@ -29,6 +29,12 @@ type Record struct {
 	// "" when unknown).
 	Cached                     int64
 	Model, Provider, Kind, TTL string
+	// Target is the model the gateway asked for in the latest call (Model
+	// is the provider's name for it, often dated), Backend the backend
+	// that served it, Strategy its prompt-cache strategy, and LastInput its
+	// input.
+	Target, Backend, Strategy string
+	LastInput                 int64
 }
 
 // Placement is a router's tier for a turn: the tier that serves it, the
@@ -43,12 +49,32 @@ type Placement struct {
 // Placed reports a turn a router placed.
 func (r Record) Placed() bool { return r.Tier != "" }
 
+// Asked is the model the gateway asked for in the turn's latest call: a
+// target's name, which the provider's (Model) may not be (OpenRouter
+// answers with dated names). Records from before targets were kept give
+// the provider's.
+func (r Record) Asked() string {
+	if r.Target != "" {
+		return r.Target
+	}
+	return r.Model
+}
+
 // Finished is what a call that ended adds to its turn.
 type Finished struct {
 	// Start is the call's start, in Unix milliseconds.
 	Start                                int64
 	Input, CacheRead, CacheWrite, Output int64
 	Model, Provider, Kind, TTL           string
+	Target, Backend, Strategy            string
+}
+
+// Previous is what the store knew of the conversation's call before a
+// finished one: the model it asked for, of which kind, the backend that
+// served it, its prompt-cache strategy and lifetime, and its input.
+type Previous struct {
+	Target, Kind, Backend, Strategy, TTL string
+	Input                                int64
 }
 
 // Chain states: what the store knew of the call before a finished one.
@@ -302,11 +328,15 @@ var finishScript = valkey.NewLuaScript(`
 local start = tonumber(ARGV[1])
 local last = tonumber(redis.call('HGET', KEYS[1], 'ls') or '0')
 local before = last
+local from = KEYS[1]
 if last == 0 and KEYS[2] ~= KEYS[1] then
+  from = KEYS[2]
   before = tonumber(redis.call('HGET', KEYS[2], 'ls') or '0')
 end
+local p = redis.call('HMGET', from, 'tm', 'kd', 'bk', 'cs', 'ttl', 'li')
 if start > last then
-  redis.call('HSET', KEYS[1], 'ls', ARGV[1], 'lc', ARGV[6], 'm', ARGV[7], 'pv', ARGV[8], 'kd', ARGV[9], 'ttl', ARGV[10])
+  redis.call('HSET', KEYS[1], 'ls', ARGV[1], 'lc', ARGV[6], 'm', ARGV[7], 'pv', ARGV[8], 'kd', ARGV[9], 'ttl', ARGV[10],
+    'tm', ARGV[12], 'bk', ARGV[13], 'cs', ARGV[14], 'li', ARGV[2])
 end
 redis.call('HSETNX', KEYS[1], 't0', ARGV[1])
 redis.call('HINCRBY', KEYS[1], 'n', 1)
@@ -315,22 +345,24 @@ redis.call('HINCRBY', KEYS[1], 'cr', ARGV[3])
 redis.call('HINCRBY', KEYS[1], 'cw', ARGV[4])
 redis.call('HINCRBY', KEYS[1], 'out', ARGV[5])
 redis.call('PEXPIRE', KEYS[1], ARGV[11])
-return before`)
+return {tostring(before), p[1] or '', p[2] or '', p[3] or '', p[4] or '', p[5] or '', p[6] or ''}`)
 
 // Finish adds a finished call to its turn, off the call's path, and says
 // how long after the conversation's previous call it started: gap in
-// milliseconds (0 when unknown) and the chain state.
-func (s *Store) Finish(ctx context.Context, project uuid.UUID, turn, prev Key, f Finished) (gap int64, state string) {
+// milliseconds (0 when unknown), the chain state, and what that call was.
+func (s *Store) Finish(ctx context.Context, project uuid.UUID, turn, prev Key, f Finished) (gap int64, state string, last Previous) {
 	if turn.IsZero() {
-		return 0, ""
+		return 0, "", Previous{}
 	}
 	now := time.Now()
 	r, _ := s.mem.Peek(turn, now)
-	before := r.Last
+	before, from := r.Last, r
 	if before == 0 && !prev.IsZero() {
 		p, _ := s.mem.Peek(prev, now)
-		before = p.Last
+		before, from = p.Last, p
 	}
+	last = Previous{Target: from.Target, Kind: from.Kind, Backend: from.Backend, Strategy: from.Strategy, TTL: from.TTL,
+		Input: from.LastInput}
 	state = ChainStart
 	if s.kv != nil {
 		ctx, cancel := context.WithTimeout(ctx, writeTimeout)
@@ -343,12 +375,14 @@ func (s *Store) Finish(ctx context.Context, project uuid.UUID, turn, prev Key, f
 			strconv.FormatInt(f.Start, 10), strconv.FormatInt(f.Input, 10), strconv.FormatInt(f.CacheRead, 10),
 			strconv.FormatInt(f.CacheWrite, 10), strconv.FormatInt(f.Output, 10),
 			strconv.FormatInt(f.CacheRead+f.CacheWrite, 10), f.Model, f.Provider, f.Kind, f.TTL,
-			strconv.FormatInt(s.opts.TTL.Milliseconds(), 10),
-		}).AsInt64()
-		if err != nil {
-			state = ChainUnknown
+			strconv.FormatInt(s.opts.TTL.Milliseconds(), 10), f.Target, f.Backend, f.Strategy,
+		}).AsStrSlice()
+		if err != nil || len(got) < 7 {
+			state, last = ChainUnknown, Previous{}
 		} else {
-			before = got
+			before, _ = strconv.ParseInt(got[0], 10, 64)
+			input, _ := strconv.ParseInt(got[6], 10, 64)
+			last = Previous{Target: got[1], Kind: got[2], Backend: got[3], Strategy: got[4], TTL: got[5], Input: input}
 		}
 	}
 	if before > 0 && state != ChainUnknown {
@@ -366,9 +400,10 @@ func (s *Store) Finish(ctx context.Context, project uuid.UUID, turn, prev Key, f
 	}
 	if f.Start >= r.Last {
 		r.Last, r.Cached, r.Model, r.Provider, r.Kind, r.TTL = f.Start, f.CacheRead+f.CacheWrite, f.Model, f.Provider, f.Kind, f.TTL
+		r.Target, r.Backend, r.Strategy, r.LastInput = f.Target, f.Backend, f.Strategy, f.Input
 	}
 	s.mem.Set(turn, r, now)
-	return gap, state
+	return gap, state, last
 }
 
 func placementOf(v []string) Placement {
@@ -393,5 +428,6 @@ func decode(f map[string]string) Record {
 		Placement: Placement{Tier: f["t"], Source: f["src"], Decided: f["dec"], Confidence: conf, Version: f["ver"], Effort: f["eff"]},
 		Start:     n("t0"), Last: n("ls"), Calls: n("n"), Input: n("in"), CacheRead: n("cr"), CacheWrite: n("cw"), Output: n("out"),
 		Cached: n("lc"), Model: f["m"], Provider: f["pv"], Kind: f["kd"], TTL: f["ttl"],
+		Target: f["tm"], Backend: f["bk"], Strategy: f["cs"], LastInput: n("li"),
 	}
 }

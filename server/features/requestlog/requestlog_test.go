@@ -359,6 +359,73 @@ func TestReportedCostWins(t *testing.T) {
 	}
 }
 
+// A conversation's calls on a caching route say what they should have read
+// from the cache and what they did, and the hourly rollup adds them up by
+// model, backend and strategy.
+func TestCacheHealth(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true, Upstream: fakeupstream.Options{Backend: "b1", Prompt: 2000}})
+	ctx := context.Background()
+	w.Grant(catalog.PromptCaching)
+	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{Name: "default", PromptCache: true}); err != nil {
+		t.Fatal(err)
+	}
+	calls := []string{
+		`{"model":"gpt-5-mini","messages":[{"role":"system","content":"You fix code."},{"role":"user","content":"fix the bug"}]}`,
+		`{"model":"gpt-5-mini","messages":[{"role":"system","content":"You fix code."},{"role":"user","content":"fix the bug"},
+			{"role":"assistant","content":"done"},{"role":"user","content":"and the tests?"}]}`,
+		`{"model":"gpt-5-mini","messages":[{"role":"system","content":"You fix code."},{"role":"user","content":"fix the bug"},
+			{"role":"assistant","content":"done"},{"role":"user","content":"and the tests?"},{"role":"assistant","content":"added"},
+			{"role":"user","content":"thanks"}]}`,
+	}
+	w.Eventually(func() bool { // the caching route reached the gateway
+		_, _, _ = w.Call("/v1/chat/completions", `{"model":"gpt-5-mini","messages":[{"role":"user","content":"warm up"}]}`)
+		recs := w.Records()
+		return len(recs) > 0 && recs[len(recs)-1].CacheStrategy != ""
+	})
+	for _, body := range calls {
+		if status, _, out := w.Call("/v1/chat/completions", body); status != 200 {
+			t.Fatalf("%d %s", status, out)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct {
+		Strategy string `ch:"cache_strategy"`
+		Expected uint32 `ch:"cache_expected_tokens"`
+		Read     uint32 `ch:"cache_read_tokens"`
+	}
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT cache_strategy, cache_expected_tokens, cache_read_tokens
+		FROM requests WHERE {tenant} AND conversation != '' ORDER BY ts`); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) < 3 {
+		t.Fatalf("%d rows", len(rows))
+	}
+	conv := rows[len(rows)-3:]
+	if conv[0].Expected != 0 || conv[1].Expected != 2000 || conv[2].Expected != 2000 || conv[1].Strategy != "auto" {
+		t.Fatalf("the conversation's calls %+v", conv)
+	}
+	var health []struct {
+		Backend  string `ch:"backend"`
+		Calls    uint64 `ch:"calls"`
+		Expected uint64 `ch:"expected_calls"`
+		Hits     uint64 `ch:"hit_calls"`
+		Tokens   uint64 `ch:"expected_tokens"`
+		Read     uint64 `ch:"expected_read_tokens"`
+	}
+	if err := w.C.Events.Select(ctx, &health, events.Project(w.Project), `SELECT backend, sum(calls) AS calls,
+		sum(expected_calls) AS expected_calls, sum(hit_calls) AS hit_calls, sum(expected_tokens) AS expected_tokens,
+		sum(expected_read_tokens) AS expected_read_tokens FROM cache_health_hourly WHERE {tenant} AND target_model = 'gpt-5-mini'
+		GROUP BY backend`); err != nil || len(health) != 1 {
+		t.Fatalf("%d rollup rows, %v", len(health), err)
+	}
+	if h := health[0]; h.Backend != "b1" || h.Expected != 2 || h.Hits != 2 || h.Tokens != 4000 || h.Read != 2*fakeupstream.CachedTokens {
+		t.Fatalf("the rollup %+v", h)
+	}
+}
+
 // A call that names a model router is logged with its tier and the step
 // that chose it, and its savings count against the router's default tier.
 func TestRouterCalls(t *testing.T) {

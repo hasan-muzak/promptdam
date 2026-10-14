@@ -43,15 +43,25 @@ type Options struct {
 	// ("provider") and its usage says what it cost.
 	Backend string
 	Cost    float64
+	// Prompt is the prompt tokens Chat Completions usage reports (default
+	// PromptTokens), CachedTokens of them read from the cache.
+	Prompt int
 }
 
-// routed adds Backend and Cost to a Chat Completions answer or chunk.
+// routed adds Backend, Cost and Prompt to a Chat Completions answer or
+// chunk.
 func (s *Server) routed(c map[string]any) map[string]any {
 	if s.opts.Backend != "" {
 		c["provider"] = s.opts.Backend
 	}
-	if u, ok := c["usage"].(map[string]any); ok && s.opts.Cost > 0 {
-		u["cost"] = s.opts.Cost
+	if u, ok := c["usage"].(map[string]any); ok {
+		if s.opts.Cost > 0 {
+			u["cost"] = s.opts.Cost
+		}
+		if s.opts.Prompt > 0 {
+			u["total_tokens"] = s.opts.Prompt + u["completion_tokens"].(int)
+			u["prompt_tokens"] = s.opts.Prompt
+		}
 	}
 	return c
 }
