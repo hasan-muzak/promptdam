@@ -15,6 +15,7 @@ import (
 
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
+	"github.com/hasan-muzak/promptdam/server/features/cloudauth"
 	"github.com/hasan-muzak/promptdam/server/features/families"
 	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 )
@@ -122,6 +123,9 @@ type Target struct {
 	Model string
 	// Header holds the provider's credentials and any fixed headers.
 	Header http.Header
+	// Auth signs each request, for a cloud that needs it (SigV4, Google
+	// tokens); nil for keys in Header.
+	Auth cloudauth.Authorizer
 	// Format is the API the target is called in when it isn't the call's
 	// own (0): a Chat Completions call sent to a Messages provider, or the
 	// other way round, translated both ways (features/translate).

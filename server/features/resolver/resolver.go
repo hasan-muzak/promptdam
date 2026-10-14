@@ -645,7 +645,8 @@ func crossFormat(f wire.Format) wire.Format {
 // target is a provider's target for a model and a call of format f, and
 // whether the provider can take the call at all.
 func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gateway.Target, bool) {
-	t := gateway.Target{ID: p.ID.String() + ":" + model, Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL, Model: model, Header: p.Header}
+	t := gateway.Target{ID: p.ID.String() + ":" + model, Provider: p.Name, Kind: p.Kind, BaseURL: p.BaseURL, Model: model,
+		Header: p.Header, Auth: p.Auth}
 	m, known := r.model(p.Kind, model)
 	if known {
 		// A model known not to reason has a client's effort taken out

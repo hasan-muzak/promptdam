@@ -1,34 +1,12 @@
 package providers
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"testing"
-)
 
-// ServiceAccountJSON is a service-account key file with a fresh RSA key,
-// for tests.
-func ServiceAccountJSON(t testing.TB, project string) string {
-	t.Helper()
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatal(err)
-	}
-	der, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, _ := json.Marshal(map[string]string{
-		"type": "service_account", "project_id": project, "private_key_id": "k1",
-		"private_key":  string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})),
-		"client_email": "promptdam@" + project + ".iam.gserviceaccount.com", "token_uri": "https://oauth2.googleapis.com/token",
-	})
-	return string(b)
-}
+	"github.com/hasan-muzak/promptdam/server/features/cloudauth/cloudauthtest"
+)
 
 // Each cloud's account becomes the root of its model APIs and reads back
 // from it; Bedrock's and Vertex's are public (pooled), Azure's and an
@@ -79,7 +57,7 @@ func TestCloudBaseURL(t *testing.T) {
 // Each cloud takes its own sign-in methods, one at a time, and hints at
 // which key it holds without showing it.
 func TestCredentialCheck(t *testing.T) {
-	sa := ServiceAccountJSON(t, "acme-prod")
+	sa := cloudauthtest.NewServiceAccount(t, "acme-prod").JSON
 	for _, tt := range []struct {
 		name string
 		kind string

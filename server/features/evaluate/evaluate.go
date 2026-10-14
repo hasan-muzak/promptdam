@@ -20,7 +20,6 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -480,7 +479,8 @@ func (e *Evaluator) send(ctx context.Context, t gateway.Target, f wire.Format, p
 	if f.Anthropic() {
 		path = "/messages"
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+path, bytes.NewReader(payload))
+	payload = gateway.CloudBody(t, f, path, payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, gateway.UpstreamURL(t, f, path, false), bytes.NewReader(payload))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -491,6 +491,9 @@ func (e *Evaluator) send(ctx context.Context, t gateway.Target, f wire.Format, p
 	}
 	for k, v := range t.Header {
 		req.Header[k] = v
+	}
+	if err := gateway.Sign(ctx, t, req, payload); err != nil {
+		return nil, 0, fmt.Errorf("evaluate: signing for %s: %w", t.Provider, err)
 	}
 	res, err := e.client.Do(req)
 	if err != nil {

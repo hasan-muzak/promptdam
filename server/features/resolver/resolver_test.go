@@ -17,6 +17,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/cacheprofile"
+	"github.com/hasan-muzak/promptdam/server/features/cloudauth/cloudauthtest"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
@@ -551,5 +552,43 @@ func TestOwnEndpointsAreNotPooled(t *testing.T) {
 	if rec := recs[len(recs)-1]; strings.Contains(string(reqs[len(reqs)-1].Body), "cache_control") ||
 		rec.CacheStrategy != promptcache.Auto || rec.Pooled {
 		t.Fatalf("an endpoint of the project's own: %+v", rec)
+	}
+}
+
+// A Vertex provider signs in with its service-account key: the snapshot
+// opens it into a token cache, and its calls reach Claude's rawPredict with
+// the model in the URL, a fresh token, and no model in the body; the
+// token is fetched once for many calls.
+func TestVertexProviderSignsWithTokens(t *testing.T) {
+	sa := cloudauthtest.NewServiceAccount(t, "acme-prod")
+	tokens := cloudauthtest.NewTokenServer(t, sa)
+	w := gatewaytest.New(t, gatewaytest.Options{GoogleTokenURL: tokens.URL})
+	p, err := w.App.Providers.Create(w.Scoped(), w.Org, w.Project, providers.Input{Name: "vertex", Kind: providers.Vertex,
+		BaseURL: w.Upstream.URL + "/v1/projects/acme-prod/locations/global", Credential: &providers.Credential{ServiceAccount: sa.JSON},
+		Models: []string{"claude-haiku-5-5"}, Priority: -1, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.SecretHint != sa.Email || strings.Contains(p.Secrets, "PRIVATE") {
+		t.Fatalf("hint %q", p.SecretHint)
+	}
+	call := `{"model":"claude-haiku-5-5","max_tokens":9,"messages":[{"role":"user","content":"hi"}]}`
+	w.Eventually(func() bool { // the provider reached the gateway
+		status, h, _ := w.Call("/v1/messages", call)
+		return status == 200 && h.Get(brand.HeaderProvider) == "vertex"
+	})
+	for range 3 {
+		if status, _, out := w.Call("/v1/messages", call); status != 200 {
+			t.Fatalf("%d %s", status, out)
+		}
+	}
+	reqs := w.Fake.Requests()
+	got := reqs[len(reqs)-1]
+	if got.URLPath != "/v1/projects/acme-prod/locations/global/publishers/anthropic/models/claude-haiku-5-5:rawPredict" ||
+		got.Header.Get("Authorization") != "Bearer token-1" || strings.Contains(string(got.Body), `"model"`) {
+		t.Fatalf("called %s with %q: %s", got.URLPath, got.Header.Get("Authorization"), got.Body)
+	}
+	if n := tokens.Fetches.Load(); n != 1 {
+		t.Fatalf("%d token fetches", n)
 	}
 }

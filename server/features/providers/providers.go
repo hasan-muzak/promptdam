@@ -5,6 +5,8 @@ package providers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +22,7 @@ import (
 
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/ent/provider"
+	"github.com/hasan-muzak/promptdam/server/features/cloudauth"
 )
 
 // MaxPerProject bounds a project's providers: the gateway holds them all
@@ -62,11 +65,15 @@ type Config struct {
 	// Changed runs after a project's providers change, so the gateway
 	// reloads them.
 	Changed func(ctx context.Context, project uuid.UUID)
+	// GoogleTokenURL is where Vertex providers' service-account keys get
+	// their tokens (cloudauth.GoogleTokenURL; a fake in tests).
+	GoogleTokenURL string
 }
 
 // Service keeps providers.
 type Service struct {
-	cfg Config
+	cfg    Config
+	tokens *cloudauth.Tokens
 }
 
 // New returns a Service.
@@ -77,7 +84,10 @@ func New(cfg Config) *Service {
 	if cfg.Changed == nil {
 		cfg.Changed = func(context.Context, uuid.UUID) {}
 	}
-	return &Service{cfg: cfg}
+	if cfg.GoogleTokenURL == "" {
+		cfg.GoogleTokenURL = cloudauth.GoogleTokenURL
+	}
+	return &Service{cfg: cfg, tokens: cloudauth.NewTokens(cfg.HTTP, cfg.GoogleTokenURL)}
 }
 
 // Input is a provider's fields.
@@ -342,6 +352,42 @@ func (s *Service) seal(org uuid.UUID, secret []byte) (string, error) {
 		return "", fmt.Errorf("providers: sealing the key: %w", err)
 	}
 	return sealed, nil
+}
+
+// Auth opens a sealed secret of org's into what signs a provider's calls:
+// fixed headers for a key (HeaderFor; Azure's api-key), or, for a cloud
+// that signs each request, an authorizer (Bedrock's API key or SigV4,
+// Vertex's tokens, kept across snapshots by the sealed secret).
+func (s *Service) Auth(org uuid.UUID, kind, format, sealed string) (http.Header, cloudauth.Authorizer, error) {
+	if !IsCloud(kind) {
+		h, err := s.HeaderFor(org, format, sealed)
+		return h, nil, err
+	}
+	if sealed == "" {
+		return http.Header{}, nil, nil
+	}
+	raw, err := s.cfg.Vault.Open(org, purpose, sealed)
+	if err != nil {
+		return nil, nil, fmt.Errorf("providers: opening a key: %w", err)
+	}
+	var c Credential
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return nil, nil, fmt.Errorf("providers: reading a cloud credential: %w", err)
+	}
+	switch {
+	case kind == Azure:
+		return http.Header{"Api-Key": {c.APIKey}}, nil, nil
+	case kind == Bedrock && c.APIKey != "":
+		return http.Header{}, cloudauth.BedrockKey(c.APIKey), nil
+	case kind == Bedrock:
+		return http.Header{}, cloudauth.SigV4(c.AccessKeyID, c.SecretAccessKey, c.SessionToken), nil
+	}
+	sa, err := cloudauth.ParseServiceAccount([]byte(c.ServiceAccount))
+	if err != nil {
+		return nil, nil, fmt.Errorf("providers: reading a service-account key: %w", err)
+	}
+	sum := sha256.Sum256([]byte(sealed))
+	return http.Header{}, s.tokens.Google(hex.EncodeToString(sum[:]), sa), nil
 }
 
 // Header returns the headers that carry a provider's key.

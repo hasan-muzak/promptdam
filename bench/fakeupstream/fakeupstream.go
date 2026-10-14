@@ -89,11 +89,33 @@ func (s *Server) pieces(model string, body []byte) []string {
 	return out
 }
 
-// Request is a call the server received.
+// Request is a call the server received: Path is the API's own path (a
+// cloud's mapped to it), URLPath the one called.
 type Request struct {
-	Path   string
-	Header http.Header
-	Body   []byte
+	Path    string
+	URLPath string
+	Header  http.Header
+	Body    []byte
+}
+
+// cloudPath maps a call's URL path to the API path it stands for: a cloud
+// account's root before it (Bedrock's and Foundry's /anthropic/v1 and
+// /openai/v1, Vertex's /endpoints/openapi), or Claude on Vertex's
+// rawPredict, whose model (and whether it streams) is in the URL.
+func cloudPath(raw string) (path, model string, stream bool) {
+	if i := strings.LastIndex(raw, "/publishers/anthropic/models/"); i >= 0 {
+		model, method, _ := strings.Cut(raw[i+len("/publishers/anthropic/models/"):], ":")
+		if model == "count-tokens" {
+			return "/messages/count_tokens", "", false
+		}
+		return "/messages", model, method == "streamRawPredict"
+	}
+	for _, root := range []string{"/anthropic/v1", "/openai/v1", "/endpoints/openapi"} {
+		if i := strings.Index(raw, root+"/"); i >= 0 {
+			return raw[i+len(root):], "", false
+		}
+	}
+	return strings.TrimPrefix(raw, "/v1"), "", false
 }
 
 // Server is the fake provider.
@@ -128,12 +150,13 @@ func (s *Server) Fail(statuses ...int) {
 }
 
 // ServeHTTP answers a call. Paths are those under a provider's base URL
-// with or without /v1: /v1/chat/completions and /chat/completions alike.
+// with or without /v1: /v1/chat/completions and /chat/completions alike;
+// and the clouds' (cloudPath).
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
-	path := strings.TrimPrefix(r.URL.Path, "/v1")
+	path, urlModel, urlStream := cloudPath(r.URL.Path)
 	s.mu.Lock()
-	s.requests = append(s.requests, Request{Path: path, Header: r.Header.Clone(), Body: body})
+	s.requests = append(s.requests, Request{Path: path, URLPath: r.URL.Path, Header: r.Header.Clone(), Body: body})
 	fail := 0
 	if len(s.failures) > 0 {
 		fail, s.failures = s.failures[0], s.failures[1:]
@@ -156,7 +179,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			IncludeUsage bool `json:"include_usage"`
 		} `json:"stream_options"`
 	}
-	if json.Unmarshal(body, &req) != nil || req.Model == "" {
+	if json.Unmarshal(body, &req) != nil {
+		req.Model = ""
+	}
+	if urlModel != "" { // Claude on Vertex: the model in the URL, never the body
+		if req.Model != "" {
+			http.Error(w, `{"error":{"message":"model: Extra inputs are not permitted","type":"invalid_request_error"}}`, http.StatusBadRequest)
+			return
+		}
+		req.Model, req.Stream = urlModel, urlStream
+	}
+	if req.Model == "" {
 		http.Error(w, `{"error":{"message":"bad request","type":"invalid_request_error"}}`, http.StatusBadRequest)
 		return
 	}

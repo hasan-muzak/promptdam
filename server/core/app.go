@@ -99,6 +99,8 @@ type App struct {
 
 	changed  []func(ctx context.Context, project uuid.UUID)
 	fallback *llm.Catalog
+	// googleTokenURL is where Vertex providers get tokens ("": Google's).
+	googleTokenURL string
 }
 
 // Option configures the App.
@@ -108,6 +110,12 @@ type Option func(*App)
 // instead of the embedded catalog.
 func WithPrices(catalog *llm.Catalog) Option {
 	return func(a *App) { a.fallback = catalog }
+}
+
+// WithGoogleTokenURL has Vertex providers get their tokens from a fake
+// Google token service: tests only.
+func WithGoogleTokenURL(url string) Option {
+	return func(a *App) { a.googleTokenURL = url }
 }
 
 // WithGatewayURL sets where clients reach the gateway.
@@ -180,6 +188,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	}
 	a.Providers = providers.New(providers.Config{
 		Ent: a.Ent, Vault: c.Vault, AllowLoopback: c.Config.Env == config.Development, Changed: a.configChanged,
+		GoogleTokenURL: a.googleTokenURL,
 	})
 	a.Keys = keysettings.New(keysettings.Config{Ent: a.Ent, Key: c.APIKeys.Get, Scope: ScopeGateway, Changed: a.configChanged})
 	c.APIKeys.OnRotated(func(ctx context.Context, org, old, replacement uuid.UUID) {

@@ -250,7 +250,7 @@ func (d *Decider) ask(ctx context.Context, q resolver.Question, timeout time.Dur
 	if f.Anthropic() {
 		path = "/messages"
 	}
-	body, err := d.post(ctx, t, strings.TrimRight(t.BaseURL, "/")+path, payload, f.Anthropic())
+	body, err := d.post(ctx, t, gateway.UpstreamURL(t, f, path, false), gateway.CloudBody(t, f, path, payload), f.Anthropic())
 	if err != nil {
 		return answer{}, err
 	}
@@ -386,6 +386,9 @@ func (d *Decider) post(ctx context.Context, t gateway.Target, url string, payloa
 	}
 	for k, v := range t.Header {
 		hreq.Header[k] = v
+	}
+	if err := gateway.Sign(ctx, t, hreq, payload); err != nil {
+		return nil, fmt.Errorf("decide: signing for %s: %w", t.Provider, err)
 	}
 	res, err := d.client.Do(hreq)
 	if err != nil {

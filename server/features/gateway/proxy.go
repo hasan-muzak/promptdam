@@ -394,12 +394,14 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 	// The backends its model never caches on are avoided (withAvoided),
 	// until none is left to serve the call.
 	avoiding := c.promptCache && CacheDialectOf(t.Kind, false).Avoids && format == wire.OpenAIChat
+	target := UpstreamURL(t, format, path, req.Stream)
 	for {
 		send, avoided := body, false
 		if avoiding {
 			send, avoided = withAvoided(body, t.Cache.Avoid)
 		}
-		up, rerr := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+path, bytes.NewReader(send))
+		send = CloudBody(t, format, path, send)
+		up, rerr := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(send))
 		if rerr != nil {
 			c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_misconfigured", Message: "the provider's base URL is invalid"})
 			return answered, false
@@ -408,6 +410,11 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 		sessioned := sessionHeader(up.Header, c.r.Header, body, t.Kind, c.session, session && promptcache.Sessions(t.Cache.Strategy))
 		if beta != "" {
 			addBeta(up.Header, beta)
+		}
+		if serr := Sign(ctx, t, up, send); serr != nil {
+			c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_auth_failed",
+				Message: "the provider's credentials couldn't sign the call: " + serr.Error()})
+			return answered, false
 		}
 		sent := time.Now()
 		res, err = c.h.cfg.Transport.RoundTrip(up)

@@ -30,6 +30,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/cachepolicy"
 	"github.com/hasan-muzak/promptdam/server/features/cachettl"
+	"github.com/hasan-muzak/promptdam/server/features/cloudauth"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
@@ -119,10 +120,12 @@ type Snapshot struct {
 	CacheTTL map[string]cachettl.TTL
 }
 
-// Opened is a provider with its key's headers.
+// Opened is a provider with its key's headers and, for a cloud that signs
+// each request, its authorizer.
 type Opened struct {
 	Provider
 	Header http.Header
+	Auth   cloudauth.Authorizer
 }
 
 // Sources build a snapshot from Postgres.
@@ -292,19 +295,19 @@ func (s *Store) Get(ctx context.Context, org, project uuid.UUID) (*Snapshot, err
 
 // open opens the providers' keys of a cached snapshot.
 func (s *Store) open(project uuid.UUID, d Data) (*Snapshot, error) {
-	return assemble(project, d, func(p Provider) (http.Header, error) {
-		return s.sources.Providers.HeaderFor(d.Org, p.Format, p.Sealed)
+	return assemble(project, d, func(p Provider) (http.Header, cloudauth.Authorizer, error) {
+		return s.sources.Providers.Auth(d.Org, p.Kind, p.Format, p.Sealed)
 	}), nil
 }
 
 // Plain is a project's snapshot with its providers' keys left sealed: to
 // explain what the gateway would do with a call, never to call providers.
 func Plain(project uuid.UUID, d Data) *Snapshot {
-	return assemble(project, d, func(Provider) (http.Header, error) { return http.Header{}, nil })
+	return assemble(project, d, func(Provider) (http.Header, cloudauth.Authorizer, error) { return http.Header{}, nil, nil })
 }
 
-// assemble builds a snapshot, opening each provider's key with header.
-func assemble(project uuid.UUID, d Data, header func(Provider) (http.Header, error)) *Snapshot {
+// assemble builds a snapshot, opening each provider's key with open.
+func assemble(project uuid.UUID, d Data, open func(Provider) (http.Header, cloudauth.Authorizer, error)) *Snapshot {
 	snap := &Snapshot{CacheTTL: d.CacheTTL,
 		Org: d.Org, Project: project, Keys: make(map[uuid.UUID]keysettings.Settings, len(d.Keys)),
 		Routes: make(map[string]Route, len(d.Routes)), Budgets: d.Budgets, Prices: prices.ProjectPrices(d.Prices),
@@ -329,7 +332,7 @@ func assemble(project uuid.UUID, d Data, header func(Provider) (http.Header, err
 		snap.Routers[d.Routers[i].Name] = &d.Routers[i]
 	}
 	for _, p := range d.Providers {
-		h, err := header(p)
+		h, auth, err := open(p)
 		if err != nil {
 			// One provider's key not opening (a rotated master key gone)
 			// leaves the others serving.
@@ -337,7 +340,7 @@ func assemble(project uuid.UUID, d Data, header func(Provider) (http.Header, err
 			continue
 		}
 		p.Sealed = ""
-		snap.Providers = append(snap.Providers, Opened{Provider: p, Header: h})
+		snap.Providers = append(snap.Providers, Opened{Provider: p, Header: h, Auth: auth})
 	}
 	for id, k := range d.Keys {
 		if u, err := uuid.Parse(id); err == nil {

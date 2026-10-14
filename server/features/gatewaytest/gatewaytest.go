@@ -57,6 +57,9 @@ type Options struct {
 	// Stripe bills through a fake Stripe (World.Stripe): plans are bought
 	// with World.Subscribe, usage reports read with Stripe.Billed.
 	Stripe bool
+	// GoogleTokenURL is a fake Google token service for Vertex providers
+	// (cloudauthtest.NewTokenServer).
+	GoogleTokenURL string
 	// OwnEndpoints treats the fake provider as what it is, an endpoint of
 	// the project's own (providers.Public). By default it stands in for
 	// providers' public APIs: its calls are pooled into the caching
@@ -125,7 +128,11 @@ func New(t *testing.T, opts Options) *World {
 	if opts.Payloads {
 		c.Blob = testkit.Blob(t, core.Product.Key)
 	}
-	w := &World{T: t, Ctx: ctx, C: c, App: core.NewApp(c), Stripe: stripe, opts: opts}
+	var appOpts []core.Option
+	if opts.GoogleTokenURL != "" {
+		appOpts = append(appOpts, core.WithGoogleTokenURL(opts.GoogleTokenURL))
+	}
+	w := &World{T: t, Ctx: ctx, C: c, App: core.NewApp(c, appOpts...), Stripe: stripe, opts: opts}
 	u, err := c.Tenancy.SignIn(ctx, identity.Claims{UID: "fb-acme", Email: "acme@example.com", EmailVerified: true})
 	if err != nil {
 		t.Fatal(err)
