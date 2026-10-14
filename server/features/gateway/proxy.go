@@ -9,6 +9,7 @@ import (
 	"math/rand/v2"
 	"mime"
 	"net/http"
+	"net/http/httptrace"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,7 +57,31 @@ type call struct {
 	answer                    []byte
 	// filter rewrites the provider's answer (Route.Response).
 	filter ResponseFilter
+	// marked reports that the body has the prompt cache's breakpoints
+	// (Anthropic calls of routes with prompt_cache).
+	marked bool
+	// wait is how long the next try of the same target waits: a provider's
+	// Retry-After, when it named one.
+	wait time.Duration
+	// streamFailed reports a provider error event in an answer that began
+	// fine (an overload mid-stream): a failure, for the target's circuit.
+	streamFailed bool
+	// abort cuts the client's connection once the call is logged: an
+	// answer that broke off after it began must not look complete.
+	abort bool
 }
+
+// outcome is what an attempt leaves the call to do.
+type outcome int
+
+const (
+	// answered: the client got an answer, or an error, and the call ends.
+	answered outcome = iota
+	// again: the same target may answer if asked again.
+	again
+	// onward: the next target may answer; this one won't.
+	onward
+)
 
 // keep adds bytes the client got to a sampled call's answer.
 func (c *call) keep(p []byte) {
@@ -151,7 +176,7 @@ func (c *call) serve() {
 
 	c.promptCache = route.PromptCache
 	if route.PromptCache && c.ep.format == wire.AnthropicMessages {
-		body, c.rec.PromptCached = promptcache.Mark(body, req)
+		body, c.marked = promptcache.Mark(body, req)
 	}
 
 	// Token counts come in streams only when asked for: ask on the
@@ -163,27 +188,34 @@ func (c *call) serve() {
 		}
 	}
 
-	// Each target is tried, and retried after a jittered pause, until one
-	// answers; a target whose circuit is open is skipped, but for the last.
+	// Each target is tried, and retried after a jittered pause (or the
+	// provider's Retry-After), until one answers; a target whose circuit is
+	// open is skipped, but for the last. An attempt may send the call on
+	// to the next target at once, when asking this one again can't help.
+	retries := max(route.Retries, 0)
 	for i, t := range route.Targets {
-		last := i == len(route.Targets)-1
-		if !last && !c.h.breakers.allow(t.ID, time.Now()) {
+		lastTarget := i == len(route.Targets)-1
+		if !lastTarget && !c.h.breakers.allow(t.ID, time.Now()) {
 			continue
 		}
-		for try := 0; try <= max(route.Retries, 0); try++ {
-			if try > 0 && !pause(c.r.Context(), backoff(try)) {
+		for try := 0; try <= retries; try++ {
+			if try > 0 && !pause(c.r.Context(), max(backoff(try), c.wait)) {
 				c.rec.Status, c.rec.ErrorCode = statusClientClosed, "client_closed"
 				return
 			}
+			c.wait = 0
 			c.rec.Attempts++
 			c.rec.Fallback = i > 0
 			// A call no provider answered is logged with the one it tried
 			// last: provider outages show in the log.
 			c.rec.Provider, c.rec.Kind, c.rec.TargetModel, c.rec.ServedModel = t.Provider, t.Kind, t.Model, t.Model
-			done, failed := c.attempt(t, req, body, dropUsage, last && try == max(route.Retries, 0))
+			next, failed := c.attempt(t, req, body, dropUsage, lastTarget, try == retries)
 			c.h.breakers.record(t.ID, !failed, time.Now())
-			if done {
+			if next == answered {
 				return
+			}
+			if next == onward {
+				break
 			}
 		}
 	}
@@ -194,6 +226,55 @@ func (c *call) serve() {
 func backoff(n int) time.Duration {
 	ceiling := min(250*time.Millisecond<<(n-1), 2*time.Second)
 	return rand.N(ceiling)
+}
+
+// maxRetryAfter is the longest Retry-After the gateway waits out before
+// asking the same target again; past it, the next target is asked, or the
+// client gets the provider's answer, Retry-After included.
+const maxRetryAfter = 10 * time.Second
+
+// retryAfter is how long a provider asked to be left alone: Retry-After-Ms
+// (OpenAI), else Retry-After in seconds or as a date.
+func retryAfter(h http.Header, now time.Time) (time.Duration, bool) {
+	if v := h.Get("Retry-After-Ms"); v != "" {
+		if ms, err := strconv.ParseFloat(v, 64); err == nil && ms >= 0 {
+			return time.Duration(ms * float64(time.Millisecond)), true
+		}
+	}
+	v := h.Get("Retry-After")
+	if v == "" {
+		return 0, false
+	}
+	if s, err := strconv.ParseFloat(v, 64); err == nil && s >= 0 {
+		return time.Duration(s * float64(time.Second)), true
+	}
+	if at, err := http.ParseTime(v); err == nil {
+		return max(at.Sub(now), 0), true
+	}
+	return 0, false
+}
+
+// tooLongPhrases are how providers say a call doesn't fit the model's
+// context window (Anthropic's "prompt is too long", OpenAI's
+// context_length_exceeded, and the wordings of OpenAI-compatible ones).
+var tooLongPhrases = []string{
+	"prompt is too long", "context_length_exceeded", "maximum context length", "context window",
+	"exceed context limit", "exceeds the context", "input is too long", "too many input tokens",
+}
+
+// tooLong reports a provider's refusal of a call too long for its model: a
+// stronger tier's model, later among the targets, may take it.
+func tooLong(status int, body []byte) bool {
+	if status != http.StatusBadRequest && status != http.StatusRequestEntityTooLarge {
+		return false
+	}
+	lower := bytes.ToLower(body)
+	for _, p := range tooLongPhrases {
+		if bytes.Contains(lower, []byte(p)) {
+			return true
+		}
+	}
+	return false
 }
 
 // pause waits d; false when the client left first.
@@ -208,22 +289,27 @@ func pause(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// attempt sends the call to one target and relays the answer. done is
-// false when the target failed before anything reached the client and the
-// call may go on (final is false); failed reports a failure of the provider
-// (unreachable, rate limiting, overloaded, a server error), for its circuit.
-func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, final bool) (done, failed bool) {
+// attempt sends the call to one target and relays the answer. It says what
+// the call does next: nothing more (answered), the same target again, or
+// the next one. Before anything reached the client, a failure may go on
+// when the target isn't the last (lastTarget) or has tries left (lastTry).
+// failed reports a failure of the provider (unreachable, rate limiting,
+// overloaded, a server error, an error mid-stream), for its circuit.
+func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastTarget, lastTry bool) (next outcome, failed bool) {
+	canAgain, canOnward := !lastTarget || !lastTry, !lastTarget
 	format, path := t.formatOf(c.ep.format), c.ep.path
+	c.rec.PromptCached = c.marked && format == c.ep.format
 	var dropped []string
 	switch {
 	case format != c.ep.format:
 		// A target of the other API format gets the call translated; one
-		// that can't express it is passed over for the next.
+		// that can't express it is passed over for the next (translating
+		// again would fail the same way).
 		out, d, err := translate.Request(c.ep.format, format, body,
 			translate.Options{Model: t.Model, Kind: t.Kind, Reasoning: t.Reasoning, MaxTokens: t.MaxTokens})
 		if err != nil {
-			if !final {
-				return false, false
+			if canOnward {
+				return onward, false
 			}
 			msg := "the request can't be sent to " + t.Model
 			var te *translate.Error
@@ -231,7 +317,7 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, final
 				msg += ": " + te.Message
 			}
 			c.fail(&Error{Status: http.StatusBadRequest, Type: TypeInvalidRequest, Code: "untranslatable_request", Message: msg})
-			return true, false
+			return answered, false
 		}
 		body, dropped, path, dropUsage = out, d, paths[format], false
 		if c.promptCache && format == wire.AnthropicMessages {
@@ -244,16 +330,24 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, final
 		swapped, err := wire.SetField(body, "model", model)
 		if err != nil {
 			c.fail(&Error{Status: http.StatusBadRequest, Type: TypeInvalidRequest, Code: "invalid_request", Message: "the request body is not valid JSON"})
-			return true, false
+			return answered, false
 		}
 		body = swapped
 	}
 	ctx, cancel := context.WithCancel(c.r.Context())
 	defer cancel()
+	// Whether the whole request reached the provider: one that did may be
+	// answered (and billed) even when its answer never arrives.
+	var wrote atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{WroteRequest: func(i httptrace.WroteRequestInfo) {
+		if i.Err == nil {
+			wrote.Store(true)
+		}
+	}})
 	up, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+path, bytes.NewReader(body))
 	if err != nil {
 		c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_misconfigured", Message: "the provider's base URL is invalid"})
-		return true, false
+		return answered, false
 	}
 	upstreamHeader(up.Header, c.r.Header, format, t.Header)
 
@@ -263,24 +357,49 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, final
 	if err != nil {
 		if c.r.Context().Err() != nil {
 			c.rec.Status, c.rec.ErrorCode = statusClientClosed, "client_closed"
-			return true, false
+			return answered, false
 		}
-		if !final {
-			return false, true
+		// A call the provider never got is safe to send again; one it got
+		// is never sent to it twice (it may be answering, and billing,
+		// still), only on to the next target.
+		sentAll := wrote.Load()
+		switch {
+		case !sentAll && canAgain:
+			return again, true
+		case canOnward:
+			return onward, true
 		}
 		e := &Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_unreachable", Message: "the provider could not be reached"}
-		if errors.Is(err, context.DeadlineExceeded) || isTimeout(err) {
+		switch {
+		case errors.Is(err, context.DeadlineExceeded) || isTimeout(err):
 			e.Status, e.Code, e.Message = http.StatusGatewayTimeout, "provider_timeout", "the provider did not answer in time"
+		case sentAll:
+			e.Code, e.Message = "provider_disconnected", "the provider closed the connection before answering"
 		}
 		c.fail(e)
-		return true, true
+		return answered, true
 	}
-	if retryable(res.StatusCode) && !final {
-		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
-		_ = res.Body.Close()
-		return false, true
+	// The provider's body is closed, not the masked copy that may replace it.
+	defer func(b io.Closer) { _ = b.Close() }(res.Body)
+	if retryable(res.StatusCode) {
+		// A rate limit naming a short wait is waited out; a long one sends
+		// the call on, or to the client with the provider's Retry-After.
+		wait, short := time.Duration(0), true
+		if res.StatusCode == http.StatusTooManyRequests {
+			if d, ok := retryAfter(res.Header, time.Now()); ok {
+				wait, short = d, d <= maxRetryAfter
+			}
+		}
+		switch {
+		case short && canAgain:
+			_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
+			c.wait = wait
+			return again, true
+		case canOnward:
+			_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
+			return onward, true
+		}
 	}
-	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode >= 400 && !eventStream(res.Header) {
 		if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
 			// A provider refusing the project's key may quote part of it:
@@ -289,12 +408,19 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, final
 			c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_auth_failed",
 				Message: "the provider refused the project's key or account for it (" + strconv.Itoa(res.StatusCode) +
 					"): check the provider's key in Promptdam"})
-			return true, false
+			return answered, false
 		}
-		maskError(res)
+		raw, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorBody))
+		// A call too long for this model goes on to the next target: the
+		// stronger tiers' models come later among them. Not a failure of
+		// the provider.
+		if canOnward && tooLong(res.StatusCode, raw) {
+			return onward, false
+		}
+		maskError(res, raw)
 	}
 	c.relay(res, t, cancel, dropUsage, format, dropped)
-	return true, retryable(res.StatusCode)
+	return answered, retryable(res.StatusCode) || c.streamFailed
 }
 
 // errorRedactor masks secrets and personal data in providers' errors.
@@ -303,11 +429,9 @@ var errorRedactor = redact.Default()
 // maxErrorBody bounds the provider error bodies read to be masked.
 const maxErrorBody = 1 << 20
 
-// maskError reads a provider's error body and masks what it may quote:
-// keys, tokens, personal data from the request. A body past maxErrorBody
-// is cut there.
-func maskError(res *http.Response) {
-	body, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorBody))
+// maskError replaces a provider's error body, read up to maxErrorBody, with
+// it masked: keys, tokens, personal data from the request it may quote.
+func maskError(res *http.Response, body []byte) {
 	masked, _ := errorRedactor.Mask(string(body))
 	res.Body = io.NopCloser(strings.NewReader(masked))
 	res.ContentLength = int64(len(masked))
@@ -432,6 +556,18 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	}
 	if c.rec.ErrorCode != "" {
 		return // the gateway answered with its own error
+	}
+	// An error event in an answer that began fine (an overload mid-stream)
+	// counts against the target's circuit, unless it blames the request.
+	if se := meter.StreamError(); se != "" && se != "invalid_request_error" {
+		c.streamFailed = true
+	}
+	// An answer that broke off after its status went out is cut, not
+	// ended: a clean end would make the part the client got (or a bare
+	// 200) look complete. Answers relayed whole failed with the gateway's
+	// own error above instead.
+	if (readErr != nil || body.fired.Load()) && c.r.Context().Err() == nil {
+		c.abort = true
 	}
 	if c.sample && !c.overflow && (c.capture || res.StatusCode == http.StatusOK && readErr == nil) {
 		c.rec.Answer = c.answer

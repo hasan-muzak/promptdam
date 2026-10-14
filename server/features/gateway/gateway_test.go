@@ -332,16 +332,33 @@ func TestGatewayErrorsTakeTheClientsAPIShape(t *testing.T) {
 	}
 }
 
+// A provider that goes quiet mid-answer is cut, and so is the client's
+// connection: the stream doesn't end as if complete.
 func TestQuietProvidersAreCut(t *testing.T) {
 	e := setup(t, fakeupstream.Options{ChunkDelay: 300 * time.Millisecond}, nil,
 		func(c *gateway.Config) { c.IdleTimeout = 50 * time.Millisecond })
-	res, body := e.post(t, "/v1/chat/completions", `{"model":"gpt-5","stream":true,"messages":[]}`)
-	if res.StatusCode != 200 || strings.Contains(body, "[DONE]") {
-		t.Fatalf("%d %s", res.StatusCode, body)
+	res, body, err := e.stream(t, "/v1/chat/completions", `{"model":"gpt-5","stream":true,"messages":[]}`)
+	if res.StatusCode != 200 || strings.Contains(body, "[DONE]") || err == nil {
+		t.Fatalf("%d %q, read error %v: the stream should have been cut", res.StatusCode, body, err)
 	}
 	if rec := e.record(t); rec.ErrorCode != "provider_idle_timeout" {
 		t.Fatalf("record %+v", rec)
 	}
+}
+
+// stream posts a call and reads its answer until it ends or breaks: the
+// read error tells a cut connection from a clean end.
+func (e *env) stream(t *testing.T, path, body string) (reply, string, error) {
+	t.Helper()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, e.gateway.URL+path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	out, err := io.ReadAll(res.Body)
+	return reply{StatusCode: res.StatusCode, Header: res.Header}, string(out), err
 }
 
 // routeResolver routes every call the same way, retries included.

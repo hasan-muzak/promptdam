@@ -295,4 +295,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if c.rec.ErrorCode != "" {
 		slog.Debug("promptdam gateway: call failed", "trace", c.rec.Trace, "status", c.rec.Status, "code", c.rec.ErrorCode)
 	}
+	if c.abort {
+		// The answer broke off after it began: the client's connection is
+		// cut (net/http aborts the response without logging), so no client
+		// mistakes the part it got for the whole.
+		panic(http.ErrAbortHandler)
+	}
 }
