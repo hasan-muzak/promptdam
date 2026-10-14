@@ -44,6 +44,9 @@ type Placement struct {
 	// watches.
 	Served int
 	Shadow bool
+	// Held reports a new turn kept on its conversation's warm tier, a
+	// stronger one than the cascade chose (tiers.SourceHeld).
+	Held bool
 	// Targets are tried in order: the served tier's model and fallbacks,
 	// then the stronger tiers'. Calls never fall back to a weaker tier.
 	Targets []gateway.Target
@@ -138,6 +141,9 @@ type turnState struct {
 	// provider and model served the turn's latest call: within its tier,
 	// that target goes first (its prompt cache is warm there).
 	provider, model string
+	// prev is the conversation's previous turn, for a call that starts a
+	// turn: its tier and what its calls cost and cached.
+	prev *conversation.Record
 }
 
 // placeCall puts a call in one of the router's tiers (tiers.Spec.Choose).
@@ -185,6 +191,13 @@ func (r *Resolver) placeCall(ctx context.Context, snap *snapshot.Snapshot, rt *r
 		// The default tier, moved only by what the call needs.
 		base, _ := spec.Choose(tiers.Call{Serves: serves})
 		pl.Served = base.Tier
+	}
+	// A new turn of a conversation warm on a stronger tier stays there
+	// when switching wouldn't pay for rebuilding the prompt cache.
+	if turn != nil && turn.prev != nil && !turn.continuing && !pl.Shadow && !all {
+		if i, ok := r.holdTier(p, rt, choice, turn); ok {
+			pl.Served, pl.Held = i, true
+		}
 	}
 	// Each tier's targets go with its reasoning effort.
 	for i := pl.Served; i < len(spec.Tiers); i++ {
@@ -237,6 +250,9 @@ func (r *Resolver) place(ctx context.Context, snap *snapshot.Snapshot, rt *route
 	}
 	m.Router, m.Tier, m.Decided, m.Shadow = rt.Name, spec.Tiers[pl.Served].Name, spec.Tiers[pl.Choice.Tier].Name, pl.Shadow
 	m.TierSource, m.TierConfidence = pl.Choice.Source, pl.Choice.Confidence
+	if pl.Held {
+		m.TierSource = tiers.SourceHeld
+	}
 	def := spec.Index(spec.Default)
 	if named {
 		if f := &pl.Fits[def]; f.Checked && len(f.Targets) > 0 {
@@ -256,8 +272,13 @@ func (r *Resolver) place(ctx context.Context, snap *snapshot.Snapshot, rt *route
 	// A turn's placement holds for the calls that continue it, on every
 	// replica: the first placement of a turn is kept.
 	if turn != nil && turn.inherit == nil && r.cfg.Turns != nil {
-		r.cfg.Turns.Place(m.Project, m.Turn.Turn, conversation.Placement{Tier: m.Tier, Decided: m.Decided,
-			Source: pl.Choice.Source, Confidence: pl.Choice.Confidence, Version: rt.Version()})
+		p := conversation.Placement{Tier: m.Tier, Decided: m.Decided, Source: pl.Choice.Source, Confidence: pl.Choice.Confidence,
+			Version: rt.Version()}
+		if pl.Held {
+			// The turn's calls keep the warm tier.
+			p.Decided, p.Source = m.Tier, tiers.SourceHeld
+		}
+		r.cfg.Turns.Place(m.Project, m.Turn.Turn, p)
 	}
 	// A share of the router's calls is evaluated, while it has a budget
 	// for it: calls that start their turn, whose features are the turn's
@@ -285,7 +306,18 @@ func (r *Resolver) turnOf(ctx context.Context, rt *routers.Router, m *Meta) *tur
 		return nil
 	}
 	ts := &turnState{continuing: m.Turn.Continuation}
-	if !ts.continuing || r.cfg.Turns == nil {
+	if r.cfg.Turns == nil {
+		return ts
+	}
+	if !ts.continuing {
+		// A new turn: where the conversation's previous one ran, as Valkey
+		// has it (its last calls may have finished on another replica).
+		if !m.Turn.Prev.IsZero() {
+			if prev, ok := r.cfg.Turns.Fresh(ctx, m.Project, m.Turn.Prev); ok && prev.Placed() && prev.Version == rt.Version() {
+				ts.prev = &prev
+				ts.provider, ts.model = prev.Provider, prev.Model
+			}
+		}
 		return ts
 	}
 	rec, ok := r.cfg.Turns.Get(ctx, m.Project, m.Turn.Turn)
@@ -299,6 +331,54 @@ func (r *Resolver) turnOf(ctx context.Context, rt *routers.Router, m *Meta) *tur
 	}
 	ts.provider, ts.model = rec.Provider, rec.Model
 	return ts
+}
+
+// holdTier is the tier a new turn stays on rather than the cheaper one the
+// cascade chose (by classifier, decision model or default, never against a
+// client's or a rule's choice): the conversation's warm tier, when it
+// still serves the call and switching wouldn't pay for rebuilding the
+// prompt cache (holdsWarm).
+func (r *Resolver) holdTier(p *placer, rt *routers.Router, ch tiers.Choice, turn *turnState) (int, bool) {
+	spec := &rt.Spec
+	cur := spec.Index(turn.prev.Tier)
+	if cur < 0 || ch.Tier >= cur {
+		return 0, false
+	}
+	switch ch.Source {
+	case tiers.SourceClassifier, tiers.SourceDecision, tiers.SourceDefault:
+	default:
+		return 0, false
+	}
+	if p.fit(cur).Lacks != "" || rt.IsDemoted(spec.Tiers[cur].Name) {
+		return 0, false
+	}
+	side := func(i int) (switchSide, bool) {
+		ts := p.fit(i).Targets
+		if len(ts) == 0 {
+			return switchSide{}, false
+		}
+		m, ok := r.model(ts[0].Kind, ts[0].Model)
+		return switchSide{model: m, kind: ts[0].Kind, outputScale: writes(rt, i)}, ok
+	}
+	curSide, ok1 := side(cur)
+	nextSide, ok2 := side(ch.Tier)
+	if !ok1 || !ok2 || !holdsWarm(curSide, nextSide, *turn.prev, p.m.Turn.HumanTurns, time.Now()) {
+		return 0, false
+	}
+	return cur, true
+}
+
+// writes is how many output tokens the router's default tier writes for
+// each one tier i writes, measured on its judged calls (1: the default,
+// or not measured).
+func writes(rt *routers.Router, i int) float64 {
+	if rt.Spec.Tiers[i].Name == rt.Spec.Default {
+		return 1
+	}
+	if ratio, ok := rt.Classifier.Tier(rt.Spec.Tiers[i].Name).Ratio(); ok {
+		return ratio
+	}
+	return 1
 }
 
 // bareModel is a tier's model without its provider ("provider/model").

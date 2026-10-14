@@ -58,7 +58,7 @@ type RequestOut struct {
 	Router           string    `json:"router" doc:"The model router that placed the call, if any"`
 	Tier             string    `json:"tier" doc:"The router's tier that served the call"`
 	DecidedTier      string    `json:"decided_tier" doc:"The tier the router chose: the served one, unless the router is in shadow mode"`
-	TierSource       string    `json:"tier_source" doc:"The step that chose the tier: explicit, rule, classifier, decision or default"`
+	TierSource       string    `json:"tier_source" doc:"The step that chose the tier: explicit, rule, classifier, decision, default, or held (a new turn kept on its conversation's warm tier: switching would have cost more in cache than it saved)"`
 	TierConfidence   float32   `json:"tier_confidence" doc:"How sure that step was, 0 to 1"`
 	Shadow           bool      `json:"shadow" doc:"The router only watched: it served its default tier"`
 	Effort           string    `json:"effort" doc:"The reasoning effort the gateway sent the call with (its tier's, fitted to the model); empty: the client's own"`

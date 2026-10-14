@@ -49,6 +49,10 @@ const (
 	SourceDecision = "decision"
 	// SourceDefault: nothing placed the call; it got the default tier.
 	SourceDefault = "default"
+	// SourceHeld: the cascade chose a cheaper tier for a new turn, but the
+	// conversation stayed on its warm one: switching would have rebuilt the
+	// prompt cache for more than the turns ahead would save.
+	SourceHeld = "held"
 )
 
 // Tier is one level of a router: a model and its fallbacks, and what it is

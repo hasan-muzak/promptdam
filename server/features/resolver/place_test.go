@@ -267,3 +267,45 @@ func TestTargetsCarryTheirTiersEffort(t *testing.T) {
 		t.Fatalf("efforts %v", got)
 	}
 }
+
+// A new turn the cascade would put on a cheaper tier stays on its
+// conversation's warm one when switching wouldn't pay for rebuilding the
+// cache; a cold conversation switches.
+func TestNewTurnsHoldAWarmTier(t *testing.T) {
+	r, snap, rt := placing(t, tiers.Active)
+	r.cfg.Prices = prices.Static{Catalog: &llm.Catalog{Models: []llm.Model{
+		{ID: "gpt-5-nano", Provider: "openai", ContextWindow: 1_000, Features: []string{}, Input: 0.05, Output: 0.4},
+		{ID: "gpt-5-mini", Provider: "openai", ContextWindow: 400_000, Features: []string{llm.FeatureTools, llm.FeatureReasoning},
+			Input: 3.9, CachedInput: 0.39, Output: 19.5},
+		{ID: "claude-opus-5-5", Provider: "anthropic", ContextWindow: 200_000, MinCacheTokens: 512,
+			Features: []string{llm.FeatureTools, llm.FeatureImages, llm.FeatureJSONSchema, llm.FeatureReasoning},
+			Input:    4, CachedInput: 0.4, CacheWrite: 5, Output: 20},
+	}}}
+	rt.Spec.Default = "mid" // no rule holds for a second turn: the cascade picks mid
+	ctx := context.Background()
+	scope := conversation.Scope{Project: uuid.New(), Router: rt.Name}
+	second := call(t, `{"model":"auto","messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi"},
+		{"role":"user","content":"and the contract?"}]}`)
+	place := func(lastCall time.Time) *Meta {
+		t.Helper()
+		r.cfg.Turns = conversation.New(nil, conversation.Options{})
+		m := &Meta{Project: scope.Project}
+		m.Turn, m.InTurn = conversation.KeysOf(scope, "", second.Request.Turn)
+		// The first turn ran on the top tier, its prompt cached.
+		r.cfg.Turns.Place(scope.Project, m.Turn.Prev, conversation.Placement{Tier: "top", Decided: "top",
+			Source: tiers.SourceExplicit, Version: rt.Version()})
+		r.cfg.Turns.Finish(ctx, scope.Project, m.Turn.Prev, conversation.Key{}, conversation.Finished{Start: lastCall.UnixMilli(),
+			Input: 100_000, CacheRead: 90_000, CacheWrite: 10_000, Output: 2_000, Model: "claude-opus-5-5", Provider: "anthropic",
+			Kind: "anthropic", TTL: "5m"})
+		if _, _, err := r.place(ctx, snap, rt, "", true, second, m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	if m := place(time.Now().Add(-time.Minute)); m.Tier != "top" || m.TierSource != tiers.SourceHeld || m.Decided != "mid" {
+		t.Fatalf("a warm conversation: tier %s (%s), decided %s", m.Tier, m.TierSource, m.Decided)
+	}
+	if m := place(time.Now().Add(-10 * time.Minute)); m.Tier != "mid" || m.TierSource != tiers.SourceDefault {
+		t.Fatalf("a cold one: tier %s (%s)", m.Tier, m.TierSource)
+	}
+}
