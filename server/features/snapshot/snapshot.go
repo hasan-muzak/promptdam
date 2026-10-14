@@ -28,6 +28,8 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/memcache"
 
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/cachepolicy"
+	"github.com/hasan-muzak/promptdam/server/features/cachettl"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
@@ -87,6 +89,9 @@ type Data struct {
 	// PayloadFree is the organization's payload-free mode: nothing that
 	// keeps content applies, whatever was saved.
 	PayloadFree bool `json:"payload_free,omitempty"`
+	// CacheTTL are the families whose prompt cache is kept an hour (the
+	// prefix, the tail or both), learned from their calls' gaps.
+	CacheTTL map[string]cachettl.TTL `json:"cache_ttl,omitempty"`
 }
 
 // Snapshot is a project's configuration as a gateway holds it in memory.
@@ -110,6 +115,8 @@ type Snapshot struct {
 	// PayloadFree keeps any content from being kept: no capture, no
 	// firewall excerpts, no response cache.
 	PayloadFree bool
+	// CacheTTL are the prompt cache lifetimes of the families kept an hour.
+	CacheTTL map[string]cachettl.TTL
 }
 
 // Opened is a provider with its key's headers.
@@ -130,6 +137,9 @@ type Sources struct {
 	Firewall  *firewall.Service
 	Payloads  *payloads.Service
 	Privacy   *privacy.Service
+	// CachePolicy says how long prompt caches keep each family's (nil:
+	// five minutes for all).
+	CachePolicy *cachepolicy.Service
 }
 
 // Build reads a project's configuration from Postgres.
@@ -175,6 +185,11 @@ func (s Sources) Build(ctx context.Context, org, project uuid.UUID) (Data, error
 	if s.Routers != nil {
 		if d.Routers, err = s.Routers.Serving(ctx, project); err != nil {
 			return Data{}, fmt.Errorf("snapshot: routers: %w", err)
+		}
+	}
+	if s.CachePolicy != nil {
+		if d.CacheTTL, err = s.CachePolicy.Serving(ctx, project); err != nil {
+			return Data{}, fmt.Errorf("snapshot: cache lifetimes: %w", err)
 		}
 	}
 	if s.Firewall != nil {
@@ -290,7 +305,7 @@ func Plain(project uuid.UUID, d Data) *Snapshot {
 
 // assemble builds a snapshot, opening each provider's key with header.
 func assemble(project uuid.UUID, d Data, header func(Provider) (http.Header, error)) *Snapshot {
-	snap := &Snapshot{
+	snap := &Snapshot{CacheTTL: d.CacheTTL,
 		Org: d.Org, Project: project, Keys: make(map[uuid.UUID]keysettings.Settings, len(d.Keys)),
 		Routes: make(map[string]Route, len(d.Routes)), Budgets: d.Budgets, Prices: prices.ProjectPrices(d.Prices),
 		Rules: d.Rules, Routers: make(map[string]*routers.Router, len(d.Routers)),

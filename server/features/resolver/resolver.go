@@ -445,6 +445,11 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	if promptCache && m.InTurn && (m.Turn.HumanTurns >= 2 || m.Turn.Continuation) {
 		out.PromptKey = "pd-" + m.Turn.Conversation.String()
 	}
+	// The family's learned lifetimes: an hour where its calls' gaps pay for
+	// the dearer write.
+	if t, ok := snap.CacheTTL[c.Shape.Family]; ok && promptCache {
+		out.PromptTTL = gateway.PromptTTL{Prefix: t.Prefix, Tail: t.Tail}
+	}
 	if o := m.Firewall; o != nil {
 		out.Body = o.Body
 		if a := snap.Firewall.Response(o); a != nil {

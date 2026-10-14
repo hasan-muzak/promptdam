@@ -17,7 +17,7 @@ import (
 
 // FindingOut is one reason a family misses the cache.
 type FindingOut struct {
-	Code     string `json:"code" doc:"ok, prefix_too_short, timestamps_in_prefix, ids_in_prefix, numbers_in_prefix, tool_order_changes, instructions_vary or no_breakpoints"`
+	Code     string `json:"code" doc:"ok, prefix_too_short, timestamps_in_prefix, ids_in_prefix, numbers_in_prefix, tool_order_changes, instructions_vary, no_breakpoints, kept_one_hour or parallel_cold_writes"`
 	Severity string `json:"severity" doc:"info or warning"`
 	Title    string `json:"title"`
 	Detail   string `json:"detail"`
@@ -37,6 +37,8 @@ type DiagnosisOut struct {
 	PrefixTokens           uint64       `json:"prefix_tokens" doc:"Estimated length of the prefix"`
 	Findings               []FindingOut `json:"findings"`
 	PotentialMonthlyMicros int64        `json:"potential_monthly_micros" doc:"What caching could save a month at most"`
+	PrefixTTL              string       `json:"prefix_ttl" doc:"How long the gateway keeps the prefix cached: 1h, or 5m (learned from the calls' gaps)"`
+	TailTTL                string       `json:"tail_ttl" doc:"How long the gateway keeps conversations' tails cached: 1h, or 5m"`
 	// Locked leaves the findings' details and fixes out.
 	Locked bool `json:"locked" doc:"The plan doesn't include the cache doctor: findings come without their detail and fix"`
 }
@@ -44,11 +46,19 @@ type DiagnosisOut struct {
 func diagnosisOut(d cachedoctor.Diagnosis) DiagnosisOut {
 	out := DiagnosisOut{Family: d.Family, Model: d.Model, Provider: d.Kind, Requests: d.Requests, Prefixes: d.Prefixes,
 		InputTokens: d.InputTokens, CacheReadTokens: d.CacheReadTokens, HitRate: d.HitRate, PrefixTokens: d.PrefixTokens,
-		Findings: make([]FindingOut, len(d.Findings)), PotentialMonthlyMicros: d.PotentialMonthlyMicros}
+		Findings: make([]FindingOut, len(d.Findings)), PotentialMonthlyMicros: d.PotentialMonthlyMicros,
+		PrefixTTL: or5m(d.TTL.Prefix), TailTTL: or5m(d.TTL.Tail)}
 	for i, f := range d.Findings {
 		out.Findings[i] = FindingOut{Code: f.Code, Severity: f.Severity, Title: f.Title, Detail: f.Detail, Fix: f.Fix}
 	}
 	return out
+}
+
+func or5m(ttl string) string {
+	if ttl == "" {
+		return "5m"
+	}
+	return ttl
 }
 
 // CacheDoctorIn asks for a diagnosis over a range.

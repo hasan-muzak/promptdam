@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/cachepolicy"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -177,6 +178,29 @@ func init() {
 	budgetDescID := budgetMixinFields0[0].Descriptor()
 	// budget.DefaultID holds the default value on creation for the id field.
 	budget.DefaultID = budgetDescID.Default.(func() uuid.UUID)
+	cachepolicyMixin := schema.CachePolicy{}.Mixin()
+	cachepolicyMixinHooks1 := cachepolicyMixin[1].Hooks()
+	cachepolicy.Hooks[0] = cachepolicyMixinHooks1[0]
+	cachepolicyMixinInters1 := cachepolicyMixin[1].Interceptors()
+	cachepolicy.Interceptors[0] = cachepolicyMixinInters1[0]
+	cachepolicyMixinFields0 := cachepolicyMixin[0].Fields()
+	_ = cachepolicyMixinFields0
+	cachepolicyFields := schema.CachePolicy{}.Fields()
+	_ = cachepolicyFields
+	// cachepolicyDescCreatedAt is the schema descriptor for created_at field.
+	cachepolicyDescCreatedAt := cachepolicyMixinFields0[1].Descriptor()
+	// cachepolicy.DefaultCreatedAt holds the default value on creation for the created_at field.
+	cachepolicy.DefaultCreatedAt = cachepolicyDescCreatedAt.Default.(func() time.Time)
+	// cachepolicyDescUpdatedAt is the schema descriptor for updated_at field.
+	cachepolicyDescUpdatedAt := cachepolicyMixinFields0[2].Descriptor()
+	// cachepolicy.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	cachepolicy.DefaultUpdatedAt = cachepolicyDescUpdatedAt.Default.(func() time.Time)
+	// cachepolicy.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	cachepolicy.UpdateDefaultUpdatedAt = cachepolicyDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// cachepolicyDescID is the schema descriptor for id field.
+	cachepolicyDescID := cachepolicyMixinFields0[0].Descriptor()
+	// cachepolicy.DefaultID holds the default value on creation for the id field.
+	cachepolicy.DefaultID = cachepolicyDescID.Default.(func() uuid.UUID)
 	capturesettingMixin := schema.CaptureSetting{}.Mixin()
 	capturesettingMixinHooks1 := capturesettingMixin[1].Hooks()
 	capturesetting.Hooks[0] = capturesettingMixinHooks1[0]

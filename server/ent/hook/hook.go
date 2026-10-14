@@ -33,6 +33,18 @@ func (f BudgetFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, erro
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BudgetMutation", m)
 }
 
+// The CachePolicyFunc type is an adapter to allow the use of ordinary
+// function as CachePolicy mutator.
+type CachePolicyFunc func(context.Context, *ent.CachePolicyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CachePolicyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CachePolicyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CachePolicyMutation", m)
+}
+
 // The CaptureSettingFunc type is an adapter to allow the use of ordinary
 // function as CaptureSetting mutator.
 type CaptureSettingFunc func(context.Context, *ent.CaptureSettingMutation) (ent.Value, error)

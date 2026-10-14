@@ -17,6 +17,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/cachepolicy"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -43,6 +44,8 @@ type Client struct {
 	AlertRule *AlertRuleClient
 	// Budget is the client for interacting with the Budget builders.
 	Budget *BudgetClient
+	// CachePolicy is the client for interacting with the CachePolicy builders.
+	CachePolicy *CachePolicyClient
 	// CaptureSetting is the client for interacting with the CaptureSetting builders.
 	CaptureSetting *CaptureSettingClient
 	// FamilyLabel is the client for interacting with the FamilyLabel builders.
@@ -82,6 +85,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AlertRule = NewAlertRuleClient(c.config)
 	c.Budget = NewBudgetClient(c.config)
+	c.CachePolicy = NewCachePolicyClient(c.config)
 	c.CaptureSetting = NewCaptureSettingClient(c.config)
 	c.FamilyLabel = NewFamilyLabelClient(c.config)
 	c.FirewallSetting = NewFirewallSettingClient(c.config)
@@ -189,6 +193,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:           cfg,
 		AlertRule:        NewAlertRuleClient(cfg),
 		Budget:           NewBudgetClient(cfg),
+		CachePolicy:      NewCachePolicyClient(cfg),
 		CaptureSetting:   NewCaptureSettingClient(cfg),
 		FamilyLabel:      NewFamilyLabelClient(cfg),
 		FirewallSetting:  NewFirewallSettingClient(cfg),
@@ -223,6 +228,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:           cfg,
 		AlertRule:        NewAlertRuleClient(cfg),
 		Budget:           NewBudgetClient(cfg),
+		CachePolicy:      NewCachePolicyClient(cfg),
 		CaptureSetting:   NewCaptureSettingClient(cfg),
 		FamilyLabel:      NewFamilyLabelClient(cfg),
 		FirewallSetting:  NewFirewallSettingClient(cfg),
@@ -265,9 +271,10 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AlertRule, c.Budget, c.CaptureSetting, c.FamilyLabel, c.FirewallSetting,
-		c.KeySetting, c.ModelRouter, c.PayloadSegment, c.PriceList, c.PriceOverride,
-		c.PrivacySetting, c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
+		c.AlertRule, c.Budget, c.CachePolicy, c.CaptureSetting, c.FamilyLabel,
+		c.FirewallSetting, c.KeySetting, c.ModelRouter, c.PayloadSegment, c.PriceList,
+		c.PriceOverride, c.PrivacySetting, c.Provider, c.Route, c.RouterClassifier,
+		c.RoutingRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -277,9 +284,10 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AlertRule, c.Budget, c.CaptureSetting, c.FamilyLabel, c.FirewallSetting,
-		c.KeySetting, c.ModelRouter, c.PayloadSegment, c.PriceList, c.PriceOverride,
-		c.PrivacySetting, c.Provider, c.Route, c.RouterClassifier, c.RoutingRule,
+		c.AlertRule, c.Budget, c.CachePolicy, c.CaptureSetting, c.FamilyLabel,
+		c.FirewallSetting, c.KeySetting, c.ModelRouter, c.PayloadSegment, c.PriceList,
+		c.PriceOverride, c.PrivacySetting, c.Provider, c.Route, c.RouterClassifier,
+		c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -292,6 +300,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AlertRule.mutate(ctx, m)
 	case *BudgetMutation:
 		return c.Budget.mutate(ctx, m)
+	case *CachePolicyMutation:
+		return c.CachePolicy.mutate(ctx, m)
 	case *CaptureSettingMutation:
 		return c.CaptureSetting.mutate(ctx, m)
 	case *FamilyLabelMutation:
@@ -590,6 +600,141 @@ func (c *BudgetClient) mutate(ctx context.Context, m *BudgetMutation) (Value, er
 		return (&BudgetDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Budget mutation op: %q", m.Op())
+	}
+}
+
+// CachePolicyClient is a client for the CachePolicy schema.
+type CachePolicyClient struct {
+	config
+}
+
+// NewCachePolicyClient returns a client for the CachePolicy from the given config.
+func NewCachePolicyClient(c config) *CachePolicyClient {
+	return &CachePolicyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `cachepolicy.Hooks(f(g(h())))`.
+func (c *CachePolicyClient) Use(hooks ...Hook) {
+	c.hooks.CachePolicy = append(c.hooks.CachePolicy, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `cachepolicy.Intercept(f(g(h())))`.
+func (c *CachePolicyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CachePolicy = append(c.inters.CachePolicy, interceptors...)
+}
+
+// Create returns a builder for creating a CachePolicy entity.
+func (c *CachePolicyClient) Create() *CachePolicyCreate {
+	mutation := newCachePolicyMutation(c.config, OpCreate)
+	return &CachePolicyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CachePolicy entities.
+func (c *CachePolicyClient) CreateBulk(builders ...*CachePolicyCreate) *CachePolicyCreateBulk {
+	return &CachePolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CachePolicyClient) MapCreateBulk(slice any, setFunc func(*CachePolicyCreate, int)) *CachePolicyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CachePolicyCreateBulk{err: fmt.Errorf("calling to CachePolicyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CachePolicyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CachePolicyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CachePolicy.
+func (c *CachePolicyClient) Update() *CachePolicyUpdate {
+	mutation := newCachePolicyMutation(c.config, OpUpdate)
+	return &CachePolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CachePolicyClient) UpdateOne(_m *CachePolicy) *CachePolicyUpdateOne {
+	mutation := newCachePolicyMutation(c.config, OpUpdateOne, withCachePolicy(_m))
+	return &CachePolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CachePolicyClient) UpdateOneID(id uuid.UUID) *CachePolicyUpdateOne {
+	mutation := newCachePolicyMutation(c.config, OpUpdateOne, withCachePolicyID(id))
+	return &CachePolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CachePolicy.
+func (c *CachePolicyClient) Delete() *CachePolicyDelete {
+	mutation := newCachePolicyMutation(c.config, OpDelete)
+	return &CachePolicyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CachePolicyClient) DeleteOne(_m *CachePolicy) *CachePolicyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CachePolicyClient) DeleteOneID(id uuid.UUID) *CachePolicyDeleteOne {
+	builder := c.Delete().Where(cachepolicy.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CachePolicyDeleteOne{builder}
+}
+
+// Query returns a query builder for CachePolicy.
+func (c *CachePolicyClient) Query() *CachePolicyQuery {
+	return &CachePolicyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCachePolicy},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CachePolicy entity by its id.
+func (c *CachePolicyClient) Get(ctx context.Context, id uuid.UUID) (*CachePolicy, error) {
+	return c.Query().Where(cachepolicy.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CachePolicyClient) GetX(ctx context.Context, id uuid.UUID) *CachePolicy {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CachePolicyClient) Hooks() []Hook {
+	hooks := c.hooks.CachePolicy
+	return append(hooks[:len(hooks):len(hooks)], cachepolicy.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *CachePolicyClient) Interceptors() []Interceptor {
+	inters := c.inters.CachePolicy
+	return append(inters[:len(inters):len(inters)], cachepolicy.Interceptors[:]...)
+}
+
+func (c *CachePolicyClient) mutate(ctx context.Context, m *CachePolicyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CachePolicyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CachePolicyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CachePolicyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CachePolicyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CachePolicy mutation op: %q", m.Op())
 	}
 }
 
@@ -2349,14 +2494,15 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AlertRule, Budget, CaptureSetting, FamilyLabel, FirewallSetting, KeySetting,
-		ModelRouter, PayloadSegment, PriceList, PriceOverride, PrivacySetting,
-		Provider, Route, RouterClassifier, RoutingRule []ent.Hook
+		AlertRule, Budget, CachePolicy, CaptureSetting, FamilyLabel, FirewallSetting,
+		KeySetting, ModelRouter, PayloadSegment, PriceList, PriceOverride,
+		PrivacySetting, Provider, Route, RouterClassifier, RoutingRule []ent.Hook
 	}
 	inters struct {
-		AlertRule, Budget, CaptureSetting, FamilyLabel, FirewallSetting, KeySetting,
-		ModelRouter, PayloadSegment, PriceList, PriceOverride, PrivacySetting,
-		Provider, Route, RouterClassifier, RoutingRule []ent.Interceptor
+		AlertRule, Budget, CachePolicy, CaptureSetting, FamilyLabel, FirewallSetting,
+		KeySetting, ModelRouter, PayloadSegment, PriceList, PriceOverride,
+		PrivacySetting, Provider, Route, RouterClassifier,
+		RoutingRule []ent.Interceptor
 	}
 )
 

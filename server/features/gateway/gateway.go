@@ -62,6 +62,9 @@ type Route struct {
 	// prompt_cache_key.
 	PromptCache bool
 	PromptKey   string
+	// PromptTTL are the call's family's breakpoint lifetimes ("1h", else
+	// "" for five minutes), learned from its calls' gaps.
+	PromptTTL PromptTTL
 	// Header is set on the response (e.g. the router's tier).
 	Header http.Header
 	// Sample keeps the call's request and answer in its Record (Body,
@@ -92,6 +95,10 @@ type ResponseFilter interface {
 	Event(data []byte) []byte
 	End()
 }
+
+// PromptTTL are the lifetimes of a call's prompt cache breakpoints: on its
+// prefix (tools and instructions) and its conversation's tail.
+type PromptTTL struct{ Prefix, Tail string }
 
 // Target is one provider and model to send a call to.
 type Target struct {

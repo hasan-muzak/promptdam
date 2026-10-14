@@ -27,7 +27,7 @@ func Mount(a *muzak.App, app *core.App) {
 	h := &handlers.Handlers{
 		Tenancy: c.Tenancy, Providers: app.Providers, Keys: app.Keys, Routes: app.Routes, Budgets: app.Budgets, Notifier: c.Notifier,
 		Analytics: analytics.New(c.Events), Prices: app.PriceOverrides, Families: families.NewService(app.Ent, c.Events),
-		CacheDoctor: cachedoctor.New(c.Events, app.Prices), Rules: app.Rules,
+		CacheDoctor: cachedoctor.New(c.Events, app.Prices, app.CachePolicy), Rules: app.Rules,
 		RuleDeps: handlers.RuleDeps{Env: app.RuleEnv, Events: c.Events, Prices: app.Prices},
 		Routers:  app.Routers, Firewall: app.Firewall, Activity: app.Activity, Alerts: app.Alerts, Payloads: app.Payloads, PayloadStore: app.PayloadStore, Audit: c.DB.Ent,
 		Cache: responsecache.New(c.KV), Privacy: app.Privacy,

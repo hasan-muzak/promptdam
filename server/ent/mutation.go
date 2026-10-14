@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/cachepolicy"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -29,6 +30,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
+	"github.com/hasan-muzak/promptdam/server/features/cachettl"
 	"github.com/hasan-muzak/promptdam/server/features/classifier"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
 )
@@ -44,6 +46,7 @@ const (
 	// Node types.
 	TypeAlertRule        = "AlertRule"
 	TypeBudget           = "Budget"
+	TypeCachePolicy      = "CachePolicy"
 	TypeCaptureSetting   = "CaptureSetting"
 	TypeFamilyLabel      = "FamilyLabel"
 	TypeFirewallSetting  = "FirewallSetting"
@@ -2813,6 +2816,608 @@ func (m *BudgetMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *BudgetMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Budget edge %s", name)
+}
+
+// CachePolicyMutation represents an operation that mutates the CachePolicy nodes in the graph.
+type CachePolicyMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	created_at    *time.Time
+	updated_at    *time.Time
+	org_id        *uuid.UUID
+	project_id    *uuid.UUID
+	families      *map[string]cachettl.Family
+	learned_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*CachePolicy, error)
+	predicates    []predicate.CachePolicy
+}
+
+var _ ent.Mutation = (*CachePolicyMutation)(nil)
+
+// cachepolicyOption allows management of the mutation configuration using functional options.
+type cachepolicyOption func(*CachePolicyMutation)
+
+// newCachePolicyMutation creates new mutation for the CachePolicy entity.
+func newCachePolicyMutation(c config, op Op, opts ...cachepolicyOption) *CachePolicyMutation {
+	m := &CachePolicyMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCachePolicy,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCachePolicyID sets the ID field of the mutation.
+func withCachePolicyID(id uuid.UUID) cachepolicyOption {
+	return func(m *CachePolicyMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CachePolicy
+		)
+		m.oldValue = func(ctx context.Context) (*CachePolicy, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CachePolicy.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCachePolicy sets the old CachePolicy of the mutation.
+func withCachePolicy(node *CachePolicy) cachepolicyOption {
+	return func(m *CachePolicyMutation) {
+		m.oldValue = func(context.Context) (*CachePolicy, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CachePolicyMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CachePolicyMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of CachePolicy entities.
+func (m *CachePolicyMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CachePolicyMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CachePolicyMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CachePolicy.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CachePolicyMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CachePolicyMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CachePolicy entity.
+// If the CachePolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CachePolicyMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CachePolicyMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CachePolicyMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CachePolicyMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CachePolicy entity.
+// If the CachePolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CachePolicyMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CachePolicyMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *CachePolicyMutation) SetOrgID(u uuid.UUID) {
+	m.org_id = &u
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *CachePolicyMutation) OrgID() (r uuid.UUID, exists bool) {
+	v := m.org_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the CachePolicy entity.
+// If the CachePolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CachePolicyMutation) OldOrgID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *CachePolicyMutation) ResetOrgID() {
+	m.org_id = nil
+}
+
+// SetProjectID sets the "project_id" field.
+func (m *CachePolicyMutation) SetProjectID(u uuid.UUID) {
+	m.project_id = &u
+}
+
+// ProjectID returns the value of the "project_id" field in the mutation.
+func (m *CachePolicyMutation) ProjectID() (r uuid.UUID, exists bool) {
+	v := m.project_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProjectID returns the old "project_id" field's value of the CachePolicy entity.
+// If the CachePolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CachePolicyMutation) OldProjectID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProjectID: %w", err)
+	}
+	return oldValue.ProjectID, nil
+}
+
+// ResetProjectID resets all changes to the "project_id" field.
+func (m *CachePolicyMutation) ResetProjectID() {
+	m.project_id = nil
+}
+
+// SetFamilies sets the "families" field.
+func (m *CachePolicyMutation) SetFamilies(value map[string]cachettl.Family) {
+	m.families = &value
+}
+
+// Families returns the value of the "families" field in the mutation.
+func (m *CachePolicyMutation) Families() (r map[string]cachettl.Family, exists bool) {
+	v := m.families
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFamilies returns the old "families" field's value of the CachePolicy entity.
+// If the CachePolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CachePolicyMutation) OldFamilies(ctx context.Context) (v map[string]cachettl.Family, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFamilies is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFamilies requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFamilies: %w", err)
+	}
+	return oldValue.Families, nil
+}
+
+// ResetFamilies resets all changes to the "families" field.
+func (m *CachePolicyMutation) ResetFamilies() {
+	m.families = nil
+}
+
+// SetLearnedAt sets the "learned_at" field.
+func (m *CachePolicyMutation) SetLearnedAt(t time.Time) {
+	m.learned_at = &t
+}
+
+// LearnedAt returns the value of the "learned_at" field in the mutation.
+func (m *CachePolicyMutation) LearnedAt() (r time.Time, exists bool) {
+	v := m.learned_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLearnedAt returns the old "learned_at" field's value of the CachePolicy entity.
+// If the CachePolicy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CachePolicyMutation) OldLearnedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLearnedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLearnedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLearnedAt: %w", err)
+	}
+	return oldValue.LearnedAt, nil
+}
+
+// ResetLearnedAt resets all changes to the "learned_at" field.
+func (m *CachePolicyMutation) ResetLearnedAt() {
+	m.learned_at = nil
+}
+
+// Where appends a list predicates to the CachePolicyMutation builder.
+func (m *CachePolicyMutation) Where(ps ...predicate.CachePolicy) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CachePolicyMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CachePolicyMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CachePolicy, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CachePolicyMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CachePolicyMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CachePolicy).
+func (m *CachePolicyMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CachePolicyMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.created_at != nil {
+		fields = append(fields, cachepolicy.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, cachepolicy.FieldUpdatedAt)
+	}
+	if m.org_id != nil {
+		fields = append(fields, cachepolicy.FieldOrgID)
+	}
+	if m.project_id != nil {
+		fields = append(fields, cachepolicy.FieldProjectID)
+	}
+	if m.families != nil {
+		fields = append(fields, cachepolicy.FieldFamilies)
+	}
+	if m.learned_at != nil {
+		fields = append(fields, cachepolicy.FieldLearnedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CachePolicyMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case cachepolicy.FieldCreatedAt:
+		return m.CreatedAt()
+	case cachepolicy.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case cachepolicy.FieldOrgID:
+		return m.OrgID()
+	case cachepolicy.FieldProjectID:
+		return m.ProjectID()
+	case cachepolicy.FieldFamilies:
+		return m.Families()
+	case cachepolicy.FieldLearnedAt:
+		return m.LearnedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CachePolicyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case cachepolicy.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case cachepolicy.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case cachepolicy.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case cachepolicy.FieldProjectID:
+		return m.OldProjectID(ctx)
+	case cachepolicy.FieldFamilies:
+		return m.OldFamilies(ctx)
+	case cachepolicy.FieldLearnedAt:
+		return m.OldLearnedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CachePolicy field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CachePolicyMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case cachepolicy.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case cachepolicy.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case cachepolicy.FieldOrgID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case cachepolicy.FieldProjectID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProjectID(v)
+		return nil
+	case cachepolicy.FieldFamilies:
+		v, ok := value.(map[string]cachettl.Family)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFamilies(v)
+		return nil
+	case cachepolicy.FieldLearnedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLearnedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CachePolicy field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CachePolicyMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CachePolicyMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CachePolicyMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown CachePolicy numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CachePolicyMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CachePolicyMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CachePolicyMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown CachePolicy nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CachePolicyMutation) ResetField(name string) error {
+	switch name {
+	case cachepolicy.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case cachepolicy.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case cachepolicy.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case cachepolicy.FieldProjectID:
+		m.ResetProjectID()
+		return nil
+	case cachepolicy.FieldFamilies:
+		m.ResetFamilies()
+		return nil
+	case cachepolicy.FieldLearnedAt:
+		m.ResetLearnedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CachePolicy field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CachePolicyMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CachePolicyMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CachePolicyMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CachePolicyMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CachePolicyMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CachePolicyMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CachePolicyMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CachePolicy unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CachePolicyMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CachePolicy edge %s", name)
 }
 
 // CaptureSettingMutation represents an operation that mutates the CaptureSetting nodes in the graph.

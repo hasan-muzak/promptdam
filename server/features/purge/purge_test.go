@@ -20,6 +20,7 @@ import (
 	pdent "github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/cachepolicy"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -32,6 +33,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent/route"
 	"github.com/hasan-muzak/promptdam/server/ent/routerclassifier"
 	"github.com/hasan-muzak/promptdam/server/ent/routingrule"
+	"github.com/hasan-muzak/promptdam/server/features/cachettl"
 	"github.com/hasan-muzak/promptdam/server/features/classifier"
 	"github.com/hasan-muzak/promptdam/server/features/purge"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
@@ -141,6 +143,10 @@ func seeds(c *pdent.Client) []seed {
 			return c.ModelRouter.Create().SetOrgID(org).SetProjectID(p).SetName("auto").
 				SetTiers([]tiers.Tier{{Name: "fast", Model: "gpt-5-nano"}}).SetDefaultTier("fast").Exec(ctx)
 		}},
+		{"CachePolicy", cachepolicy.Table, func(ctx context.Context, org, p uuid.UUID) error {
+			return c.CachePolicy.Create().SetOrgID(org).SetProjectID(p).SetFamilies(map[string]cachettl.Family{}).
+				SetLearnedAt(time.Now()).Exec(ctx)
+		}},
 		{"RouterClassifier", routerclassifier.Table, func(ctx context.Context, org, p uuid.UUID) error {
 			return c.RouterClassifier.Create().SetOrgID(org).SetProjectID(p).SetRouterID(uuid.New()).
 				SetModel(classifier.Model{Default: "fast"}).SetTrainedAt(time.Now()).Exec(ctx)
@@ -232,7 +238,7 @@ func (w *world) clickhouse(project uuid.UUID) uint64 {
 	w.t.Helper()
 	var total uint64
 	for _, table := range []string{"requests", "requests_hourly", "requests_hourly_developer", "requests_hourly_tag",
-		"families_hourly", "prefixes_hourly", "savings_hourly", "router_evals",
+		"families_hourly", "prefixes_hourly", "savings_hourly", "router_evals", "cache_gaps_hourly", "prefix_starts",
 		"firewall_events", "activities"} {
 		var n uint64
 		if err := w.c.Events.Unscoped().QueryRow(w.ctx, `SELECT count() FROM `+table+` WHERE project_id = ?`, project).Scan(&n); err != nil {

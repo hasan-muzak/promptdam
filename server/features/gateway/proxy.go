@@ -57,8 +57,9 @@ type call struct {
 	// filter rewrites the provider's answer (Route.Response).
 	filter ResponseFilter
 	// promptKey is the conversation's key for OpenAI's prompt cache
-	// (Route.PromptKey).
+	// (Route.PromptKey); promptTTL the family's learned lifetimes.
 	promptKey string
+	promptTTL PromptTTL
 	// rewrote reports a body the gateway changed before routing it (the
 	// firewall's): a thinking block it invalidates is healed, not refused.
 	rewrote bool
@@ -186,7 +187,7 @@ func (c *call) serve() {
 		}
 	}
 
-	c.promptCache, c.promptKey, c.rewrote = route.PromptCache, route.PromptKey, route.Body != nil
+	c.promptCache, c.promptKey, c.promptTTL, c.rewrote = route.PromptCache, route.PromptKey, route.PromptTTL, route.Body != nil
 
 	// Token counts come in streams only when asked for: ask on the
 	// client's behalf, and leave the extra chunk out of what it receives.

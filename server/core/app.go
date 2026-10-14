@@ -18,6 +18,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/activity"
 	"github.com/hasan-muzak/promptdam/server/features/alerts"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/cachepolicy"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
@@ -52,6 +53,9 @@ type App struct {
 	// Training trains their classifiers on their judged calls.
 	Routers  *routers.Service
 	Training *training.Service
+	// CachePolicy learns how long prompt caches keep each family's prefix
+	// and conversations.
+	CachePolicy *cachepolicy.Service
 	// Payloads keeps whether projects keep their calls' payloads;
 	// PayloadStore keeps the payloads, in object storage (nil without it).
 	Payloads     *payloads.Service
@@ -160,6 +164,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 			return p.Name, nil
 		}})
 	a.Training = training.New(training.Config{Ent: a.Ent, Events: c.Events, Changed: a.configChanged})
+	a.CachePolicy = cachepolicy.New(cachepolicy.Config{Ent: a.Ent, Events: c.Events, Prices: a.Prices, Changed: a.configChanged})
 	a.Watcher = routers.NewWatcher(routers.WatchConfig{Ent: a.Ent, Events: c.Events, Notifier: c.Notifier, Webhooks: c.Webhooks,
 		Activity: a.Activity, AppURL: c.Config.AppURL, Changed: a.configChanged})
 	if a.GatewayURL == "" {
@@ -198,5 +203,5 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 // Sources are where the gateway's snapshots are built from.
 func (a *App) Sources() snapshot.Sources {
 	return snapshot.Sources{Providers: a.Providers, Keys: a.Keys, Routes: a.Routes, Budgets: a.Budgets, Prices: a.PriceOverrides,
-		Rules: a.Rules, Routers: a.Routers, Firewall: a.Firewall, Payloads: a.Payloads, Privacy: a.Privacy}
+		Rules: a.Rules, Routers: a.Routers, Firewall: a.Firewall, Payloads: a.Payloads, Privacy: a.Privacy, CachePolicy: a.CachePolicy}
 }

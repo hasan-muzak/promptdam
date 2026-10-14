@@ -45,7 +45,7 @@ func TestDiagnose(t *testing.T) {
 	insert("healthy", "h", false, 0, 3000, 2900, "openai", "gpt-5-mini")
 	insert("short", "s", true, families.Numbers, 200, 0, "openai", "gpt-5-mini")
 
-	s := cachedoctor.New(db, prices.Static{Catalog: llm.Default()})
+	s := cachedoctor.New(db, prices.Static{Catalog: llm.Default()}, nil)
 	now := time.Now().UTC()
 	ds, err := s.Diagnose(ctx, project, "", now.Add(-24*time.Hour), now.Add(time.Hour))
 	if err != nil {

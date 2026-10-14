@@ -10,6 +10,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/ent"
 	"github.com/hasan-muzak/promptdam/server/ent/alertrule"
 	"github.com/hasan-muzak/promptdam/server/ent/budget"
+	"github.com/hasan-muzak/promptdam/server/ent/cachepolicy"
 	"github.com/hasan-muzak/promptdam/server/ent/capturesetting"
 	"github.com/hasan-muzak/promptdam/server/ent/familylabel"
 	"github.com/hasan-muzak/promptdam/server/ent/firewallsetting"
@@ -134,6 +135,33 @@ func (f TraverseBudget) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.BudgetQuery", q)
+}
+
+// The CachePolicyFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CachePolicyFunc func(context.Context, *ent.CachePolicyQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CachePolicyFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CachePolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CachePolicyQuery", q)
+}
+
+// The TraverseCachePolicy type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCachePolicy func(context.Context, *ent.CachePolicyQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCachePolicy) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCachePolicy) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CachePolicyQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CachePolicyQuery", q)
 }
 
 // The CaptureSettingFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -494,6 +522,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AlertRuleQuery, predicate.AlertRule, alertrule.OrderOption]{typ: ent.TypeAlertRule, tq: q}, nil
 	case *ent.BudgetQuery:
 		return &query[*ent.BudgetQuery, predicate.Budget, budget.OrderOption]{typ: ent.TypeBudget, tq: q}, nil
+	case *ent.CachePolicyQuery:
+		return &query[*ent.CachePolicyQuery, predicate.CachePolicy, cachepolicy.OrderOption]{typ: ent.TypeCachePolicy, tq: q}, nil
 	case *ent.CaptureSettingQuery:
 		return &query[*ent.CaptureSettingQuery, predicate.CaptureSetting, capturesetting.OrderOption]{typ: ent.TypeCaptureSetting, tq: q}, nil
 	case *ent.FamilyLabelQuery:

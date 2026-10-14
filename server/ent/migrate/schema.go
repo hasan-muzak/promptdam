@@ -91,6 +91,34 @@ var (
 			},
 		},
 	}
+	// CachePoliciesColumns holds the columns for the "cache_policies" table.
+	CachePoliciesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeUUID},
+		{Name: "project_id", Type: field.TypeUUID},
+		{Name: "families", Type: field.TypeJSON},
+		{Name: "learned_at", Type: field.TypeTime},
+	}
+	// CachePoliciesTable holds the schema information for the "cache_policies" table.
+	CachePoliciesTable = &schema.Table{
+		Name:       "cache_policies",
+		Columns:    CachePoliciesColumns,
+		PrimaryKey: []*schema.Column{CachePoliciesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "cachepolicy_org_id_project_id",
+				Unique:  false,
+				Columns: []*schema.Column{CachePoliciesColumns[3], CachePoliciesColumns[4]},
+			},
+			{
+				Name:    "cachepolicy_project_id",
+				Unique:  true,
+				Columns: []*schema.Column{CachePoliciesColumns[4]},
+			},
+		},
+	}
 	// CaptureSettingsColumns holds the columns for the "capture_settings" table.
 	CaptureSettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -504,6 +532,7 @@ var (
 	Tables = []*schema.Table{
 		AlertRulesTable,
 		BudgetsTable,
+		CachePoliciesTable,
 		CaptureSettingsTable,
 		FamilyLabelsTable,
 		FirewallSettingsTable,

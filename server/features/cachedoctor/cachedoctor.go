@@ -19,6 +19,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/events"
 	"github.com/hasan-muzak/keel-core/pkg/llm"
 
+	"github.com/hasan-muzak/promptdam/server/features/cachettl"
 	"github.com/hasan-muzak/promptdam/server/features/families"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/promptcache"
@@ -41,6 +42,11 @@ const (
 	ToolOrder           = "tool_order_changes"
 	VaryingInstructions = "instructions_vary"
 	NoBreakpoints       = "no_breakpoints"
+	// KeptOneHour: the family's calls come back 5 to 60 minutes apart often
+	// enough that its cache is kept an hour (learned, features/cachepolicy).
+	KeptOneHour = "kept_one_hour"
+	// ColdParallel: calls wrote the same prefix at once, none reading it.
+	ColdParallel = "parallel_cold_writes"
 )
 
 // Finding is one reason a family misses the cache, and its fix.
@@ -68,16 +74,29 @@ type Diagnosis struct {
 	// PotentialMonthlyMicros is what the cache could save a month at most,
 	// were every call after the first to read the prefix from it.
 	PotentialMonthlyMicros int64
+	// TTL are the family's learned cache lifetimes ("1h", else five
+	// minutes).
+	TTL cachettl.TTL
+}
+
+// Policies says what was learned of a project's families' cache lifetimes
+// (features/cachepolicy).
+type Policies interface {
+	Families(ctx context.Context, project uuid.UUID) (map[string]cachettl.Family, error)
 }
 
 // Service diagnoses families.
 type Service struct {
-	db     *events.DB
-	prices prices.Prices
+	db       *events.DB
+	prices   prices.Prices
+	policies Policies
 }
 
-// New returns a Service; db may be nil (no ClickHouse: nothing to say).
-func New(db *events.DB, p prices.Prices) *Service { return &Service{db: db, prices: p} }
+// New returns a Service; db may be nil (no ClickHouse: nothing to say),
+// and policies (nothing learned to report).
+func New(db *events.DB, p prices.Prices, policies Policies) *Service {
+	return &Service{db: db, prices: p, policies: policies}
+}
 
 type prefixRow struct {
 	Family     string `ch:"family_id"`
@@ -136,8 +155,18 @@ func (s *Service) Diagnose(ctx context.Context, project uuid.UUID, family string
 		byFamily[r.Family] = append(byFamily[r.Family], r)
 	}
 	days := to.Sub(from).Hours() / 24
+	learned := map[string]cachettl.Family{}
+	if s.policies != nil {
+		if fams, err := s.policies.Families(ctx, project); err == nil {
+			learned = fams
+		}
+	}
 	for f, rs := range byFamily {
-		out = append(out, s.diagnose(f, rs, days))
+		d := s.diagnose(f, rs, days)
+		if l, ok := learned[f]; ok {
+			lifetimes(&d, l)
+		}
+		out = append(out, d)
 	}
 	slices.SortFunc(out, func(a, b Diagnosis) int {
 		if a.PotentialMonthlyMicros != b.PotentialMonthlyMicros {
@@ -202,6 +231,35 @@ func (s *Service) price(kind, model string) (llm.Model, bool) {
 		catalogName = k.Catalog
 	}
 	return s.prices.Current().Lookup(catalogName, model)
+}
+
+// policyDays is the window the learner weighs (cachepolicy.Window), to make
+// its sums monthly.
+const policyDays = 3
+
+// lifetimes adds what the learner found of a family: an hour kept, and
+// calls that wrote the same prefix at once.
+func lifetimes(d *Diagnosis, f cachettl.Family) {
+	d.TTL = f.TTLOf()
+	if d.TTL != (cachettl.TTL{}) {
+		saved := f.Tail.NetMicros
+		if d.TTL.Prefix == cachettl.OneHour {
+			saved += f.Prefix.NetMicros
+		}
+		d.Findings = append(d.Findings, Finding{Code: KeptOneHour, Severity: "info", Title: "Cached for an hour",
+			Detail: fmt.Sprintf("The family's calls often come back 5 to 60 minutes later, past the default five minutes: "+
+				"its cache is kept an hour (written at twice the input price instead of 1.25 times), worth about $%.2f a month.",
+				float64(saved)*30/policyDays/1e6),
+			Fix: "Nothing to do: the gateway sets the longer lifetime, and returns to five minutes if the gaps change."})
+	}
+	if f.ColdParallel > 0 && f.ColdParallelMicros > 0 {
+		monthly := f.ColdParallelMicros * 30 / policyDays
+		d.Findings = append(d.Findings, Finding{Code: ColdParallel, Severity: "warning", Title: "Calls write the same prefix at once",
+			Detail: fmt.Sprintf("%d calls in the last %d days wrote the instructions within 10 seconds of another call and read "+
+				"none of them: a cache entry is readable only once the first answer begins.", f.ColdParallel, policyDays),
+			Fix: "Send one call first and the others once its answer begins streaming (or warm the cache before a batch)."})
+		d.PotentialMonthlyMicros += monthly
+	}
 }
 
 // findings explain a family's misses, most important first. minTokens is

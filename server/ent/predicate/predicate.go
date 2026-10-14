@@ -12,6 +12,9 @@ type AlertRule func(*sql.Selector)
 // Budget is the predicate function for budget builders.
 type Budget func(*sql.Selector)
 
+// CachePolicy is the predicate function for cachepolicy builders.
+type CachePolicy func(*sql.Selector)
+
 // CaptureSetting is the predicate function for capturesetting builders.
 type CaptureSetting func(*sql.Selector)
 

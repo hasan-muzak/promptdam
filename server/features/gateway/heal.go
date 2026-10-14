@@ -26,13 +26,14 @@ func (c *call) cachePrompt(body []byte, format wire.Format, t Target, req wire.R
 			}
 			prefix = translated
 		}
-		plan := promptcache.Plan{Prefix: promptcache.FiveMinutes, MinTokens: t.MinCache}
+		plan := promptcache.Plan{Prefix: or(c.promptTTL.Prefix, promptcache.FiveMinutes), MinTokens: t.MinCache}
 		// The conversation's tail, with Anthropic's automatic breakpoint,
 		// on its own API: a conversation that goes on, or an agent's tool
 		// loop (tools offered). A single question's tail is never read
-		// again: writing it would only cost.
+		// again: writing it would only cost. Lifetimes are the family's,
+		// learned from its calls' gaps (five minutes until then).
 		if t.Kind == "anthropic" && (req.Turn.Humans >= 2 || req.Turn.Continuation || req.Tools) {
-			plan.Tail = promptcache.FiveMinutes
+			plan.Tail = or(c.promptTTL.Tail, promptcache.FiveMinutes)
 		}
 		body, c.rec.PromptCached = promptcache.Mark(body, prefix, plan)
 	case format == wire.OpenAIChat && t.Kind == "openai" && c.promptKey != "":
@@ -44,6 +45,13 @@ func (c *call) cachePrompt(body []byte, format wire.Format, t Target, req wire.R
 		}
 	}
 	return body
+}
+
+func or(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
 }
 
 // thinkingBindingBeta lets a Messages call ask for thinking blocks whose
