@@ -1,11 +1,14 @@
-// Package promptcache turns on Anthropic's prompt caching for requests
-// that don't use it: it marks the end of the request's stable prefix (its
-// tools, then its system prompt) with cache breakpoints, so the next call
-// with the same prefix reads it from the cache at a tenth of the input
-// price, and for a conversation its tail too (Anthropic's automatic
-// breakpoint, which follows the conversation as it grows). It only adds
-// bytes: the client's are never moved, reordered or re-encoded, which would
-// change what the model sees and what the provider's cache keys on.
+// Package promptcache turns on prompt caching for requests that don't use
+// it, for the models that cache what a request marks: it marks the end of
+// the request's stable prefix (its tools, then its system prompt) with
+// cache breakpoints, so the next call with the same prefix reads it from
+// the cache at a fraction of the input price, and for a conversation its
+// tail too. Mark writes Anthropic Messages breakpoints (the tail as
+// Anthropic's automatic breakpoint); MarkChat writes OpenAI Chat ones on
+// content parts, which routers of providers pass on (OpenRouter's Gemini,
+// Anthropic, Alibaba). It only adds bytes: the client's are never moved,
+// reordered or re-encoded, which would change what the model sees and what
+// the provider's cache keys on.
 package promptcache
 
 import (
