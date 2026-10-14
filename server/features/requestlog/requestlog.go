@@ -63,7 +63,8 @@ type Row struct {
 	PayloadRef                                              string
 	Tags                                                    []string
 	APIFormat, Provider, Kind, RequestedModel, ServedModel  string
-	Backend, TargetModel                                    string
+	Backend, TargetModel, CacheStrategy                     string
+	CacheTrial                                              bool
 	ComputedMicros                                          int64
 	Stream, Translated                                      bool
 	Status                                                  uint16
@@ -87,7 +88,7 @@ var columns = []string{
 	"prefix_flags", "prefix_tokens", "est_input_tokens", "messages", "max_tokens", "has_tools", "json_output", "rule",
 	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "effort", "healed", "router_micros", "decision", "decision_ms",
 	"firewall_action", "firewall_kinds", "payload_ref", "api_format", "provider",
-	"kind", "requested_model", "served_model", "backend", "target_model", "computed_micros", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
+	"kind", "requested_model", "served_model", "backend", "target_model", "computed_micros", "cache_strategy", "cache_trial", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
 	"upstream_ms", "usage_known", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
 	"reasoning_tokens", "cost_micros", "priced", "counterfactual_micros", "savings_micros", "savings_reason",
 	"savings_basis", "cache", "request_bytes", "response_bytes", "retention_days",
@@ -100,7 +101,7 @@ func values(r Row) []any {
 		r.PrefixFlags, r.PrefixTokens, r.EstInput, r.Messages, r.MaxTokens, r.HasTools, r.JSONOutput, r.Rule,
 		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.Effort, r.Healed, r.RouterMicros, r.Decision, r.DecisionMs,
 		r.FirewallAction, r.FirewallKinds, r.PayloadRef, r.APIFormat, r.Provider,
-		r.Kind, r.RequestedModel, r.ServedModel, r.Backend, r.TargetModel, r.ComputedMicros, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
+		r.Kind, r.RequestedModel, r.ServedModel, r.Backend, r.TargetModel, r.ComputedMicros, r.CacheStrategy, r.CacheTrial, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
 		r.UpstreamMs, r.UsageKnown, r.InputTokens, r.OutputTokens, r.CacheRead, r.CacheWrite, r.Think, r.CostMicros,
 		r.Priced, r.Counterfactual, r.Savings, r.SavingsReason, r.SavingsBasis, r.Cache, r.RequestBytes, r.ResponseBytes,
 		r.RetentionDays,
@@ -235,6 +236,7 @@ func (l *Log) Record(r *gateway.Record) {
 		TierConfidence: float32(m.TierConfidence), Shadow: m.Shadow, Effort: r.Effort, Healed: r.Healed, RouterMicros: routerMicros, Decision: m.Decision.Outcome,
 		DecisionMs: ms(m.Decision.Took), APIFormat: r.Format.String(),
 		Provider: r.Provider, Kind: r.Kind, Backend: r.Backend, TargetModel: r.TargetModel, ComputedMicros: computed,
+		CacheStrategy: r.CacheStrategy, CacheTrial: r.CacheTrial,
 		RequestedModel: r.RequestedModel, ServedModel: r.ServedModel, Stream: r.Stream, Translated: r.Translated, Status: uint16(min(r.Status, 65535)),
 		ErrorCode: r.ErrorCode, Attempts: uint8(min(r.Attempts, 255)), TTFBms: ms(r.TTFB), LatencyMs: ms(r.Latency),
 		UpstreamMs: ms(r.Upstream), UsageKnown: r.UsageKnown, InputTokens: u32(r.Usage.Input),

@@ -11,20 +11,28 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 )
 
-// cachePrompt turns on a provider's prompt cache for a call: Anthropic's
-// breakpoints (on its own API and on calls translated to it), and for
-// OpenAI a conversation's key, which keeps its calls on the machines that
-// cached them. A breakpoint or key the client set wins.
+// cachePrompt turns on a provider's prompt cache for a call, by the
+// target's plan: breakpoints for models that cache what a request marks
+// (Anthropic Messages, or OpenAI Chat content parts for a router of
+// providers such as OpenRouter), on their own API and on calls translated
+// to it; for OpenAI a conversation's key, which keeps its calls on the
+// machines that cached them. A breakpoint or key the client set wins.
 func (c *call) cachePrompt(body []byte, format wire.Format, t Target, req wire.Request) []byte {
+	strategy := t.Cache.strategy(format)
+	c.rec.CacheStrategy, c.rec.CacheTrial = strategy, t.Cache.Trial
+	// The prefix as the target reads it: a translated call's own.
+	prefix := func() (wire.Request, bool) {
+		if format == c.ep.format {
+			return req, true
+		}
+		translated, err := wire.ParseRequest(format, body)
+		return translated, err == nil
+	}
 	switch {
-	case format == wire.AnthropicMessages:
-		prefix := req
-		if format != c.ep.format {
-			translated, err := wire.ParseRequest(format, body)
-			if err != nil {
-				return body
-			}
-			prefix = translated
+	case format == wire.AnthropicMessages && strategy == promptcache.Markers:
+		prefix, ok := prefix()
+		if !ok {
+			return body
 		}
 		plan := promptcache.Plan{Prefix: or(c.promptTTL.Prefix, promptcache.FiveMinutes), MinTokens: t.MinCache}
 		// The conversation's tail, with Anthropic's automatic breakpoint,
@@ -36,6 +44,16 @@ func (c *call) cachePrompt(body []byte, format wire.Format, t Target, req wire.R
 			plan.Tail = or(c.promptTTL.Tail, promptcache.FiveMinutes)
 		}
 		body, c.rec.PromptCached = promptcache.Mark(body, prefix, plan)
+	case format == wire.OpenAIChat && strategy == promptcache.Markers:
+		prefix, ok := prefix()
+		if !ok {
+			return body
+		}
+		plan := promptcache.Plan{Prefix: or(c.promptTTL.Prefix, promptcache.FiveMinutes), MinTokens: t.MinCache}
+		if req.Turn.Humans >= 2 || req.Turn.Continuation || req.Tools {
+			plan.Tail = or(c.promptTTL.Tail, promptcache.FiveMinutes)
+		}
+		body, c.rec.PromptCached = promptcache.MarkChat(body, prefix, plan)
 	case format == wire.OpenAIChat && t.Kind == "openai" && c.promptKey != "":
 		if _, set, err := wire.Field(body, "prompt_cache_key"); err == nil && !set {
 			key, _ := json.Marshal(c.promptKey)

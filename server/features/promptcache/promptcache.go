@@ -25,6 +25,13 @@ const (
 	OneHour     = "1h"
 )
 
+// Strategies of a call's prompt cache: the gateway adds breakpoints
+// (Markers), or the provider caches on its own (Auto).
+const (
+	Markers = "markers"
+	Auto    = "auto"
+)
+
 // DefaultMinTokens is the shortest prefix taken as cacheable when the
 // price list doesn't say the model's (512 to 4,096 tokens, by model).
 const DefaultMinTokens = 1024

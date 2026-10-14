@@ -60,6 +60,8 @@ type call struct {
 	// (Route.PromptKey); promptTTL the family's learned lifetimes.
 	promptKey string
 	promptTTL PromptTTL
+	// session is the conversation's key for OpenRouter (Route.Session).
+	session string
 	// rewrote reports a body the gateway changed before routing it (the
 	// firewall's): a thinking block it invalidates is healed, not refused.
 	rewrote bool
@@ -188,6 +190,7 @@ func (c *call) serve() {
 	}
 
 	c.promptCache, c.promptKey, c.promptTTL, c.rewrote = route.PromptCache, route.PromptKey, route.PromptTTL, route.Body != nil
+	c.session = route.Session
 
 	// Token counts come in streams only when asked for: ask on the
 	// client's behalf, and leave the extra chunk out of what it receives.
@@ -356,6 +359,7 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 		body, gone = translate.StripSampling(body)
 		dropped = append(dropped, gone...)
 	}
+	c.rec.CacheStrategy, c.rec.CacheTrial = "", false
 	if c.promptCache {
 		body = c.cachePrompt(body, format, t, req)
 	}
@@ -385,6 +389,9 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 			return answered, false
 		}
 		upstreamHeader(up.Header, c.r.Header, format, t.Header)
+		if c.promptCache {
+			sessionHeader(up.Header, c.r.Header, body, t.Kind, c.session)
+		}
 		if beta != "" {
 			addBeta(up.Header, beta)
 		}

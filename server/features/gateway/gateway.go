@@ -65,6 +65,10 @@ type Route struct {
 	// PromptTTL are the call's family's breakpoint lifetimes ("1h", else
 	// "" for five minutes), learned from its calls' gaps.
 	PromptTTL PromptTTL
+	// Session is the conversation's key for routers of providers that keep
+	// a conversation on one backend (OpenRouter's X-Session-Id), from the
+	// conversation's first call.
+	Session string
 	// Header is set on the response (e.g. the router's tier).
 	Header http.Header
 	// Sample keeps the call's request and answer in its Record (Body,
@@ -148,6 +152,8 @@ type Target struct {
 	// Decisions marks a decision model (llm.Model's): a router's decision
 	// model asked through OpenRouter's Decisions API, never a call's.
 	Decisions bool
+	// Cache is how calls to the target use its provider's prompt cache.
+	Cache CachePlan
 }
 
 // formatOf is the API format a target is called in for a call of format f.
@@ -193,7 +199,12 @@ type Record struct {
 	// Backend is the backend a router of providers says served the call
 	// (OpenRouter's "Google AI Studio"); "" when it didn't say.
 	Backend string
-	Stream  bool
+	// CacheStrategy is the prompt-cache strategy the call was sent with
+	// (promptcache.Markers or Auto; "" when the route doesn't cache), and
+	// CacheTrial whether it was a trial of it.
+	CacheStrategy string
+	CacheTrial    bool
+	Stream        bool
 	// Shape is the call's prompt family and how its prefix looks.
 	Shape families.Shape
 	// Request is what the gateway read of the request.

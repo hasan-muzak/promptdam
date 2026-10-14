@@ -477,6 +477,10 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	if promptCache && m.InTurn && (m.Turn.HumanTurns >= 2 || m.Turn.Continuation) {
 		out.PromptKey = "pd-" + m.Turn.Conversation.String()
 	}
+	// OpenRouter keeps a session on one backend from its first call.
+	if promptCache && m.InTurn {
+		out.Session = "pd-" + m.Turn.Conversation.String()
+	}
 	// The family's learned lifetimes: an hour where its calls' gaps pay for
 	// the dearer write.
 	if t, ok := snap.CacheTTL[c.Shape.Family]; ok && promptCache {
@@ -608,6 +612,7 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 	}
 	t.MinCache = int(m.MinCacheTokens)
 	t.ThinkingOff, t.AlwaysThinks, t.NoSampling = m.ThinkingOff, m.AlwaysThinks, m.NoSampling
+	t.Cache.Strategy = gateway.DefaultCacheStrategy(p.Kind, p.Format == providers.FormatAnthropic, m.CacheWritePriced)
 	if p.Format == apiFormat(f) {
 		return t, true
 	}

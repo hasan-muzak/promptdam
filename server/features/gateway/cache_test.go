@@ -107,3 +107,80 @@ func TestThinkingIsHealedAfterARewrite(t *testing.T) {
 		t.Fatalf("not rewritten: %d, %d calls", res.StatusCode, calls.Load())
 	}
 }
+
+// OpenRouter calls carry the conversation's session from its first call,
+// so OpenRouter keeps it on one backend; a model that caches what a
+// request marks gets breakpoints on its Chat content (calls translated to
+// it too), one that caches on its own gets none; a session the client
+// chose wins.
+func TestOpenRouterCaching(t *testing.T) {
+	route := func(strategy, session string) func(string) gateway.Resolver {
+		return func(base string) gateway.Resolver {
+			return routeResolver{gateway.Route{PromptCache: true, Session: session, Targets: []gateway.Target{{Provider: "openrouter",
+				Kind: "openrouter", BaseURL: base + "/v1", Model: "google/gemini-3.8-flash", MinCache: 512,
+				Cache: gateway.CachePlan{Strategy: strategy}}}}}
+		}
+	}
+	system, _ := json.Marshal(strings.Repeat("Follow the house style. ", 120)) // ~720 tokens
+	chat := `{"model":"google/gemini-3.8-flash","messages":[{"role":"system","content":` + string(system) + `},
+		{"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}]}`
+	sent := func(e *env) (map[string]any, http.Header) {
+		t.Helper()
+		reqs := e.fake.Requests()
+		var body map[string]any
+		_ = json.Unmarshal(reqs[len(reqs)-1].Body, &body)
+		return body, reqs[len(reqs)-1].Header
+	}
+	marked := func(msg any) bool {
+		parts, _ := msg.(map[string]any)["content"].([]any)
+		if len(parts) == 0 {
+			return false
+		}
+		return parts[len(parts)-1].(map[string]any)["cache_control"] != nil
+	}
+
+	e := setup(t, fakeupstream.Options{}, route("markers", "pd-conv"))
+	res, _ := e.post(t, "/v1/chat/completions", chat)
+	body, h := sent(e)
+	msgs, _ := body["messages"].([]any)
+	if h.Get("X-Session-Id") != "pd-conv" || len(msgs) != 4 || !marked(msgs[0]) || marked(msgs[1]) || !marked(msgs[3]) ||
+		res.Header.Get(brand.HeaderCache) != "prompt" {
+		t.Fatalf("markers: session %q, body %v", h.Get("X-Session-Id"), body)
+	}
+	if rec := e.record(t); rec.CacheStrategy != "markers" {
+		t.Fatalf("record %+v", rec)
+	}
+
+	// A Messages call translated to OpenRouter's Chat is marked as Chat.
+	translated := setup(t, fakeupstream.Options{}, func(base string) gateway.Resolver {
+		return routeResolver{gateway.Route{PromptCache: true, Targets: []gateway.Target{{Provider: "openrouter", Kind: "openrouter",
+			BaseURL: base + "/v1", Model: "google/gemini-3.8-flash", Format: wire.OpenAIChat, MinCache: 512,
+			Cache: gateway.CachePlan{Strategy: "markers"}}}}}
+	})
+	messages := `{"model":"claude-x","max_tokens":9,"system":` + string(system) + `,"messages":[{"role":"user","content":"a"}]}`
+	_, _ = translated.post(t, "/v1/messages", messages)
+	if body, _ := sent(translated); !marked(body["messages"].([]any)[0]) {
+		t.Fatalf("translated: %v", body)
+	}
+
+	e = setup(t, fakeupstream.Options{}, route("auto", "pd-conv"))
+	_, _ = e.post(t, "/v1/chat/completions", chat)
+	if body, h := sent(e); h.Get("X-Session-Id") != "pd-conv" || strings.Contains(fmtJSON(body), "cache_control") {
+		t.Fatalf("auto: session %q, body %v", h.Get("X-Session-Id"), body)
+	}
+
+	// The client's session: its own header, or session_id in the body.
+	_, _ = e.post(t, "/v1/chat/completions", chat, "X-Session-Id", "theirs")
+	if _, h := sent(e); h.Get("X-Session-Id") != "theirs" {
+		t.Fatalf("the client's header: %q", h.Get("X-Session-Id"))
+	}
+	_, _ = e.post(t, "/v1/chat/completions", strings.Replace(chat, `"messages"`, `"session_id":"s1","messages"`, 1))
+	if _, h := sent(e); h.Get("X-Session-Id") != "" {
+		t.Fatalf("a body session_id got a header too: %q", h.Get("X-Session-Id"))
+	}
+}
+
+func fmtJSON(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
