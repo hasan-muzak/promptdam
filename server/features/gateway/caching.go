@@ -39,16 +39,18 @@ func (p CachePlan) strategy(f wire.Format) string {
 	return promptcache.Auto
 }
 
-// How each provider kind keeps a conversation where its prompt is cached.
+// How each provider kind keeps a conversation where its prompt is cached
+// (none: the zero value).
 const (
-	affinityNone = iota
+	_ = iota
 	// affinityKey: OpenAI's prompt_cache_key in the body, from a
 	// conversation's second human message (a single question's key would
 	// only spread the load less).
 	affinityKey
 	// affinitySession: OpenRouter's X-Session-Id header, from the
-	// conversation's first call: OpenRouter keeps a session on the backend
-	// that served it, where otherwise it sticks only after a cache hit.
+	// conversation's first call, for a model several backends serve
+	// (CachePlan.Session): OpenRouter keeps a session on the backend that
+	// served it, where otherwise it sticks only after a cache hit.
 	affinitySession
 )
 
