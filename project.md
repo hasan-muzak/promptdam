@@ -105,16 +105,18 @@ Basic routing and logging are free elsewhere, so Promptdam's plans are priced on
   - settings: allowed models, budget, policies, tags
   - attribution headers `x-promptdam-user`, `x-promptdam-route`, `x-promptdam-tags`.
 - **Reliability:**
-  - retries with jitter; fallback chains (model → model, provider → provider) on 429, 5xx and timeouts
-  - circuit breaker per provider and model
+  - retries with jitter (a provider's `Retry-After` honoured up to 10 s); fallback chains (model → model, provider → provider) on 429, 5xx, timeouts and "prompt too long"
+  - a call a provider received whole is never sent to it twice (it may be answering, and billing, still): only on to the next target
+  - an answer that breaks off after it began cuts the client's connection rather than ending as if complete
+  - circuit breaker per provider and model (error events inside a 200 stream count)
   - per-key rate limits.
 - **Cost levers:**
   - **Exact response cache:** opt-in per route; key = normalised request hash, project-scoped, TTL.
-  - **Auto prompt caching for Anthropic:** when the request has no `cache_control`, add top-level automatic caching plus a breakpoint after the stable system/tools prefix (respecting the 4-breakpoint limit and per-model minimum prefix sizes).
+  - **Auto prompt caching:** for Anthropic calls without `cache_control`, breakpoints at the end of the tools and the system prompt (the target model's minimum prefix from the price list), and Anthropic's automatic breakpoint on a conversation's tail; each family's lifetime (five minutes or an hour) learned from its calls' gaps. For OpenAI, a conversation's `prompt_cache_key`.
   - **Cache doctor:** detects unstable prefixes across requests in a family and explains the fix.
   - **Routes and manual routing rules:** CEL conditions, e.g. `request.input_tokens < 1500 && !request.has_tools` routes the request to a cheaper model.
-  - **Model routers (§6.2):** tiers the project describes, called like a model (`"model": "auto"`) or attached to a route. Each call gets a tier from: the client's explicit choice, the models' capabilities, rules, a classifier learned from judged samples of the project's traffic, an opt-in decision model when the classifier is unsure, else the "unsure" tier. Shadow mode first (decide and evaluate, serve the strong tier), then active, with a canary that demotes a tier whose quality drifts.
-- **Savings ledger:** per request `counterfactual_cost`, `actual_cost`, `savings`, `reason`. A monthly verified-savings report, exportable as CSV.
+  - **Model routers (§6.2):** tiers the project describes (a model and a reasoning effort), called like a model (`"model": "auto"`) or attached to a route. Each conversation turn gets a tier from: the client's explicit choice, the models' capabilities, rules, a classifier learned from judged samples of the project's traffic, an opt-in decision model when the classifier is unsure, else the "unsure" tier; the calls continuing a turn (an agent's tool loop) keep it, and a warm conversation stays on its tier unless switching pays for rebuilding its cache. Shadow mode first (decide and evaluate, serve the strong tier), then active, with a canary that demotes a tier whose quality drifts.
+- **Savings ledger:** per request `counterfactual_cost`, `actual_cost`, `savings`, `reason` and how each saving is known (`provider`, `cache`, `replays`, `estimate`); calls a model without a price served save nothing. A monthly verified-savings report, exportable as CSV.
 - **Firewall:**
   - detectors from `pkg/redact` (secrets, PII, custom dictionaries)
   - actions block, redact (mask), tokenize (reversible, restored in responses) and alert
@@ -216,7 +218,10 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 - **Fail behaviour:**
   - On an internal error, Promptdam fails open to direct upstream for routing and caching, but **never** for firewall decisions. A firewall-scanner error under a `block` policy fails closed for secrets and open for everything else, configurable per project (decided 2026-10-08).
   - A provider outage triggers the fallback chain, then a clear error with a `x-promptdam-trace` id.
-- **Headers returned:** `x-promptdam-trace`, `x-promptdam-served-model`, `x-promptdam-cache` (hit/miss/prompt). Savings are known once the provider reports usage, at the end of a stream, after the headers: each call's are in the request log (by trace), with how they are known (`savings_basis`).
+- **Headers returned:** `x-promptdam-trace`, `x-promptdam-served-model`, `x-promptdam-cache` (hit/miss/prompt), `x-promptdam-effort` (a router tier's). Savings are known once the provider reports usage, at the end of a stream, after the headers: each call's are in the request log (by trace), with how they are known (`savings_basis`).
+- **Answers name the model asked for:** an answer the gateway moved to another model (a router, a rule, a fallback) names the model the client asked for, whole or streamed (agents keep state, thinking included, by the model they called); `x-promptdam-served-model` and the log name the served one, and `x-promptdam-answer-model: served` keeps it in the answer.
+- **Conversations (ADR 0002):** a call's turn (its human message and the calls continuing it) is read off the request (core `wire.Turn`), keyed alike on every replica, and kept per replica and in Valkey (`features/conversation`): a turn's placement, its calls' tokens and cache state, and how long after the conversation's previous call each started. Clients may name the conversation (`x-promptdam-session`, or Claude Code's session header).
+- **Thinking heal:** a Messages call whose history the firewall rewrote can carry a thinking block bound to the history before it ("bound to a different conversation"); it is sent once more with the provider asked to drop the block, else without the history's thinking (`healed` in the log).
 
 ### 6.2 Model routers: tiers, the cascade, evaluation and learning (`features/routers`, `features/evaluate`, `features/classifier`, `features/translate`)
 
@@ -235,7 +240,7 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
 
 **What a project sets up: routers.**
 - A router has a name and is called like a model (`"model": "auto"`), or a route sends all its calls through it (`router` on the route).
-- **Tiers,** ordered from cheapest to strongest, any number up to 8. Each has a name, a description in plain words of the work it is for, a model with up to 5 fallbacks (any provider: the gateway translates between API formats), and up to 20 example requests.
+- **Tiers,** ordered from cheapest to strongest, any number up to 8. Each has a name, a description in plain words of the work it is for, a model with up to 5 fallbacks (any provider: the gateway translates between API formats), up to 20 example requests, and optionally a reasoning effort (none to max), fitted to each model from the price list and written in its provider's own words. The same model at a lower effort is often the cheapest tier that holds up.
 - **Rules:** CEL conditions over the request (as routing rules see it), in order, each sending matching calls to a tier.
 - **The unsure tier** serves calls nothing places with confidence: the strongest tier by default. When a route sends a call for a named model through a router, the unsure choice is that model.
 - **The quality floor** (default 95%): the share of a tier's answers that must hold up against the baseline's (judged as good or better).
@@ -259,17 +264,19 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
    - It runs on the project's own key, and its cost counts against the call. Any model works: OpenRouter's decision models (on 2026-10-07 the cheapest were Respan span-01 at $0.02 per 1M input tokens; Jev, Liquid d1 and Perplexity's decider about $0.04; Inception's mercury-decide free) or a small chat model.
    - Target: under 10% of a router's calls get here once the classifier is trained. Measure it in beta.
 6. **The unsure tier.**
-- Then: a tier's own fallbacks, then the next tier up, on rate limits, overload, server errors and timeouts.
+- Then: a tier's own fallbacks, then the next tier up, on rate limits, overload, server errors, timeouts and "prompt too long".
+- **Turns (ADR 0002):** the cascade places a conversation's turn, its human message: every input above is the turn's (the ask and the conversation up to it), never a tool result. The calls that continue a turn (an agent's tool loop) keep its placement on any replica; requirements and rules may move them up, never down, and the decision model is never asked mid-turn. Within the tier, the target that served the turn's last call goes first (its cache is warm there).
+- **Switching must pay:** a new turn the cascade puts on a cheaper tier than the conversation's warm one stays there (`tier_source = held`) when the saving over the turns ahead (at most four) is smaller than rebuilding the cache on the new model, priced from the previous turn's calls. Clients' tiers and rules are never held, nor moves up.
 
 **Evaluation (in the gateway, off the call's path; `features/evaluate`).**
-- A sample of a router's calls goes to an in-memory queue (bounded; samples are dropped when it is full). Requests are never stored: they live in the gateway's memory until judged.
+- A sample of a router's calls that start a turn goes to an in-memory queue (bounded; samples are dropped when it is full). Requests are never stored: they live in the gateway's memory until judged. Replays run at each tier's effort.
 - Each sample is replayed, not streamed, on every tier cheaper than the baseline, and on the baseline when another tier served the call (a served baseline answer is reused).
-- **Judging:** deterministic checks first (valid JSON, the schema, tool names and arguments, exact match, refusals). Otherwise a pairwise judge with a rubric (correctness, completeness, following the instructions and format) and the answers in random order; 10% are judged in both orders, and a disagreement counts as a tie.
+- **Judging:** deterministic checks first (valid JSON, the schema, tool names and arguments, exact match, refusals). Otherwise a pairwise judge with a rubric (correctness, completeness, following the instructions and format) and the answers in random order; 10% are judged in both orders, and a disagreement counts as a tie. A judge that disagrees with itself on more than 10% of those (at least 30 in 7 days) has every verdict judged both ways until that falls under 5%. The report flags a judge from the same vendor as one side of a cross-vendor comparison.
 - Every verdict is a row of `router_evals`: the tiers, the verdict, the costs, and the request's features as hashes (never its text).
 - Replays, judge and decision-model calls run on the project's own provider keys (decided 2026-10-08), within the router's monthly budget, and count as the project's spend. Their cost is subtracted from the router's savings.
 
 **Learning (in the worker; `features/classifier`).**
-- **Features** cost nothing to compute: hashed words and word pairs of the last user message and of the instructions, estimated input tokens, messages, tools, `max_tokens`, a JSON answer, code or JSON in the last message, the family, tags. So the classifier learns splits like "count / list / extract" vs "why / prove / is it legal" within one task.
+- **Features** cost nothing to compute: hashed words and word pairs of the turn's human message and of the instructions, the turn's estimated input tokens and messages, tools, `max_tokens`, a JSON answer, code or JSON in the ask, the family, tags. So the classifier learns splits like "count / list / extract" vs "why / prove / is it legal" within one task.
 - **Label:** for each judged sample and tier, whether that tier's answer held up against the baseline.
 - **Model:** a logistic regression per tier below the baseline (sparse weights on hashed features), retrained daily and when enough new samples arrive, shipped to gateways with the project's configuration.
 - **Calibration:** on held-out samples (cross-validation), each tier's threshold is the lowest at which the calls it would route meet the quality floor. A tier with fewer than 200 samples gets no threshold.
@@ -281,7 +288,7 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
 
 **Families stay** (`features/families`): a hash of the normalised system prompt (numbers, dates, UUIDs and whitespace normalised) + tool names + response format, or `X-Promptdam-Family`. They feed spend breakdowns, the cache doctor, the classifier (as a feature) and a per-family view of a router's report ("summarise ticket: fast holds up 98%, n = 240").
 
-**Ledger:** per request, `counterfactual_cost = list price(baseline model, tokens, no cache)` and `actual = provider-reported usage × list price` (cache read and write pricing included). Savings are attributed to their reason (`routing` for routers and rules). Evaluation and decision costs are recorded as negative savings.
+**Ledger:** per request, `counterfactual_cost = list price(baseline model, tokens, no cache)` and `actual = provider-reported usage × list price` (cache read and write pricing included). Savings are attributed to their reason (`routing` for routers and rules). A router's routed call is priced with the output the default tier writes against the served tier, measured on judged replays (at least 50; `savings_basis = replays`, else `estimate`), so an effort tier shows its saving. Evaluation and decision costs are recorded as negative savings.
 
 **Not chosen:**
 - A hosted decision model on every request: 70–500 ms added, a per-request bill, every prompt sent to one more vendor.
@@ -292,13 +299,14 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
 - For Anthropic-format families:
   - Compare consecutive requests' prefixes (tools → system → messages render order). Find the first divergent byte offset and classify the cause: timestamp, request id, unsorted JSON, tool-list churn, user content too early.
   - Report the expected hit rate vs actual (`cache_read_input_tokens`) and the dollar impact, with concrete fix snippets.
-- **Auto-fix (opt-in per route):**
-  - Add top-level automatic `cache_control` when none is present.
-  - Add an explicit breakpoint at the end of the stable system/tools prefix when that prefix exceeds the model's minimum cacheable size.
-  - Never add more than 4 breakpoints in total.
-  - Never reorder content: reordering changes semantics.
+- **Auto-fix (opt-in per route, `prompt_cache`):**
+  - When the client set no breakpoint, add one at the end of the tools and of the system prompt when that prefix reaches the target model's minimum cacheable size (512 to 4,096 tokens, from the price list), and Anthropic's automatic breakpoint on the tail of a conversation that goes on (or an agent's tool loop), on Anthropic's own API.
+  - Bytes are only added, never moved or re-encoded: reordering changes semantics and what the cache keys on.
+  - OpenAI calls of a conversation get its `prompt_cache_key`.
+- **Lifetimes, learned (`features/cachettl`, `features/cachepolicy`):** every six hours the worker weighs each family's call gaps over three days, by cached tokens: returns 5 to 60 minutes after the conversation's (or prefix's) previous call, against writes within five minutes and after an hour. An hour (written at twice the input price instead of 1.25 times) is kept where it pays 15% more than it costs, backed by at least 20 returns, until it pays 15% less. The doctor shows each family's lifetimes and what they are worth.
+- **Calls written together:** the doctor counts calls that wrote a prefix within 10 seconds of another and read none of it (a cache entry is readable once the first answer begins), with what sending one first would save.
 - **OpenAI and Gemini** cache implicitly. There the doctor only reports prefix-stability problems.
-- **Economics shown to the user:** cache reads cost about 0.1× base input (lower on some models), writes 1.25× for the 5-min TTL or 2× for the 1-hour TTL. The doctor only recommends 1-hour TTL when the start-to-start gaps in a family are 5–60 minutes.
+- **Economics shown to the user:** cache reads cost about 0.1× base input (lower on some models), writes 1.25× for the 5-min TTL or 2× for the 1-hour TTL.
 
 ### 6.4 Firewall (`features/firewall`)
 - Every text of a request is scanned before anything is sent anywhere: messages, system, tools and tool results, in every API format. Identifiers (`model`, `role`, `id`…) and inline data (base64 images, files) are skipped. Detectors come from `pkg/redact`, grouped in Promptdam's presets (`GET /v1/firewall/presets`):
@@ -350,12 +358,14 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
 | `alert_rules` | name, kind (spend_spike, error_rate, provider_down, latency), threshold, window_minutes, min_calls, min_micros, provider, model, channel_ids[], enabled, cooldown_minutes, firing, firing_on[], fired/resolved_at; written only on transitions (each minute's measure is in Valkey) |
 | `capture_settings` | enabled, sample_rate, answers (one per project; payload capture) |
 | `payload_segments` | key (the object in R2 holding many sealed payloads), bytes, payloads, expires_at; never payload content |
+| `cache_policies` | families jsonb (per family, at most 256: prefix and tail lifetimes, the gaps that weighed them, calls written together), learned_at; one per project |
 
 **ClickHouse:**
-- `requests(org_id, project_id, key_id, route, family_id, provider, requested_model, served_model, api_format, stream, status, http_status, ttfb_ms, latency_ms, upstream_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_micros, counterfactual_micros, savings_micros, savings_reason, response_cache_hit, router, tier, tier_source, tier_confidence, router_micros, firewall_action, firewall_kinds Array(LowCardinality(String)), payload_ref (segment key#offset+length), developer, tags Array(String), error_code, payload_ref, ts, retention_days)`
+- `requests(org_id, project_id, key_id, route, family_id, provider, requested_model, served_model, api_format, stream, status, http_status, ttfb_ms, latency_ms, upstream_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_micros, priced, counterfactual_micros, savings_micros, savings_reason, savings_basis, response_cache_hit, conversation, turn_kind, human_turns, chain_gap_ms, chain_state, router, tier, tier_source, tier_confidence, effort, healed, router_micros, firewall_action, firewall_kinds Array(LowCardinality(String)), payload_ref (segment key#offset+length), developer, tags Array(String), error_code, payload_ref, ts, retention_days)`
 - `firewall_events(project_id, ts, trace, org_id, key_id, developer, route, requested_model, provider, detector, class, action, location, count, blocked, blocked_by, policy, excerpt, retention_days)`
 - `activities(project_id, ts, id, org_id, kind, severity, title, body, subject, url, data)`: the activity feed, TTL 90 days (moved from Postgres: it grows with traffic)
-- `router_evals(project_id, ts, router, trace, family_id, served_tier, tier_source, baseline_model, candidate_tier, candidate_model, verdict, check, judge_model, candidate_micros, baseline_micros, judge_micros, features Array(UInt32), retention_days)`
+- `router_evals(project_id, ts, router, trace, family_id, served_tier, tier_source, baseline_model, candidate_tier, candidate_model, verdict, check, judge_model, consistent, both_orders, candidate_micros, baseline_micros, judge_micros, candidate_output_tokens, baseline_output_tokens, features Array(UInt32), retention_days)`
+- `cache_gaps_hourly` (a family's calls by their gap to the conversation's previous call, in cached tokens) and `prefix_starts` (calls by prefix, 8 days): what the cache lifetime learner weighs
 
 All tables have TTL by plan, and `ORDER BY` starts with `(project_id, ts)`.
 
@@ -694,6 +704,20 @@ Model routers replace per-family savings experiments, and cross-format translati
     - The response cache keeps answers in Valkey as plain JSON (opt-in, with a TTL; off in payload-free mode).
     - Core `events`' `{tenant}` counts the `?`s before it to place its arguments: correct today, worth a comment in
       the core.
+- [x] Round G (2026-10-14, ADR 0002): what a study of Caveman (a local proxy for coding agents) showed Promptdam
+  lacked, fixed our way.
+  - **Failures:** "prompt too long" goes on to the next target; a call the provider got whole is never sent to it
+    twice; `Retry-After` honoured; a broken answer cuts the connection; stream errors count against the circuit.
+  - **Ledger:** unpriced calls save nothing (`priced`), each saving says how it is known (`savings_basis`), and a
+    routed call's counterfactual is measured on replays.
+  - **Turns:** core `wire.Turn`; `features/conversation` keys and keeps turns on every replica; a turn keeps its
+    tier, the decision model is never asked mid-turn, a warm conversation stays put unless switching pays.
+  - **Effort:** tiers set a reasoning effort, fitted per model and written in each provider's words.
+  - **Caching:** per-target minimums, bytes only added, the conversation's tail, OpenAI's `prompt_cache_key`, and
+    lifetimes learned per family; the doctor counts calls written together. Thinking a rewrite invalidated is
+    healed once.
+  - **Answers** name the model asked for; the judge is asked both ways where it flips.
+  - Not now: per-message effort marks, keep-alive pings, holding parallel calls back (measured first).
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
 - **Exit:** ≥ 5 design partners in production, ≥ 2 willing to pay for Team or Business. → **Beta Mon Apr 26**.
 

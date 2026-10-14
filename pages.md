@@ -215,10 +215,16 @@ later.
   model: allow it in the key's settings"), time, trace (copy), API format, stream, translated (and the parameters
   translation dropped).
 - **Where it went:** requested model, served model, provider, attempts, fallback used; for router calls: the router,
-  the tier that served, the tier it decided, the step that decided and its confidence, shadow or not; the routing rule
-  that matched. A link: "Explain how the router places a request like this".
-- **Cost:** input, output, cache read, cache write and reasoning tokens; cost; counterfactual; saved and why. A
-  decision model's cost on the call, when one was asked.
+  the tier that served, the tier it decided, the step that decided (`held`: a new turn kept on its conversation's warm
+  tier) and its confidence, shadow or not, the reasoning effort sent; the routing rule that matched. A link: "Explain
+  how the router places a request like this". A healed call (`healed`: drop_block or strip_thinking) says the
+  firewall's rewrite invalidated its thinking, so it was sent once more without it.
+- **Conversation:** whether the call started its turn or continued it (an agent's tool loop), the conversation's human
+  turns so far, and how long after its previous call it came (`conversation`, `turn_kind`, `human_turns`,
+  `chain_gap_ms`); a link to the conversation's other calls (filter by `conversation`).
+- **Cost:** input, output, cache read, cache write and reasoning tokens; cost; counterfactual; saved, why and how it is
+  known (`savings_basis`: provider, cache, replays or estimate). A model without a price (`priced: false`): "no price
+  for this model: set one under Prices", no saving. A decision model's cost on the call, when one was asked.
 - **Timing:** a small bar: gateway time, waiting on providers, TTFB, total.
 - **Firewall:** the action and the detectors found (never the values); a link to the call's firewall events.
 - **Who:** key (link to its settings), developer, end user, tags, route.
@@ -275,6 +281,9 @@ doctor's flag when it found something.
 - **Headline:** saved this range, the counterfactual ("what it would have cost") and the actual cost; savings rate.
 - **By reason:** routing, response cache, prompt cache, fallback (which can be negative: a fallback model may cost more
   than the one asked for). Each with calls, counterfactual, cost, saved.
+- **How it's known** (`by_basis`): provider (the providers' own cache counts), cache (the response cache answered),
+  replays (routing priced with what the default tier writes, measured on judged calls), estimate (the model asked
+  for priced on the served call's tokens). Show replays and estimate apart: only the first is measured.
 - **Per day:** cost and savings bars.
 - **Top families** by savings.
 - **How it's counted**, always visible: "For each call, the counterfactual is the model your client asked for, at its
@@ -342,14 +351,18 @@ Tabs:
   - money: cost of its calls, what they would have cost on the decided tiers, the monthly projection, ledger savings,
     evaluation cost, unpriced calls;
   - calls per tier: served vs. decided (they differ in shadow mode), as stacked bars;
-  - how calls were placed: explicit, rule, classifier, decision, default;
+  - how calls were placed: explicit, rule, classifier, decision, default, held (new turns kept on a warm tier because
+    switching would have cost more in cache than it saved);
   - range picker (default 7 days, up to 90).
 - **Quality:** each tier against the default tier: judged calls, wins, ties, losses, quality with its 95% interval,
   drawn against the floor line; meets floor or not; demoted tiers with **Restore**. Families judged most, with their
   quality. One sentence on method: "A judge model compares a tier's answer with the default tier's on sampled calls,
-  in random order."
-- **Tiers and rules:** the wizard's editors (§4.8.1, steps 2 and 3), saved with PUT. Changing a tier clears readiness:
-  say so before saving.
+  in random order." The judge's flip rate (how often it disagreed with itself when asked both ways), and a warning on a
+  tier whose `judge_leans` is set: "The judge is Anthropic's, and this tier's model is OpenAI's: verdicts may lean
+  toward the default tier. A judge from a third vendor reads fairer."
+- **Tiers and rules:** the wizard's editors (§4.8.1, steps 2 and 3), saved with PUT. Each tier may set a reasoning
+  effort (none … max; empty keeps the client's): explain that the same model thinking less is often the cheapest tier
+  that holds up, and that the effort is fitted to each model. Changing a tier clears readiness: say so before saving.
 - **Classifier** (Team): version, trained when, per tier: threshold, held-out precision, coverage, AUC, samples.
   **Train now** (otherwise hourly when new judged calls exist).
 - **Explain** (playground): paste a request body (OpenAI or Anthropic format), optionally a route, tier, tags, developer;
@@ -384,7 +397,10 @@ rule in shadow mode."
 **Shows:** the 20 busiest families by what fixing them is worth: model and provider, calls, prompt cache hit rate (a
 gauge), how many different prefixes the calls sent, the prefix length, findings with severity, each with a title, the
 detail and the fix ("A date changes in the system prompt every day: move it to the last user message"), and the
-**potential monthly saving**. Sorted by that saving.
+**potential monthly saving**. Sorted by that saving. Each family's cache lifetimes (`prefix_ttl`, `tail_ttl`: 5m or
+1h, learned from its calls' gaps; `kept_one_hour` says what the hour is worth), and calls written together
+(`parallel_cold_writes`: calls that wrote the prefix within 10 seconds of another and read none of it, with the fix:
+send one first).
 
 **Actions:** open the family; "Turn on prompt caching for route X" when the fix is the gateway's own (Anthropic
 breakpoints), linking to the route.
