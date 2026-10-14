@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
+	"math"
 	"net/http"
 	"os"
 	"slices"
@@ -15,10 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/hasan-muzak/keel-core/pkg/events"
-	"github.com/hasan-muzak/keel-core/pkg/llm"
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
 	"github.com/hasan-muzak/promptdam/server/brand"
@@ -36,10 +35,12 @@ import (
 // different shares per user.
 //
 // Run: task demo:traffic (PROMPTDAM_TEST_ANTHROPIC_KEY in .env, the stack
-// up; about $1 and 30 minutes; it stops past maxTrafficSpend). Without a
-// key it runs on the fake provider, unpaced, to check the harness.
-// PROMPTDAM_DEMO_PACE scales the pauses (1 by default); a transcript goes
-// to PROMPTDAM_DEMO_TRANSCRIPT.
+// up; about $1 and 30 minutes; it stops past maxTrafficSpend), or on
+// OpenRouter's models with PROMPTDAM_DEMO_STACK=openrouter (trafficStack).
+// Without the stack's key it runs on the fake provider, unpaced, to check
+// the harness. PROMPTDAM_DEMO_PACE scales the pauses (1 by default),
+// PROMPTDAM_DEMO_USERS picks users (comma-separated); a transcript goes to
+// PROMPTDAM_DEMO_TRANSCRIPT.
 const maxTrafficSpend = 3.00 // dollars
 
 // A chat: who, when they open it, and their messages, each sent after a
@@ -159,44 +160,52 @@ func (s *spend) add(usd float64) {
 }
 
 func TestCustomsTraffic(t *testing.T) {
-	key := os.Getenv("PROMPTDAM_TEST_ANTHROPIC_KEY")
+	st := trafficStack(t)
+	w := st.w
 	pace := 1.0
-	if key == "" {
+	if st.key == "" {
 		pace = 0 // the fake provider: check the harness, unpaced
 	}
 	if p, err := strconv.ParseFloat(os.Getenv("PROMPTDAM_DEMO_PACE"), 64); err == nil {
 		pace = p
 	}
-	w, list := pilotGateway(t, key)
+	users := chats
+	if pick := os.Getenv("PROMPTDAM_DEMO_USERS"); pick != "" {
+		names := strings.Split(pick, ",")
+		users = slices.DeleteFunc(slices.Clone(chats), func(c chat) bool { return !slices.Contains(names, c.user) })
+	}
+	t.Logf("running on %s", st.label)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	paid := &spend{cancel: cancel}
 	start := time.Now()
 
-	transcripts := make([]strings.Builder, len(chats))
-	errs := make([]error, len(chats))
+	transcripts := make([]strings.Builder, len(users))
+	errs := make([]error, len(users))
 	var wg sync.WaitGroup
-	for i, c := range chats {
+	for i, c := range users {
 		wg.Go(func() {
-			errs[i] = runChat(ctx, t, w.Gateway.URL, w.Raw, c, pace, list, paid, &transcripts[i])
+			errs[i] = runChat(ctx, t, st, c, pace, paid, &transcripts[i])
 		})
 	}
 	wg.Wait()
 	t.Logf("the chats took %s; the app's own count of spend: $%.4f", time.Since(start).Round(time.Second), paid.usd)
 	for i, err := range errs {
 		if err != nil {
-			t.Errorf("%s: %v", chats[i].user, err)
+			t.Errorf("%s: %v", users[i].user, err)
 		}
 	}
 	if err := w.Log.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	report := trafficLedger(t, w.C.Events, w.Project, list, start)
-	routerReport(t, w, start, report)
+	report := trafficLedger(t, st, start)
+	if st.model == "advisor" {
+		routerReport(t, w, start, report)
+	}
 	t.Log("\n" + report.String())
 	if path := os.Getenv("PROMPTDAM_DEMO_TRANSCRIPT"); path != "" {
 		var out strings.Builder
-		out.WriteString("# CustomsPilot traffic through Promptdam\n\n")
+		out.WriteString("# CustomsPilot traffic through Promptdam\n\nOn " + st.label + ".\n\n")
 		for i := range transcripts {
 			out.WriteString(transcripts[i].String())
 		}
@@ -209,8 +218,7 @@ func TestCustomsTraffic(t *testing.T) {
 
 // runChat holds one user's chat: each message after its pause, with the
 // whole history, tool calls answered from the demo data.
-func runChat(ctx context.Context, t *testing.T, gateway, key string, c chat, pace float64, list *llm.Catalog, paid *spend,
-	transcript *strings.Builder) error {
+func runChat(ctx context.Context, t *testing.T, st stack, c chat, pace float64, paid *spend, transcript *strings.Builder) error {
 	wait := func(d time.Duration) error {
 		select {
 		case <-time.After(time.Duration(float64(d) * pace)):
@@ -224,9 +232,11 @@ func runChat(ctx context.Context, t *testing.T, gateway, key string, c chat, pac
 	var history []json.RawMessage
 	call := func() (pilotAnswer, http.Header, error) {
 		msgs, _ := json.Marshal(history)
-		body := `{"model":"advisor","max_tokens":4000,"system":` + string(system) + `,"tools":` + pilotTools + `,"messages":` + string(msgs) + `}`
-		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, gateway+"/v1/messages", bytes.NewReader([]byte(body)))
-		req.Header.Set("Authorization", "Bearer "+key)
+		model, _ := json.Marshal(st.model)
+		body := `{"model":` + string(model) + `,"max_tokens":4000,"system":` + string(system) + `,"tools":` + pilotTools +
+			`,"messages":` + string(msgs) + `}`
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, st.w.Gateway.URL+"/v1/messages", bytes.NewReader([]byte(body)))
+		req.Header.Set("Authorization", "Bearer "+st.w.Raw)
 		req.Header.Set(brand.HeaderSession, "chat-"+c.user)
 		req.Header.Set(brand.HeaderUser, c.user)
 		res, err := client.Do(req)
@@ -242,7 +252,13 @@ func runChat(ctx context.Context, t *testing.T, gateway, key string, c chat, pac
 		if err := json.Unmarshal(out, &a); err != nil {
 			return pilotAnswer{}, nil, err
 		}
-		if p, ok := list.Lookup("anthropic", res.Header.Get(brand.HeaderServedModel)); ok {
+		// The model the answer names (a router of the provider's answers
+		// with the model it chose), else the one the gateway served.
+		p, ok := st.price(a.Model)
+		if !ok {
+			p, ok = st.price(res.Header.Get(brand.HeaderServedModel))
+		}
+		if ok {
 			paid.add(float64(requestlog.CostAt(p, wire.Usage{Usage: wireUsage(a.Usage)})) / 1e6)
 		}
 		assistant, _ := json.Marshal(map[string]any{"role": "assistant", "content": a.Content})
@@ -283,7 +299,11 @@ func runChat(ctx context.Context, t *testing.T, gateway, key string, c chat, pac
 		if err != nil {
 			return fmt.Errorf("message %d: %w", i+1, err)
 		}
-		tier := h.Get(brand.HeaderTier) + " (" + h.Get(brand.HeaderTierSource) + "), " + h.Get(brand.HeaderServedModel)
+		served := h.Get(brand.HeaderServedModel)
+		if served == st.model && a.Model != "" {
+			served = a.Model // a provider's router answers with the model it chose
+		}
+		tier := h.Get(brand.HeaderTier) + " (" + h.Get(brand.HeaderTierSource) + "), " + served
 		t.Logf("%-7s %d/%d %s: in %d, cache read %d, write %d, out %d", c.user, i+1, len(c.turns), tier,
 			a.Usage.Input+a.Usage.CacheRead+a.Usage.CacheWrite, a.Usage.CacheRead, a.Usage.CacheWrite, a.Usage.Output)
 		fmt.Fprintf(transcript, "**CustomsPilot** (%s)\n\n%s\n\n", tier, a.text())
@@ -313,26 +333,33 @@ type trafficRow struct {
 	Decision       string    `ch:"decision"`
 }
 
-// trafficLedger sums the request log per chat, and prices what the
-// provider's one-hour cache would have changed: calls after a pause over
-// five minutes wrote their conversation's cache again; under a one-hour
-// cache they'd have read it, and every write would have cost the one-hour
-// price.
-func trafficLedger(t *testing.T, db *events.DB, project uuid.UUID, list *llm.Catalog, start time.Time) *strings.Builder {
+// trafficLedger sums the request log per chat and per model that
+// answered, against the stack's baseline: every call on its strongest
+// model, priced at list price without caching (the ledger's own
+// counterfactual for a router's calls; computed here so a run without
+// Promptdam's router compares the same way). It also prices what the
+// provider's one-hour cache would have changed, on Anthropic: calls after
+// a pause over five minutes wrote their conversation's cache again; under
+// a one-hour cache they'd have read it, and every write would have cost
+// the one-hour price.
+func trafficLedger(t *testing.T, st stack, start time.Time) *strings.Builder {
 	t.Helper()
 	var rows []trafficRow
-	if err := db.Select(context.Background(), &rows, events.Project(project), `SELECT end_user, ts, turn_kind, tier, tier_source,
-		served_model, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, cost_micros, counterfactual_micros,
-		savings_micros, savings_reason, router_micros, chain_gap_ms, chain_state, decision
+	if err := st.w.C.Events.Select(context.Background(), &rows, events.Project(st.w.Project), `SELECT end_user, ts, turn_kind, tier,
+		tier_source, served_model, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, cost_micros,
+		counterfactual_micros, savings_micros, savings_reason, router_micros, chain_gap_ms, chain_state, decision
 		FROM requests WHERE {tenant} ORDER BY end_user, ts`); err != nil {
 		t.Fatal(err)
 	}
+	base, baseKnown := st.price(st.baseline)
 	type sums struct {
-		calls, turns, haiku, longPauses                 int
-		cost, cf, saved, router, cacheSaved, routeSaved int64
-		hourCost                                        float64
+		calls, turns, cheaper, longPauses, unpriced int
+		input, cacheRead                            uint64
+		cost, base, router, cacheSaved, routeSaved  int64
+		hourCost                                    float64
 	}
 	per := map[string]*sums{}
+	byModel := map[string]*sums{}
 	var all sums
 	sources := map[string]int{}
 	var prev *trafficRow
@@ -341,36 +368,51 @@ func trafficLedger(t *testing.T, db *events.DB, project uuid.UUID, list *llm.Cat
 		if prev != nil && prev.User != r.User {
 			prev = nil
 		}
-		s := per[r.User]
-		if s == nil {
-			s = &sums{}
-			per[r.User] = s
+		model := r.Served
+		if m, ok := st.price(r.Served); ok {
+			model = m.ID
+		}
+		if per[r.User] == nil {
+			per[r.User] = &sums{}
+		}
+		if byModel[model] == nil {
+			byModel[model] = &sums{}
 		}
 		long := r.ChainState == "continued" && r.GapMs >= 300_000 && r.GapMs < 3_600_000
+		// What the call would have cost on the baseline model, no cache.
+		var baseline int64
+		if baseKnown {
+			baseline = int64(math.Round(float64(r.Input)*base.Input + float64(r.Output)*base.Output))
+		}
 		// The one-hour cache: every write at its price, and after a long
 		// pause on the same model the conversation read back, not written.
 		hour := float64(r.Cost) / 1e6
-		if p, ok := list.Lookup("anthropic", r.Served); ok && p.CacheWrite1h > 0 {
+		if p, ok := st.list.Lookup("anthropic", r.Served); ok && p.CacheWrite1h > 0 {
 			reused := uint32(0)
 			if long && prev != nil && prev.Served == r.Served {
 				reused = min(r.CacheWrite, prev.CacheRead+prev.CacheWrite)
 			}
 			hour += (float64(r.CacheWrite-reused)*(p.CacheWrite1h-p.CacheWrite) + float64(reused)*(p.CachedInput-p.CacheWrite)) / 1e6
 		}
-		for _, x := range []*sums{s, &all} {
+		_, priced := st.price(r.Served)
+		for _, x := range []*sums{per[r.User], byModel[model], &all} {
 			x.calls++
 			if r.TurnKind != "continuation" {
 				x.turns++
+				if !strings.HasPrefix(model, st.baseline) {
+					x.cheaper++
+				}
+				if long {
+					x.longPauses++
+				}
 			}
-			if strings.Contains(r.Served, "haiku") && r.TurnKind != "continuation" {
-				x.haiku++
+			if !priced {
+				x.unpriced++
 			}
-			if long && r.TurnKind != "continuation" {
-				x.longPauses++
-			}
+			x.input += uint64(r.Input)
+			x.cacheRead += uint64(r.CacheRead)
 			x.cost += r.Cost
-			x.cf += r.Counterfactual
-			x.saved += r.Savings
+			x.base += baseline
 			x.router += r.Router
 			x.hourCost += hour + float64(r.Router)/1e6
 			switch r.Reason {
@@ -386,24 +428,32 @@ func trafficLedger(t *testing.T, db *events.DB, project uuid.UUID, list *llm.Cat
 		prev = r
 	}
 	b := &strings.Builder{}
-	b.WriteString("| User | Messages | To Haiku | Pauses over 5 min | Cost | Without Promptdam | Saved |\n|---|---|---|---|---|---|---|\n")
-	users := make([]string, 0, len(per))
-	for u := range per {
-		users = append(users, u)
+	fmt.Fprintf(b, "On %s. Without Promptdam: every call on %s at list price, no caching.\n\n", st.label, st.baseline)
+	b.WriteString("| User | Messages | Not on " + st.baseline + " | Pauses over 5 min | Cost | Without Promptdam | Saved |\n|---|---|---|---|---|---|---|\n")
+	row := func(name string, x *sums) {
+		saved := x.base - x.cost - x.router
+		fmt.Fprintf(b, "| %s | %d (%d calls) | %d | %d | $%.4f | $%.4f | $%.4f (%.0f%%) |\n", name, x.turns, x.calls, x.cheaper,
+			x.longPauses, usd(x.cost+x.router), usd(x.base), usd(saved), pct(saved, x.base))
 	}
-	slices.Sort(users)
-	for _, u := range users {
-		x := per[u]
-		fmt.Fprintf(b, "| %s | %d (%d calls) | %d | %d | $%.4f | $%.4f | $%.4f (%.0f%%) |\n", u, x.turns, x.calls, x.haiku, x.longPauses,
-			usd(x.cost+x.router), usd(x.cf), usd(x.saved), pct(x.saved, x.cf))
+	for _, u := range slices.Sorted(maps.Keys(per)) {
+		row(u, per[u])
 	}
-	fmt.Fprintf(b, "| **All** | %d (%d calls) | %d | %d | $%.4f | $%.4f | $%.4f (%.0f%%) |\n\n", all.turns, all.calls, all.haiku,
-		all.longPauses, usd(all.cost+all.router), usd(all.cf), usd(all.saved), pct(all.saved, all.cf))
-	fmt.Fprintf(b, "Saved by the prompt cache $%.4f, by routing $%.4f; the decision model cost $%.4f (already taken off).\n",
+	row("**All**", &all)
+	b.WriteString("\n| Model | Messages | Calls | Input tokens | Read from cache | Cost |\n|---|---|---|---|---|---|\n")
+	for _, m := range slices.Sorted(maps.Keys(byModel)) {
+		x := byModel[m]
+		fmt.Fprintf(b, "| %s | %d | %d | %d | %.0f%% | $%.4f |\n", m, x.turns, x.calls, x.input,
+			100*float64(x.cacheRead)/float64(max(x.input, 1)), usd(x.cost))
+	}
+	fmt.Fprintf(b, "\nThe ledger's savings: by the prompt cache $%.4f, by routing $%.4f; the decision model cost $%.4f (taken off).\n",
 		usd(all.cacheSaved), usd(all.routeSaved), usd(all.router))
+	if all.unpriced > 0 {
+		fmt.Fprintf(b, "%d calls answered by a model the price list doesn't have: their cost is missing above.\n", all.unpriced)
+	}
 	fmt.Fprintf(b, "Messages placed by: %v.\n", sources)
-	fmt.Fprintf(b, "With the provider's one-hour cache instead of five minutes (an estimate from the same calls): cost $%.4f, saved %.0f%%.\n",
-		all.hourCost, 100*(usd(all.cf)-all.hourCost)/max(usd(all.cf), 1e-9))
+	if st.catalog == "anthropic" {
+		fmt.Fprintf(b, "With the provider's one-hour cache instead of five minutes (an estimate from the same calls): cost $%.4f.\n", all.hourCost)
+	}
 	fmt.Fprintf(b, "Took %s.\n", time.Since(start).Round(time.Second))
 	return b
 }
@@ -415,6 +465,7 @@ func routerReport(t *testing.T, w *gatewaytest.World, start time.Time, b *string
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("%d routers, %v", len(rows), err)
 	}
+	fmt.Fprintf(b, "Decision model: %s.\n", rows[0].DecisionModel)
 	rep, err := routers.BuildReport(context.Background(), w.C.Events, w.Project, routers.Of(rows[0]), start.Add(-time.Hour),
 		time.Now().Add(time.Hour), nil)
 	if err != nil {

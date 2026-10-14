@@ -66,7 +66,7 @@ flowchart TD
 | 2. Requirements | Tiers whose model can't take the request (images, tools, a long document) are skipped upward. A filter, not a guess. | microseconds |
 | 3. Rules | The customer's own conditions, e.g. "first message of a conversation goes to fast". | microseconds |
 | 4. Classifier | A small model trained on the customer's own traffic (see below) estimates, per cheaper tier, the chance its answer is as good as the strong tier's. It picks the cheapest tier that is clearly good enough. Runs inside the gateway, with no network call. | microseconds |
-| 5. Decision model | Only when the classifier is unsure or not trained yet: a small, cheap AI reads the tier descriptions and the message, and names a tier. | about 1 second on Claude Haiku 5.5 |
+| 5. Decision model | Only when the classifier is unsure or not trained yet: a small, cheap AI reads the tier descriptions and the message, and names a tier. | 0.3 to 0.6 seconds for a dedicated decision model, about 1 second for a chat model like Claude Haiku |
 | 6. Safe default | Nothing decided with confidence: the strongest tier. | none |
 
 Two principles run through every step:
@@ -77,6 +77,21 @@ Two principles run through every step:
 - **Difficulty isn't guessed from surface features.** A two-line question ("is this clause enforceable?") can need the
   strongest model, while fifty paragraphs with "count the dates" may not. The boundaries come from judged answers on
   the customer's traffic.
+
+### The decision model: a triage nurse, not a doctor
+
+The tiers' models are the doctors: they write the answers. The decision model is the triage nurse: it treats no one,
+it only decides which doctor sees the patient. Promptdam can use two kinds:
+
+- **A dedicated decision model** (on OpenRouter: Jev, Mercury Decide, GPT-6 Luna Decisions and others). It writes no
+  text; it answers one question, "which tier?", with a probability for each tier, and it is billed for what it reads.
+  Promptdam serves the cheapest tier that is at least 80% likely to be enough, so a model torn between two tiers
+  leads to the stronger one.
+- **A chat model** (Claude Haiku, a small GPT), asked to name a tier in words.
+
+In live tests the dedicated decision models answered in 0.3 to 0.6 seconds at the median for $0.0005 to $0.003 per 50
+questions, against 0.9 seconds and $0.004 for Claude Haiku. A decision model can't be a tier or the judge: it writes
+no answers, and Promptdam refuses a router that tries.
 
 ### The decision model waits only as long as it needs to
 
@@ -211,6 +226,35 @@ original 150 ms time limit was too short for a model like Claude Haiku, which ne
 moved to a newer model kept settings that model refuses. Running realistic traffic through the product is part of
 how it is built.
 
+## The same traffic across vendors, against Jev Router
+
+We ran the same ten users again on OpenRouter, with three vendors' models as tiers: DeepSeek V4.1 Flash for easy work,
+Gemini 3.8 Flash for medium, OpenAI's GPT-6.1 Sol for hard. We ran it three times, once per decision model, and a
+fourth time sent straight to TypeSafe's Jev Router, OpenRouter's own router, with no Promptdam router in front of it.
+
+| Run | Cost for the 50 messages | Messages not on GPT-6.1 Sol | Decision model: in time, median wait, cost |
+|---|---|---|---|
+| Promptdam, Mercury Decide deciding | **$0.198** | 25 | 49 of 50, 0.58 s, $0.0005 |
+| Promptdam, GPT-6 Luna Decisions deciding | $0.200 | 19 | 50 of 50, 0.35 s, $0.0026 |
+| Promptdam, Jev 1.13 deciding | $0.219 | 20 | 49 of 50, 0.33 s, $0.0015 |
+| Jev Router alone | $0.263 | 46 | (its own) |
+
+Everything on GPT-6.1 Sol without caching would have cost $0.55 to $0.59 for the Promptdam runs' conversations, so
+Promptdam saved 61% to 67%. What the runs show:
+
+- **All three decision models sent the hard work to the strong model**: every penalty question, every calculation,
+  the document check, every classification. Emails, summaries, to-do lists and definitions went to DeepSeek or
+  Gemini. The three agreed on 25 messages needing GPT-6.1 Sol.
+- **Jev Router moved far more traffic to cheaper models (46 of 50) yet cost 20% to 33% more.** The models it picked
+  wrote longer answers and two of them read nothing from the cache, while Promptdam kept GPT-6.1 Sol's cache warm
+  (87% to 88% of its input read from cache). A model that is cheap per token isn't always cheap per conversation.
+- **Whether Jev Router's cheaper answers held up wasn't measured here.** At least 21 of the 25 messages our decision
+  models sent to the strong model went to cheaper ones under Jev Router. Promptdam's judge can compare them; until it
+  does, the comparison above is about cost, not quality.
+- **A finding for us:** Gemini read nothing from its cache through OpenRouter, so the medium tier cost about as much
+  per message as the cached strong model. Adding cache markers for Gemini through OpenRouter is the fix to make next;
+  until then, a two-tier router (DeepSeek, then GPT-6.1 Sol) would serve this customer as well.
+
 ## What makes this hard to copy
 
 - **It learns from each customer's own traffic**, judged against their own baseline, instead of a general difficulty
@@ -225,6 +269,7 @@ how it is built.
 ## Where it stands
 
 Built and tested end to end: the cascade, turns, cache-aware switching, effort tiers, evaluation, the classifier, the
-activation gate and canary, the ledger, and the decision model with its automatic time limit. Next: the dashboard that
+activation gate and canary, the ledger, and the decision step with its automatic time limit, on chat models and on
+dedicated decision models. Next: the dashboard that
 shows all of this to customers, and design partners in production, where the numbers that matter (share of traffic
 routed cheaper, quality held, money saved per month) get measured on real workloads.
