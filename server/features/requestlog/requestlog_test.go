@@ -323,6 +323,42 @@ func TestUnpricedCallsSaveNothing(t *testing.T) {
 	}
 }
 
+// A provider's own figure for a call is its cost (the price list's stays
+// beside it), even for a model the list doesn't price; the row names the
+// backend that served it and the model the gateway asked for.
+func TestReportedCostWins(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true,
+		Upstream: fakeupstream.Options{Backend: "Google AI Studio", Cost: 0.000206}})
+	ctx := context.Background()
+	w.Provider("local", providers.FormatOpenAI, []string{"llama-local"})
+	for _, model := range []string{"gpt-5-mini", "llama-local"} {
+		if status, _, out := w.Call("/v1/chat/completions", `{"model":"`+model+`","messages":[{"role":"user","content":"hi"}]}`); status != 200 {
+			t.Fatalf("%s: %d %s", model, status, out)
+		}
+	}
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct {
+		Target   string `ch:"target_model"`
+		Backend  string `ch:"backend"`
+		Priced   bool   `ch:"priced"`
+		Cost     int64  `ch:"cost_micros"`
+		Computed int64  `ch:"computed_micros"`
+	}
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT target_model, backend, priced, cost_micros, computed_micros
+		FROM requests WHERE {tenant} ORDER BY ts`); err != nil || len(rows) != 2 {
+		t.Fatalf("%d rows, %v", len(rows), err)
+	}
+	listed, unlisted := rows[0], rows[1]
+	if listed.Target != "gpt-5-mini" || listed.Backend != "Google AI Studio" || !listed.Priced || listed.Cost != 206 || listed.Computed <= 0 {
+		t.Fatalf("a listed model %+v", listed)
+	}
+	if unlisted.Target != "llama-local" || !unlisted.Priced || unlisted.Cost != 206 || unlisted.Computed != 0 {
+		t.Fatalf("an unlisted model %+v", unlisted)
+	}
+}
+
 // A call that names a model router is logged with its tier and the step
 // that chose it, and its savings count against the router's default tier.
 func TestRouterCalls(t *testing.T) {

@@ -359,6 +359,9 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 	if c.promptCache {
 		body = c.cachePrompt(body, format, t, req)
 	}
+	if t.Kind == "openrouter" && format == wire.OpenAIChat {
+		body = withUsageAccounting(body)
+	}
 	ctx, cancel := context.WithCancel(c.r.Context())
 	defer cancel()
 	// Whether the whole request reached the provider: one that did may be
@@ -635,6 +638,7 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 	if m := meter.Model(); m != "" {
 		c.rec.ServedModel = m
 	}
+	c.rec.Backend = meter.Backend()
 	if c.rec.ErrorCode != "" {
 		return // the gateway answered with its own error
 	}
@@ -968,4 +972,18 @@ func responseHeader(dst, src http.Header) {
 			dst[k] = v
 		}
 	}
+}
+
+// withUsageAccounting asks OpenRouter to report what each call cost
+// (usage.include), unless the client set usage itself. The field goes at
+// the body's end: the prompt's bytes, which its providers cache, don't
+// move.
+func withUsageAccounting(body []byte) []byte {
+	if _, found, err := wire.Field(body, "usage"); err != nil || found {
+		return body
+	}
+	if out, err := wire.SetField(body, "usage", []byte(`{"include":true}`)); err == nil {
+		return out
+	}
+	return body
 }

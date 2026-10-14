@@ -38,6 +38,22 @@ type Options struct {
 	Reply func(model string, body []byte) string
 	// StreamReply streams Reply's text too, three characters a chunk.
 	StreamReply bool
+	// Backend and Cost make Chat Completions answers look like a router
+	// of providers' (OpenRouter's): each names the backend that served it
+	// ("provider") and its usage says what it cost.
+	Backend string
+	Cost    float64
+}
+
+// routed adds Backend and Cost to a Chat Completions answer or chunk.
+func (s *Server) routed(c map[string]any) map[string]any {
+	if s.opts.Backend != "" {
+		c["provider"] = s.opts.Backend
+	}
+	if u, ok := c["usage"].(map[string]any); ok && s.opts.Cost > 0 {
+		u["cost"] = s.opts.Cost
+	}
+	return c
 }
 
 // pieces are a streamed answer's chunks: Reply's text cut in three
@@ -135,7 +151,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if req.Stream {
 			s.chatStream(w, r, req.Model, s.pieces(req.Model, body), req.StreamOptions != nil && req.StreamOptions.IncludeUsage)
 		} else {
-			c := chatCompletion(req.Model, s.opts.Chunks)
+			c := s.routed(chatCompletion(req.Model, s.opts.Chunks))
 			if s.opts.Reply != nil {
 				c["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)["content"] = s.opts.Reply(req.Model, body)
 			}
@@ -261,7 +277,7 @@ func (s *Server) chatStream(w http.ResponseWriter, r *http.Request, model string
 		if usage {
 			c["usage"] = nil
 		}
-		return c
+		return s.routed(c)
 	}
 	if !e.send("", chunk(map[string]any{"role": "assistant", "content": ""}, nil)) {
 		return
@@ -275,10 +291,10 @@ func (s *Server) chatStream(w http.ResponseWriter, r *http.Request, model string
 		return
 	}
 	if usage {
-		last := map[string]any{
+		last := s.routed(map[string]any{
 			"id": "chatcmpl-fake", "object": "chat.completion.chunk", "created": 1790000000, "model": model,
 			"choices": []any{}, "usage": openAIUsage(s.opts.Chunks),
-		}
+		})
 		if !e.send("", last) {
 			return
 		}

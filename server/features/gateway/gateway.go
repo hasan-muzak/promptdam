@@ -190,7 +190,10 @@ type Record struct {
 	// ServedModel is the model the provider says answered, else the one
 	// asked for.
 	ServedModel string
-	Stream      bool
+	// Backend is the backend a router of providers says served the call
+	// (OpenRouter's "Google AI Studio"); "" when it didn't say.
+	Backend string
+	Stream  bool
 	// Shape is the call's prompt family and how its prefix looks.
 	Shape families.Shape
 	// Request is what the gateway read of the request.
