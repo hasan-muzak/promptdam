@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"net/http"
 
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
@@ -94,19 +95,50 @@ func DefaultCacheStrategy(kind string, anthropic, writePriced bool) string {
 // sessionHeader sets OpenRouter's X-Session-Id on a call of a conversation
 // (session), so the conversation stays on one backend from its first call;
 // a session the client chose (its own header, or session_id in the body)
-// wins.
-func sessionHeader(h http.Header, client http.Header, body []byte, kind, session string) {
+// wins. It reports a session the gateway set itself.
+func sessionHeader(h http.Header, client http.Header, body []byte, kind, session string) bool {
 	if CacheDialectOf(kind, false).affinity != affinitySession {
-		return
+		return false
 	}
 	if _, set, err := wire.Field(body, "session_id"); err != nil || set {
-		return
+		return false
 	}
 	if own := client.Get("X-Session-Id"); own != "" {
 		h.Set("X-Session-Id", own)
-		return
+		return false
 	}
-	if session != "" {
-		h.Set("X-Session-Id", session)
+	if session == "" {
+		return false
 	}
+	h.Set("X-Session-Id", session)
+	return true
+}
+
+// refusedCaching is what of the gateway's caching a provider's 400 names:
+// refusedMarkers (its breakpoints, cache_control), refusedOther (OpenAI's
+// prompt_cache_key, or a session), or nothing.
+func refusedCaching(body []byte) int {
+	b := bytes.ToLower(body)
+	switch {
+	case bytes.Contains(b, []byte("cache_control")):
+		return refusedMarkers
+	case bytes.Contains(b, []byte("prompt_cache_key")) || bytes.Contains(b, []byte("session")):
+		return refusedOther
+	}
+	return refusedNothing
+}
+
+const (
+	refusedNothing = iota
+	refusedMarkers
+	refusedOther
+)
+
+// killsMarkers reports whether a refusal of the gateway's breakpoints
+// switches them off for the model: only where its kind may cache without
+// them. Anthropic's API takes breakpoints, so its refusals are of a
+// call's own (a fifth breakpoint, a lifetime out of order): the call is
+// sent again unmarked, and the model keeps them.
+func killsMarkers(kind string, anthropic bool) bool {
+	return len(CacheDialectOf(kind, anthropic).Strategies) > 1
 }

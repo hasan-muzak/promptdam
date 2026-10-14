@@ -41,3 +41,46 @@ func TestStore(t *testing.T) {
 		t.Fatalf("plan %+v", p)
 	}
 }
+
+// A strategy a provider refused is off for its model at once in the
+// process that heard, then in every process that loads, until it ages out
+// (and is dropped).
+func TestRefused(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{})
+	ctx := context.Background()
+	plan := func(s *cacheprofile.Store) string {
+		return s.Plan("openrouter", false, "m", promptcache.Markers, "c", true).Strategy
+	}
+	s := w.App.CacheProfiles
+	s.Refused("openrouter", "m", promptcache.Markers)
+	s.Refused("openrouter", "m", promptcache.Markers)
+	if got := plan(s); got != promptcache.Auto {
+		t.Fatalf("this process: %q", got)
+	}
+	if got := s.Plan("openrouter", false, "other", promptcache.Markers, "c", true).Strategy; got != promptcache.Markers {
+		t.Fatalf("another model: %q", got)
+	}
+
+	now := time.Now()
+	other := cacheprofile.New(cacheprofile.Config{Ent: w.App.Ent, KV: w.C.KV, Now: func() time.Time { return now }})
+	for i := 0; plan(other) != promptcache.Auto; i++ {
+		if i == 200 {
+			t.Fatal("another process never heard")
+		}
+		time.Sleep(10 * time.Millisecond)
+		if err := other.Load(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now = now.Add(8 * 24 * time.Hour)
+	if err := other.Load(ctx); err != nil {
+		t.Fatal(err)
+	}
+	third := cacheprofile.New(cacheprofile.Config{Ent: w.App.Ent, KV: w.C.KV})
+	if err := third.Load(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if plan(other) != promptcache.Markers || plan(third) != promptcache.Markers {
+		t.Fatalf("aged out: %q, %q", plan(other), plan(third))
+	}
+}

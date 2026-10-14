@@ -6,6 +6,7 @@
 package fakeupstream
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,6 +47,9 @@ type Options struct {
 	// Prompt is the prompt tokens Chat Completions usage reports (default
 	// PromptTokens), CachedTokens of them read from the cache.
 	Prompt int
+	// RefuseMarkers refuses Chat Completions calls with cache breakpoints
+	// (cache_control), as a provider that doesn't take them.
+	RefuseMarkers bool
 }
 
 // routed adds Backend, Cost and Prompt to a Chat Completions answer or
@@ -158,6 +162,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch path {
 	case "/chat/completions":
+		if s.opts.RefuseMarkers && bytes.Contains(body, []byte(`"cache_control"`)) {
+			http.Error(w, `{"error":{"message":"Unrecognized request argument supplied: cache_control","type":"invalid_request_error"}}`,
+				http.StatusBadRequest)
+			return
+		}
 		if req.Stream {
 			s.chatStream(w, r, req.Model, s.pieces(req.Model, body), req.StreamOptions != nil && req.StreamOptions.IncludeUsage)
 		} else {

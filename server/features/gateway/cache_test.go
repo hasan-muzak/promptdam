@@ -1,10 +1,12 @@
 package gateway_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -177,6 +179,114 @@ func TestOpenRouterCaching(t *testing.T) {
 	_, _ = e.post(t, "/v1/chat/completions", strings.Replace(chat, `"messages"`, `"session_id":"s1","messages"`, 1))
 	if _, h := sent(e); h.Get("X-Session-Id") != "" {
 		t.Fatalf("a body session_id got a header too: %q", h.Get("X-Session-Id"))
+	}
+}
+
+// A provider that refuses the gateway's breakpoints gets the call again
+// unmarked and without the gateway's session; when that answers, markers
+// are switched off for the model where its kind may cache without them.
+// A retry refused too, or Anthropic's refusal of a call's own breakpoints,
+// switches nothing off.
+func TestRefusedMarkersAreDropped(t *testing.T) {
+	system, _ := json.Marshal(strings.Repeat("Follow the house style. ", 120))
+	chat := `{"model":"google/gemini-3.8-flash","messages":[{"role":"system","content":` + string(system) + `},
+		{"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}]}`
+	refusal := `{"error":{"message":"Unknown parameter: 'messages[0].content[0].cache_control'.","code":400}}`
+	answer := `{"id":"c","object":"chat.completion","model":"google/gemini-3.8-flash","choices":[{"index":0,
+		"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":1}}`
+	type seen struct {
+		marked  bool
+		session string
+	}
+	var mu sync.Mutex
+	var calls []seen
+	refuse := func(always bool) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			calls = append(calls, seen{bytes.Contains(body, []byte("cache_control")), r.Header.Get("X-Session-Id")})
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			if always || bytes.Contains(body, []byte("cache_control")) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(w, refusal)
+				return
+			}
+			_, _ = io.WriteString(w, answer)
+		}
+	}
+	type kill struct{ kind, model, strategy string }
+	var kills []kill
+	run := func(handler http.HandlerFunc, kind string) (int, gateway.Record) {
+		t.Helper()
+		calls, kills = nil, nil
+		up, _ := provider(t, handler)
+		e := setup(t, fakeupstream.Options{}, func(string) gateway.Resolver {
+			return routeResolver{gateway.Route{PromptCache: true, Session: "pd-conv", Targets: []gateway.Target{{Provider: kind,
+				Kind: kind, BaseURL: up.URL + "/v1", Model: "google/gemini-3.8-flash", MinCache: 512,
+				Cache: gateway.CachePlan{Strategy: "markers"}}}}}
+		}, func(c *gateway.Config) {
+			c.CacheRefused = func(kind, model, strategy string) { kills = append(kills, kill{kind, model, strategy}) }
+		})
+		res, _ := e.post(t, "/v1/chat/completions", chat)
+		return res.StatusCode, e.record(t)
+	}
+
+	status, rec := run(refuse(false), "openrouter")
+	if status != 200 || len(calls) != 2 || !calls[0].marked || calls[0].session != "pd-conv" || calls[1].marked ||
+		calls[1].session != "" {
+		t.Fatalf("%d, calls %+v", status, calls)
+	}
+	if rec.Healed != gateway.HealUnmarked || rec.PromptCached || len(kills) != 1 ||
+		kills[0] != (kill{"openrouter", "google/gemini-3.8-flash", "markers"}) {
+		t.Fatalf("record %+v, kills %+v", rec, kills)
+	}
+
+	if status, _ := run(refuse(true), "openrouter"); status != 400 || len(calls) != 2 || len(kills) != 0 {
+		t.Fatalf("refused again: %d, %d calls, kills %+v", status, len(calls), kills)
+	}
+
+	// A custom endpoint may cache on its own: it loses its markers too.
+	if status, _ := run(refuse(false), "custom"); status != 200 || len(kills) != 1 {
+		t.Fatalf("custom: %d, kills %+v", status, kills)
+	}
+
+	// Anthropic takes breakpoints: a refusal names a call's own.
+	up, n := provider(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		if bytes.Contains(body, []byte("cache_control")) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"type":"error","error":{"type":"invalid_request_error","message":"A maximum of 4 blocks with cache_control may be provided. Found 5."}}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"id":"m","type":"message","role":"assistant","model":"claude-opus-5-5","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":5,"output_tokens":1}}`)
+	})
+	kills = nil
+	e := setup(t, fakeupstream.Options{}, func(string) gateway.Resolver {
+		return routeResolver{gateway.Route{PromptCache: true, Targets: []gateway.Target{{Provider: "anthropic", Kind: "anthropic",
+			BaseURL: up.URL + "/v1", MinCache: 512}}}}
+	}, func(c *gateway.Config) {
+		c.CacheRefused = func(kind, model, strategy string) { kills = append(kills, kill{kind, model, strategy}) }
+	})
+	res, out := e.post(t, "/v1/messages", `{"model":"claude-opus-5-5","max_tokens":9,"system":`+string(system)+`,
+		"messages":[{"role":"user","content":"a"}]}`)
+	if res.StatusCode != 200 || n.Load() != 2 || len(kills) != 0 || e.record(t).Healed != gateway.HealUnmarked {
+		t.Fatalf("anthropic: %d %s, %d calls, kills %+v", res.StatusCode, out, n.Load(), kills)
+	}
+
+	// A refusal that doesn't name the gateway's caching is the client's.
+	up, n = provider(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":{"message":"max_tokens is too large","code":400}}`)
+	})
+	e = setup(t, fakeupstream.Options{}, func(string) gateway.Resolver {
+		return routeResolver{gateway.Route{PromptCache: true, Session: "pd-conv", Targets: []gateway.Target{{Provider: "openrouter",
+			Kind: "openrouter", BaseURL: up.URL + "/v1", Model: "google/gemini-3.8-flash", MinCache: 512,
+			Cache: gateway.CachePlan{Strategy: "markers"}}}}}
+	})
+	if res, _ := e.post(t, "/v1/chat/completions", chat); res.StatusCode != 400 || n.Load() != 1 {
+		t.Fatalf("not ours: %d, %d calls", res.StatusCode, n.Load())
 	}
 }
 

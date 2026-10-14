@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/hasan-muzak/promptdam/server/features/cacheprofile"
-	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,11 +12,15 @@ import (
 
 	"github.com/hasan-muzak/keel-core/pkg/apikeys"
 
+	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/cacheprofile"
+	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
+	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/resolver"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
@@ -487,5 +489,38 @@ func TestCallsFollowTheirModelsProfile(t *testing.T) {
 	reqs = w.Fake.Requests()
 	if sent := string(reqs[len(reqs)-1].Body); strings.Contains(sent, "cache_control") {
 		t.Fatalf("a model without a profile was marked: %s", sent)
+	}
+}
+
+// A provider that refuses breakpoints answers the call sent again without
+// them, and its model's next calls go unmarked.
+func TestRefusedMarkersStayOff(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{Upstream: fakeupstream.Options{RefuseMarkers: true}})
+	ctx := context.Background()
+	w.Grant(catalog.PromptCaching)
+	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{Name: "default", PromptCache: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.App.CacheProfiles.Save(ctx, &cacheprofile.Doc{Models: map[string]cacheprofile.Profile{
+		cacheprofile.Key("custom", "llama-plain"): {Use: promptcache.Markers},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	system, _ := json.Marshal(strings.Repeat("Answer as the house style says. ", 200))
+	body := `{"model":"llama-plain","messages":[{"role":"system","content":` + string(system) + `},{"role":"user","content":"hi"}]}`
+	w.Eventually(func() bool { // the caching route reached the gateway
+		status, _, _ := w.Call("/v1/chat/completions", body)
+		recs := w.Records()
+		return status == 200 && len(recs) > 0 && recs[len(recs)-1].Healed == gateway.HealUnmarked
+	})
+	before := len(w.Fake.Requests())
+	if status, _, out := w.Call("/v1/chat/completions", body); status != 200 {
+		t.Fatalf("%d %s", status, out)
+	}
+	reqs := w.Fake.Requests()
+	recs := w.Records()
+	if len(reqs) != before+1 || strings.Contains(string(reqs[len(reqs)-1].Body), "cache_control") ||
+		recs[len(recs)-1].CacheStrategy != promptcache.Auto || recs[len(recs)-1].Healed != "" {
+		t.Fatalf("the next call: %d sent, record %+v", len(reqs)-before, recs[len(recs)-1])
 	}
 }

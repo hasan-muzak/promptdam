@@ -226,8 +226,10 @@ type Record struct {
 	// Effort is the reasoning effort the gateway sent the call with ("":
 	// the client's own, or none).
 	Effort string
-	// Healed says how a call whose thinking a rewrite invalidated was sent
-	// again (HealDropBlock, HealStripThinking), "" when it wasn't.
+	// Healed says how a call a provider refused was sent again: its thinking
+	// a rewrite invalidated (HealDropBlock, HealStripThinking), the
+	// gateway's caching (HealUnmarked), or both, comma-separated; "" when it
+	// wasn't.
 	Healed string
 	// Body and Answer are a sampled or captured call's request (as the
 	// provider got it) and the answer the client got (a whole response or
@@ -272,6 +274,12 @@ type Config struct {
 	ClientKey func(*http.Request) string
 	// Cache is the response cache (nil: none).
 	Cache Cache
+	// CacheRefused hears of a model whose provider refused the gateway's
+	// caching strategy (cache_control breakpoints, a session) and answered
+	// the call sent again without it: the strategy is to be switched off for
+	// the model (cacheprofile.Store.Refused). It runs on the request's
+	// goroutine: it must not block.
+	CacheRefused func(kind, model, strategy string)
 }
 
 // Cache keeps answers for routes that cache them (responsecache.Cache).

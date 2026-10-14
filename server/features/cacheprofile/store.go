@@ -5,6 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -25,6 +30,11 @@ const keep = 5
 // learner announces new ones.
 const reload = 15 * time.Minute
 
+// offFor is how long a strategy a provider refused stays off for its
+// model: long enough that its calls stop failing, short enough that a
+// provider that learns to take it gets it back within a week.
+const offFor = 7 * 24 * time.Hour
+
 // Config configures a Store.
 type Config struct {
 	Ent *pdent.Client
@@ -37,6 +47,10 @@ type Config struct {
 type Store struct {
 	cfg Config
 	cur atomic.Pointer[Doc]
+	// off are the strategies providers refused, by Key, read on every
+	// call; mu orders the writes (each one a new map).
+	off atomic.Pointer[map[string][]string]
+	mu  sync.Mutex
 
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -50,6 +64,7 @@ func New(cfg Config) *Store {
 	}
 	s := &Store{cfg: cfg}
 	s.cur.Store(&Doc{})
+	s.off.Store(&map[string][]string{})
 	return s
 }
 
@@ -58,11 +73,88 @@ func (s *Store) Current() *Doc { return s.cur.Load() }
 
 // Plan implements resolver.CachePlanner.
 func (s *Store) Plan(kind string, anthropic bool, model, def, conversation string, inTurn bool) gateway.CachePlan {
-	return s.Current().Plan(kind, anthropic, model, def, conversation, inTurn, nil)
+	return s.Current().Plan(kind, anthropic, model, def, conversation, inTurn, (*s.off.Load())[Key(kind, model)])
 }
 
-// Load reads the newest profiles.
+// Refused switches a strategy off for a model whose provider refused it
+// (gateway.Config.CacheRefused): at once in this process, and, in the
+// background, for every process for offFor (a Valkey hash, announced).
+// It doesn't block.
+func (s *Store) Refused(kind, model, strategy string) {
+	key := Key(kind, model)
+	if !s.switchOff(key, strategy) {
+		return
+	}
+	slog.Warn("cacheprofile: a provider refused a caching strategy; switched off for the model", "kind", kind,
+		"model", model, "strategy", strategy, "for", offFor)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		c, k := s.cfg.KV.Client, offKey(s.cfg.KV)
+		now := strconv.FormatInt(s.cfg.Now().Unix(), 10)
+		for _, r := range c.DoMulti(ctx,
+			c.B().Hset().Key(k).FieldValue().FieldValue(key+"\x00"+strategy, now).Build(),
+			c.B().Expire().Key(k).Seconds(int64(offFor/time.Second)).Build(),
+			c.B().Publish().Channel(channel(s.cfg.KV)).Message("off").Build(),
+		) {
+			if err := r.Error(); err != nil {
+				slog.Warn("cacheprofile: sharing a refused strategy; other processes find out when their calls are refused", "err", err)
+				return
+			}
+		}
+	}()
+}
+
+// switchOff adds a strategy to a model's refused ones, reporting whether
+// it is new.
+func (s *Store) switchOff(key, strategy string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur := *s.off.Load()
+	if slices.Contains(cur[key], strategy) {
+		return false
+	}
+	next := maps.Clone(cur)
+	next[key] = append(slices.Clip(cur[key]), strategy)
+	s.off.Store(&next)
+	return true
+}
+
+// loadOff reads the strategies providers refused within offFor; older
+// ones are dropped.
+func (s *Store) loadOff(ctx context.Context) error {
+	c, k := s.cfg.KV.Client, offKey(s.cfg.KV)
+	all, err := c.Do(ctx, c.B().Hgetall().Key(k).Build()).AsStrMap()
+	if err != nil {
+		return fmt.Errorf("cacheprofile: reading refused strategies: %w", err)
+	}
+	since := s.cfg.Now().Add(-offFor).Unix()
+	off, stale := map[string][]string{}, []string{}
+	for field, at := range all {
+		key, strategy, ok := strings.Cut(field, "\x00")
+		when, err := strconv.ParseInt(at, 10, 64)
+		if !ok || err != nil || when < since {
+			stale = append(stale, field)
+			continue
+		}
+		off[key] = append(off[key], strategy)
+	}
+	if len(stale) > 0 {
+		_ = c.Do(ctx, c.B().Hdel().Key(k).Field(stale...).Build()).Error()
+	}
+	s.mu.Lock()
+	s.off.Store(&off)
+	s.mu.Unlock()
+	return nil
+}
+
+func offKey(store *kv.Store) string { return store.Key("cache-off") }
+
+// Load reads the newest profiles and the strategies providers refused.
 func (s *Store) Load(ctx context.Context) error {
+	if err := s.loadOff(ctx); err != nil {
+		slog.Warn("cacheprofile: keeping the refused strategies this process knows", "err", err)
+	}
 	row, err := s.cfg.Ent.CacheProfile.Query().Order(pdent.Desc(cacheprofile.FieldCreatedAt)).First(ctx)
 	if pdent.IsNotFound(err) {
 		return nil

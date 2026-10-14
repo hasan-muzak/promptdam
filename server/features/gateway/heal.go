@@ -76,13 +76,16 @@ func or(s, def string) string {
 // conversation changed to be dropped rather than refused.
 const thinkingBindingBeta = "thinking-binding-controls-2026-08-01"
 
-// Heals: how a call whose thinking a rewrite invalidated was sent again.
+// Heals: how a call a provider refused was sent again.
 const (
 	// HealDropBlock: the provider was asked to drop the blocks
 	// (thinking.block_binding.prefix_mismatch_behavior).
 	HealDropBlock = "drop_block"
 	// HealStripThinking: the history's thinking blocks were taken out.
 	HealStripThinking = "strip_thinking"
+	// HealUnmarked: the call was sent again without the gateway's cache
+	// breakpoints and session, which its provider refused.
+	HealUnmarked = "unmarked"
 )
 
 // healThinking is a Messages call sent again after the provider refused a

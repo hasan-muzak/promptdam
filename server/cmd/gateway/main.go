@@ -96,6 +96,9 @@ func run() error {
 		Transport: transport,
 		ClientKey: c.ClientIP.Key,
 		Cache:     responsecache.New(c.KV),
+		// A provider that refuses the gateway's cache breakpoints stops
+		// getting them, in every replica.
+		CacheRefused: app.CacheProfiles.Refused,
 	})
 
 	// Prices are loaded and kept current, usage, spend and rate counters

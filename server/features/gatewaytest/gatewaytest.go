@@ -168,7 +168,7 @@ func New(t *testing.T, opts Options) *World {
 	}
 	w.Gateway = httptest.NewServer(gateway.New(gateway.Config{
 		Resolver: res, Transport: transport,
-		Cache: responsecache.New(c.KV),
+		Cache: responsecache.New(c.KV), CacheRefused: w.App.CacheProfiles.Refused,
 		Done: func(r *gateway.Record) {
 			w.Log.Record(r)
 			w.Eval.Offer(r)
@@ -207,7 +207,7 @@ func (w *World) Replica() *httptest.Server {
 		w.T.Cleanup(func() { _ = l.Stop(context.Background()) })
 	}
 	srv := httptest.NewServer(gateway.New(gateway.Config{
-		Resolver: res, Transport: transport, Cache: responsecache.New(w.C.KV),
+		Resolver: res, Transport: transport, Cache: responsecache.New(w.C.KV), CacheRefused: w.App.CacheProfiles.Refused,
 		Done: func(r *gateway.Record) {
 			w.Log.Record(r)
 			w.Eval.Offer(r)

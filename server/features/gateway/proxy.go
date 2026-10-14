@@ -21,6 +21,7 @@ import (
 
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 	"github.com/hasan-muzak/promptdam/server/features/translate"
 )
@@ -360,11 +361,14 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 		dropped = append(dropped, gone...)
 	}
 	c.rec.CacheStrategy, c.rec.CacheTrial = "", false
-	if c.promptCache {
-		body = c.cachePrompt(body, format, t, req)
-	}
 	if t.Kind == "openrouter" && format == wire.OpenAIChat {
 		body = withUsageAccounting(body)
+	}
+	// What the call is without the gateway's breakpoints and session, for
+	// a provider that refuses them.
+	plain := body
+	if c.promptCache {
+		body = c.cachePrompt(body, format, t, req)
 	}
 	ctx, cancel := context.WithCancel(c.r.Context())
 	defer cancel()
@@ -382,34 +386,53 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 	var res *http.Response
 	var err error
 	beta := ""
-	for healing := true; ; healing = false {
+	// A provider that refuses the gateway's breakpoints or session gets the
+	// call once without them (unmarking); when that answers, the strategy
+	// is switched off for the model (Config.CacheRefused).
+	healing, unmarking, session := true, c.promptCache, c.promptCache
+	kill := false
+	for {
 		up, rerr := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+path, bytes.NewReader(body))
 		if rerr != nil {
 			c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_misconfigured", Message: "the provider's base URL is invalid"})
 			return answered, false
 		}
 		upstreamHeader(up.Header, c.r.Header, format, t.Header)
-		if c.promptCache {
-			sessionHeader(up.Header, c.r.Header, body, t.Kind, c.session)
-		}
+		sessioned := session && sessionHeader(up.Header, c.r.Header, body, t.Kind, c.session)
 		if beta != "" {
 			addBeta(up.Header, beta)
 		}
 		sent := time.Now()
 		res, err = c.h.cfg.Transport.RoundTrip(up)
 		c.rec.Upstream += time.Since(sent)
-		if err != nil || !healing || !c.rewrote || format != wire.AnthropicMessages || res.StatusCode != http.StatusBadRequest ||
-			eventStream(res.Header) {
+		thinking := healing && c.rewrote && format == wire.AnthropicMessages
+		marked := unmarking && (c.rec.PromptCached || sessioned)
+		if err != nil || res.StatusCode != http.StatusBadRequest || eventStream(res.Header) || !thinking && !marked {
 			break
 		}
 		raw, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorBody))
 		_ = res.Body.Close()
-		healed, how, needs, ok := healThinking(body, raw)
-		if !ok {
-			res.Body = io.NopCloser(bytes.NewReader(raw))
-			break
+		if thinking {
+			if healed, how, needs, ok := healThinking(body, raw); ok {
+				body, beta, c.rec.Healed, healing = healed, needs, how, false
+				if p, _, _, ok := healThinking(plain, raw); ok {
+					plain = p
+				}
+				continue
+			}
 		}
-		body, beta, c.rec.Healed = healed, needs, how
+		if refused := refusedCaching(raw); marked && refused != refusedNothing {
+			kill = refused == refusedMarkers && c.rec.PromptCached && c.rec.CacheStrategy == promptcache.Markers &&
+				killsMarkers(t.Kind, format == wire.AnthropicMessages)
+			body, unmarking, session, c.rec.PromptCached = plain, false, false, false
+			c.rec.Healed = strings.TrimPrefix(c.rec.Healed+","+HealUnmarked, ",")
+			continue
+		}
+		res.Body = io.NopCloser(bytes.NewReader(raw))
+		break
+	}
+	if kill && err == nil && res.StatusCode < http.StatusBadRequest && c.h.cfg.CacheRefused != nil {
+		c.h.cfg.CacheRefused(t.Kind, t.Model, promptcache.Markers)
 	}
 	if err != nil {
 		if c.r.Context().Err() != nil {
