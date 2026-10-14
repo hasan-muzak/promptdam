@@ -40,7 +40,8 @@ import (
 // Without the stack's key it runs on the fake provider, unpaced, to check
 // the harness. PROMPTDAM_DEMO_PACE scales the pauses (1 by default),
 // PROMPTDAM_DEMO_USERS picks users (comma-separated); a transcript goes to
-// PROMPTDAM_DEMO_TRANSCRIPT.
+// PROMPTDAM_DEMO_TRANSCRIPT; PROMPTDAM_DEMO_LEARNED starts OpenRouter's
+// stack from caching profiles already learned (openRouterGateway).
 const maxTrafficSpend = 3.00 // dollars
 
 // A chat: who, when they open it, and their messages, each sent after a

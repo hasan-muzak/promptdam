@@ -9,7 +9,9 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/llm"
 
 	"github.com/hasan-muzak/promptdam/server/catalog"
+	"github.com/hasan-muzak/promptdam/server/features/cacheprofile"
 	"github.com/hasan-muzak/promptdam/server/features/gatewaytest"
+	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routers/tiers"
@@ -115,6 +117,18 @@ func openRouterGateway(t *testing.T, key, decider string) (*gatewaytest.World, *
 	}
 	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{Name: "default", PromptCache: true}); err != nil {
 		t.Fatal(err)
+	}
+	// PROMPTDAM_DEMO_LEARNED starts from caching profiles as the learner
+	// has them once it has seen enough of the models' calls (measured
+	// 2026-10-14): Gemini marked and kept off Google's Vertex backend,
+	// which never caches it. Without it, the run starts from nothing
+	// learned, as a new deployment does.
+	if os.Getenv("PROMPTDAM_DEMO_LEARNED") != "" {
+		if err := w.App.CacheProfiles.Save(ctx, &cacheprofile.Doc{Models: map[string]cacheprofile.Profile{
+			cacheprofile.Key("openrouter", orMid): {Use: promptcache.Markers, Avoid: []string{"google-vertex"}, Backends: 1},
+		}}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return w, w.App.Prices.Current()
 }
