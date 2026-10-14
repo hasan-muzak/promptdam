@@ -48,7 +48,7 @@ type ModelRouter struct {
 	Judge string `json:"judge,omitempty"`
 	// Asked when the classifier is unsure: model or provider/model; empty: never
 	DecisionModel string `json:"decision_model,omitempty"`
-	// How long the decision model may take before the default tier serves
+	// How long the decision model may take before the default tier serves (0: auto)
 	DecisionTimeoutMs int `json:"decision_timeout_ms,omitempty"`
 	// ActivatedAt holds the value of the "activated_at" field.
 	ActivatedAt *time.Time `json:"activated_at,omitempty"`

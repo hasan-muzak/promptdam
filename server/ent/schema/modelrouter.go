@@ -43,7 +43,7 @@ func (ModelRouter) Fields() []ent.Field {
 			Comment("The model that judges answers: model or provider/model; empty: claude-sonnet-5-5 when an Anthropic provider serves it"),
 		field.String("decision_model").Default("").MaxLen(300).
 			Comment("Asked when the classifier is unsure: model or provider/model; empty: never"),
-		field.Int("decision_timeout_ms").Default(150).Comment("How long the decision model may take before the default tier serves"),
+		field.Int("decision_timeout_ms").Default(0).Comment("How long the decision model may take before the default tier serves (0: auto)"),
 		field.Time("activated_at").Optional().Nillable(),
 		field.JSON("demoted", []tiers.Demotion{}).Default([]tiers.Demotion{}).Annotations(entsql.Default("[]")).
 			Comment("Tiers the canary demoted: the router places no call on them until restored"),

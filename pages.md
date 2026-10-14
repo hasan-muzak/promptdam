@@ -353,6 +353,10 @@ Tabs:
   - calls per tier: served vs. decided (they differ in shadow mode), as stacked bars;
   - how calls were placed: explicit, rule, classifier, decision, default, held (new turns kept on a warm tier because
     switching would have cost more in cache than it saved);
+  - the decision model (when the router has one): calls asked per outcome (answered, cached, timeout, error,
+    unreadable), what it cost and how long calls waited (median, p95, p99). Warn when timeouts pass 5% of the
+    questions: "The decision model answered too late for 8% of calls, which went to the default tier. Pick a faster
+    model, or set a longer timeout in Settings.";
   - range picker (default 7 days, up to 90).
 - **Quality:** each tier against the default tier: judged calls, wins, ties, losses, quality with its 95% interval,
   drawn against the floor line; meets floor or not; demoted tiers with **Restore**. Families judged most, with their
@@ -369,7 +373,9 @@ Tabs:
   see the tier it would serve and why (step, rule, confidence, unsure), what the call needs of a model (tools, images,
   files, JSON schema, context size), which tiers' models can take it, and the providers and models it would try, in
   order. No provider is called.
-- **Settings:** status, default tier, quality floor, sample rate, evaluation budget, judge, decision model and timeout;
+- **Settings:** status, default tier, quality floor, sample rate, evaluation budget, judge, decision model and timeout
+  (Auto by default: "Promptdam measures your decision model and waits as long as its slow answers take, at most 3 s";
+  or a fixed 20 to 3,000 ms);
   delete (refused with 409 `router_in_use` while a route uses it: name the routes).
 
 **API:** `GET/PUT/DELETE …/routers/{router}`, `GET …/routers/{router}/report`, `POST …/routers/{router}/explain`,

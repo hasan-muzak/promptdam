@@ -252,7 +252,7 @@ var (
 		{Name: "eval_budget_micros", Type: field.TypeInt64, Default: 100000000},
 		{Name: "judge", Type: field.TypeString, Size: 300, Default: ""},
 		{Name: "decision_model", Type: field.TypeString, Size: 300, Default: ""},
-		{Name: "decision_timeout_ms", Type: field.TypeInt, Default: 150},
+		{Name: "decision_timeout_ms", Type: field.TypeInt, Default: 0},
 		{Name: "activated_at", Type: field.TypeTime, Nullable: true},
 		{Name: "demoted", Type: field.TypeJSON, Default: "[]"},
 		{Name: "ready_at", Type: field.TypeTime, Nullable: true},

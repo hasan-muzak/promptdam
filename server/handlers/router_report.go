@@ -85,10 +85,21 @@ type RouterReportOut struct {
 	EvalMicros           int64                   `json:"eval_micros" doc:"What evaluation (replays, judging) spent on the project's keys"`
 	Ready                bool                    `json:"ready" doc:"Every cheaper tier the router chose meets the quality floor, on enough judged calls"`
 	Sources              map[string]uint64       `json:"sources" doc:"Calls by the step that chose their tier (shadow: first when the router only watched)"`
+	Decisions            []RouterDecisionOut     `json:"decisions" doc:"The calls the decision model was asked about, by how it answered"`
 	Tiers                []RouterReportTierOut   `json:"tiers"`
 	Families             []RouterReportFamilyOut `json:"families" doc:"The families judged most, per tier"`
 	ClassifierVersion    int                     `json:"classifier_version" doc:"0: not trained yet"`
 	ClassifierTrainedAt  *time.Time              `json:"classifier_trained_at"`
+}
+
+// RouterDecisionOut is the decision model's calls that went one way.
+type RouterDecisionOut struct {
+	Outcome    string  `json:"outcome" doc:"answered, cached (an answer to the same question reused), timeout, error, or unreadable (it named no tier)"`
+	Calls      uint64  `json:"calls"`
+	CostMicros int64   `json:"cost_micros" doc:"What the decision model cost for them"`
+	WaitP50Ms  float64 `json:"wait_p50_ms" doc:"How long the calls waited: the median"`
+	WaitP95Ms  float64 `json:"wait_p95_ms"`
+	WaitP99Ms  float64 `json:"wait_p99_ms"`
 }
 
 // GetRouterReport reports how a router did.
@@ -131,7 +142,14 @@ func (h *Handlers) GetRouterReport(ctx *muzak.Context, in RouterReportIn) (Route
 		QualityFloor: rt.QualityFloor, Calls: rep.Calls, Errors: rep.Errors, CostMicros: rep.CostMicros,
 		EstimatedMicros: rep.EstimatedMicros, RoutingMicros: rep.CostMicros - rep.EstimatedMicros,
 		LedgerSavingsMicros: rep.SavingsMicros, Unpriced: rep.Unpriced, EvalMicros: rep.EvalMicros, Ready: rep.Ready,
-		Sources: rep.Sources, Tiers: make([]RouterReportTierOut, len(rep.Tiers)), Families: []RouterReportFamilyOut{}}
+		Sources: rep.Sources, Tiers: make([]RouterReportTierOut, len(rep.Tiers)), Families: []RouterReportFamilyOut{},
+		Decisions: make([]RouterDecisionOut, len(rep.Decisions))}
+	for i, d := range rep.Decisions {
+		out.Decisions[i] = RouterDecisionOut{Outcome: d.Outcome, Calls: d.Calls, CostMicros: d.CostMicros}
+		if len(d.WaitMs) == 3 {
+			out.Decisions[i].WaitP50Ms, out.Decisions[i].WaitP95Ms, out.Decisions[i].WaitP99Ms = d.WaitMs[0], d.WaitMs[1], d.WaitMs[2]
+		}
+	}
 	out.MonthlyRoutingMicros = routers.Monthly(out.RoutingMicros, from, to)
 
 	cls, err := h.Routers.Classifier(ctx.Context(), row.ID)

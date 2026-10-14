@@ -459,7 +459,7 @@ func TestRouters(t *testing.T) {
 	// Every plan runs routers in shadow mode, the default.
 	rtr := testclient.Decoded[handlers.RouterOut](e.client.Post(path, alice, testclient.JSON(auto)).AssertStatus(http.StatusCreated))
 	if rtr.Status != "shadow" || rtr.DefaultTier != "smart" || rtr.EvalBudgetMicros != 100_000_000 || rtr.QualityFloor != 0.95 ||
-		rtr.Watching || !rtr.Learned ||
+		rtr.Watching || !rtr.Learned || rtr.DecisionTimeoutMS != 0 ||
 		!strings.HasPrefix(rtr.ID, handlers.RouterPrefix+"_") || len(rtr.Tiers) != 2 || rtr.Tiers[0].Fallbacks == nil {
 		t.Fatalf("created %+v", rtr)
 	}
@@ -513,6 +513,8 @@ func TestRouters(t *testing.T) {
 		"a model's name": {map[string]any{"name": "gpt-5", "tiers": []map[string]any{{"name": "a", "model": "m"}}}, ""},
 		"no tiers":       {map[string]any{"name": "x", "tiers": []map[string]any{}}, ""},
 		"a bad tier":     {map[string]any{"name": "x", "tiers": []map[string]any{{"name": "A B", "model": "m"}}}, ""},
+		"a decision timeout past 3 s": {map[string]any{"name": "x", "tiers": []map[string]any{{"name": "a", "model": "m"}},
+			"decision_timeout_ms": 3001}, ""},
 	} {
 		res := e.client.Post(path, alice, testclient.JSON(tt.body))
 		if res.Status != http.StatusUnprocessableEntity {

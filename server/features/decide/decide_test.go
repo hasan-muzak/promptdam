@@ -83,19 +83,20 @@ func TestDecide(t *testing.T) {
 	d := decide.New(safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true}))
 	ctx := context.Background()
 
-	tier, usage, err := d.Decide(ctx, question(srv.URL, time.Second))
-	if err != nil || tier != "fast" || usage.Input != 80 {
-		t.Fatalf("%q %+v %v", tier, usage, err)
+	got := d.Decide(ctx, question(srv.URL, time.Second))
+	if got.Outcome != resolver.DecisionAnswered || got.Tier != "fast" || got.Usage.Input != 80 || got.Took <= 0 {
+		t.Fatalf("%+v", got)
 	}
-	if tier, usage, _ = d.Decide(ctx, question(srv.URL, time.Second)); tier != "fast" || usage.Input != 0 || calls.Load() != 1 {
-		t.Fatalf("cached: %q %+v, %d calls", tier, usage, calls.Load())
+	if got = d.Decide(ctx, question(srv.URL, time.Second)); got.Tier != "fast" || got.Usage.Input != 0 ||
+		got.Outcome != resolver.DecisionCached || calls.Load() != 1 {
+		t.Fatalf("cached: %+v, %d calls", got, calls.Load())
 	}
 	slow.Store(true)
 	q := question(srv.URL, 50*time.Millisecond)
 	q.Request = "Another question"
 	start := time.Now()
-	if tier, _, err := d.Decide(ctx, q); tier != "" || err == nil || time.Since(start) > 250*time.Millisecond {
-		t.Fatalf("past the timeout: %q %v after %s", tier, err, time.Since(start))
+	if got := d.Decide(ctx, q); got.Tier != "" || got.Outcome != resolver.DecisionTimeout || time.Since(start) > 250*time.Millisecond {
+		t.Fatalf("past the timeout: %+v after %s", got, time.Since(start))
 	}
 }
 
@@ -119,8 +120,8 @@ func TestDecideSharesAndForgets(t *testing.T) {
 	for range 5 {
 		go func() {
 			defer func() { done <- struct{}{} }()
-			if tier, usage, err := d.Decide(ctx, question(srv.URL, time.Second)); err == nil && tier == "fast" {
-				paid.Add(int64(usage.Input))
+			if got := d.Decide(ctx, question(srv.URL, time.Second)); got.Tier == "fast" {
+				paid.Add(int64(got.Usage.Input))
 			}
 		}()
 	}
@@ -133,14 +134,15 @@ func TestDecideSharesAndForgets(t *testing.T) {
 
 	edited := question(srv.URL, time.Second)
 	edited.Tiers[0].Description = "Counting, lists and extraction"
-	if _, usage, _ := d.Decide(ctx, edited); calls.Load() != 2 || usage.Input != 80 {
+	if got := d.Decide(ctx, edited); calls.Load() != 2 || got.Usage.Input != 80 {
 		t.Fatalf("an edited router reused an answer: %d calls", calls.Load())
 	}
 }
 
 // An active router asks its decision model about the calls its classifier
-// is unsure of (here, every call: it isn't trained yet), and the call
-// counts what that cost.
+// is unsure of (here, every call: it isn't trained yet), within the auto
+// timeout when it sets none; the call counts what that cost, the request
+// log says how the question went, and the router's report sums it.
 func TestRoutersAskTheDecisionModel(t *testing.T) {
 	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true, Sample: func() float64 { return 1 },
 		Upstream: fakeupstream.Options{Reply: func(model string, body []byte) string {
@@ -151,29 +153,53 @@ func TestRoutersAskTheDecisionModel(t *testing.T) {
 		}}})
 	ctx := context.Background()
 	w.Grant(catalog.Routers, catalog.RoutingLearned)
-	if _, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
-		DecisionModel: "gpt-5-mini", DecisionTimeoutMS: 2000,
+	row, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
+		DecisionModel: "gpt-5-mini",
 		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-mini", Description: "Simple questions"},
-			{Name: "smart", Model: "gpt-5"}}}}); err != nil {
+			{Name: "smart", Model: "gpt-5"}}}})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if row.DecisionTimeoutMs != 0 {
+		t.Fatalf("a router setting no timeout got %d ms, not auto", row.DecisionTimeoutMs)
 	}
 	w.Eventually(func() bool {
 		_, h, _ := w.Call("/v1/chat/completions", `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`)
 		return h.Get(brand.HeaderTierSource) == "decision" && h.Get(brand.HeaderTier) == "fast"
 	})
+	// The same question again: the answer is reused.
+	if _, h, _ := w.Call("/v1/chat/completions", `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`); h.Get(brand.HeaderTier) != "fast" {
+		t.Fatalf("tier %q", h.Get(brand.HeaderTier))
+	}
 	if err := w.Log.Stop(ctx); err != nil {
 		t.Fatal(err)
 	}
 	var rows []struct {
-		Source string `ch:"tier_source"`
-		Micros int64  `ch:"router_micros"`
+		Source   string `ch:"tier_source"`
+		Micros   int64  `ch:"router_micros"`
+		Decision string `ch:"decision"`
 	}
-	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT tier_source, router_micros FROM requests
-		WHERE {tenant} AND tier_source = 'decision' ORDER BY ts LIMIT 1`); err != nil || len(rows) != 1 {
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT tier_source, router_micros, decision FROM requests
+		WHERE {tenant} AND tier_source = 'decision' ORDER BY ts`); err != nil || len(rows) < 2 {
 		t.Fatalf("%d rows, %v", len(rows), err)
 	}
-	if rows[0].Micros <= 0 {
-		t.Fatalf("the decision cost nothing: %+v", rows[0])
+	if rows[0].Micros <= 0 || rows[0].Decision != resolver.DecisionAnswered {
+		t.Fatalf("the first decision: %+v", rows[0])
+	}
+	if last := rows[len(rows)-1]; last.Micros != 0 || last.Decision != resolver.DecisionCached {
+		t.Fatalf("a reused answer: %+v", last)
+	}
+
+	rep, err := routers.BuildReport(ctx, w.C.Events, w.Project, routers.Of(row), time.Now().Add(-time.Hour), time.Now().Add(time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]routers.DecisionReport{}
+	for _, d := range rep.Decisions {
+		got[d.Outcome] = d
+	}
+	if a := got[resolver.DecisionAnswered]; a.Calls != 1 || a.CostMicros <= 0 || len(a.WaitMs) != 3 || got[resolver.DecisionCached].Calls == 0 {
+		t.Fatalf("decisions %+v", rep.Decisions)
 	}
 }
 
@@ -192,8 +218,8 @@ func TestAnswersAreTheProjectsOwn(t *testing.T) {
 	for _, project := range []uuid.UUID{uuid.New(), uuid.New(), uuid.Nil} {
 		q := question(srv.URL, time.Second)
 		q.Project = project
-		if tier, _, err := d.Decide(ctx, q); err != nil || tier != "fast" {
-			t.Fatalf("%q %v", tier, err)
+		if got := d.Decide(ctx, q); got.Outcome != resolver.DecisionAnswered || got.Tier != "fast" {
+			t.Fatalf("%+v", got)
 		}
 	}
 	if calls.Load() != 3 {
@@ -209,8 +235,8 @@ func TestAnswersAreTheProjectsOwn(t *testing.T) {
 	defer moved.Close()
 	q := question(moved.URL, time.Second)
 	q.Project = uuid.New()
-	if tier, _, _ := d.Decide(ctx, q); tier != "" || followed.Load() {
-		t.Fatalf("followed a redirect: %q", tier)
+	if got := d.Decide(ctx, q); got.Tier != "" || followed.Load() {
+		t.Fatalf("followed a redirect: %+v", got)
 	}
 }
 
@@ -276,8 +302,8 @@ func TestDecideOnModelsThatThink(t *testing.T) {
 		t.Helper()
 		q := question(srv.URL, time.Second)
 		q.Target, q.Request = target, target.Model // a new question each time
-		if _, _, err := d.Decide(context.Background(), q); err != nil {
-			t.Fatal(err)
+		if got := d.Decide(context.Background(), q); got.Outcome != resolver.DecisionAnswered {
+			t.Fatalf("%+v", got)
 		}
 		req := got[len(got)-1]
 		if _, set := req["temperature"]; set {

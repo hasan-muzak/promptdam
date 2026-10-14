@@ -81,8 +81,10 @@ type Meta struct {
 	// Decision is the decision model's call when one was asked: its
 	// target and usage, which the call's cost includes.
 	Decision struct {
-		Target gateway.Target
-		Usage  wire.Usage
+		Target  gateway.Target
+		Usage   wire.Usage
+		Outcome string
+		Took    time.Duration
 	}
 	// Sampled marks a call its router evaluates: the router and the
 	// project's configuration the call was placed with go with it.
@@ -146,8 +148,29 @@ type Config struct {
 
 // Decider asks a decision model which tier a call needs.
 type Decider interface {
-	Decide(ctx context.Context, q Question) (tier string, usage wire.Usage, err error)
+	Decide(ctx context.Context, q Question) Decision
 }
+
+// Decision is a decision model's answer to a call.
+type Decision struct {
+	// Tier is the tier it picked, "" when it picked none.
+	Tier string
+	// Usage is what the call paid: nothing for an answer reused.
+	Usage wire.Usage
+	// Outcome is how the question went (Decision… constants); Took how
+	// long the call waited for it, and Timeout how long it could.
+	Outcome       string
+	Took, Timeout time.Duration
+}
+
+// How a decision model's question went, as the request log says.
+const (
+	DecisionAnswered   = "answered"   // the model named a tier
+	DecisionCached     = "cached"     // an answer to the same question reused
+	DecisionTimeout    = "timeout"    // no answer within the timeout
+	DecisionError      = "error"      // the provider failed or refused
+	DecisionUnreadable = "unreadable" // an answer naming no tier
+)
 
 // Question is what a decision model is asked.
 type Question struct {
@@ -163,7 +186,9 @@ type Question struct {
 	// Instructions and Request are the call's instructions and its last
 	// user message.
 	Instructions, Request string
-	Timeout               time.Duration
+	// Timeout bounds the wait; 0 lets the decider set it from how long
+	// the model takes (an auto timeout).
+	Timeout time.Duration
 }
 
 // Resolver implements gateway.Resolver and gateway.ModelLister.

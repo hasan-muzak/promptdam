@@ -170,9 +170,9 @@ type countingDecider struct {
 	asked int
 }
 
-func (d *countingDecider) Decide(context.Context, Question) (string, wire.Usage, error) {
+func (d *countingDecider) Decide(context.Context, Question) Decision {
 	d.asked++
-	return d.tier, wire.Usage{}, nil
+	return Decision{Tier: d.tier, Outcome: DecisionAnswered}
 }
 
 // A turn keeps its tier: the calls of an agent's tool loop are placed as

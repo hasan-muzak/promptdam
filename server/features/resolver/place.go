@@ -442,12 +442,9 @@ func (r *Resolver) decide(ctx context.Context, snap *snapshot.Snapshot, rt *rout
 	q := Question{Project: m.Project, Router: rt.Name, Family: c.Shape.Family, Target: ts[0], Schema: schema || !known || md.Features == nil,
 		Tiers: rt.Spec.Tiers, Instructions: c.Request.Prefix.System, Request: c.Request.Turn.Text,
 		Timeout: time.Duration(rt.DecisionTimeoutMS) * time.Millisecond}
-	tier, usage, err := r.cfg.Decider.Decide(ctx, q)
-	m.Decision.Target, m.Decision.Usage = ts[0], usage
-	if err != nil {
-		return ""
-	}
-	return tier
+	d := r.cfg.Decider.Decide(ctx, q)
+	m.Decision.Target, m.Decision.Usage, m.Decision.Outcome, m.Decision.Took = ts[0], d.Usage, d.Outcome, d.Took
+	return d.Tier
 }
 
 // planHas reports whether the organization's plan has a feature; when the

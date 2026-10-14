@@ -35,12 +35,27 @@ type Report struct {
 	// EvalMicros is what evaluation (replays, judging) spent.
 	EvalMicros int64
 	Sources    map[string]uint64
-	Tiers      []TierReport
-	Families   []FamilyReport
+	// Decisions are the calls the decision model was asked about, by how
+	// it went, most first: a model that often times out leaves its calls
+	// on the default tier.
+	Decisions []DecisionReport
+	Tiers     []TierReport
+	Families  []FamilyReport
 	// Ready reports that every cheaper tier the router chose for calls
 	// has a quality whose lower bound meets the floor, on enough judged
 	// calls.
 	Ready bool
+}
+
+// DecisionReport is the decision model's calls that went one way
+// (resolver.Decision… outcomes).
+type DecisionReport struct {
+	Outcome    string `ch:"decision"`
+	Calls      uint64 `ch:"calls"`
+	CostMicros int64  `ch:"router_micros"`
+	// WaitMs are how long the calls waited, in milliseconds: the median,
+	// the 95th and the 99th percentiles.
+	WaitMs []float64 `ch:"wait_ms"`
 }
 
 // TierReport is one tier's part.
@@ -299,6 +314,14 @@ func BuildReport(ctx context.Context, db *events.DB, project uuid.UUID, r Router
 	}
 	if len(spent) > 0 {
 		rep.EvalMicros = spent[0].Micros
+	}
+
+	rep.Decisions = []DecisionReport{}
+	if err := db.Select(ctx, &rep.Decisions, events.Project(project), `SELECT decision, sum(calls) AS calls,
+		sum(router_micros) AS router_micros, quantilesTDigestMerge(0.5, 0.95, 0.99)(decision_ms) AS wait_ms
+		FROM decisions_hourly WHERE {tenant} AND router = ? AND hour >= toStartOfHour(?) AND hour < ?
+		GROUP BY decision ORDER BY calls DESC, decision`, r.Name, from, to); err != nil {
+		return nil, fmt.Errorf("routers: report decisions: %w", err)
 	}
 
 	var fams []struct {

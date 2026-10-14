@@ -2,7 +2,8 @@
 // when the classifier is unsure (project.md §6.2): the model reads the
 // tiers' descriptions and examples and an excerpt of the call, and answers
 // a tier, held to a schema where it takes one. A hard timeout falls back to
-// the default tier. Answers are cached per project, router, family, the
+// the default tier: the router's, else one measured on the model's latest
+// answers (latency.go). Answers are cached per project, router, family, the
 // question and the tiers as the model read them, so an edited router never
 // reuses an answer about its old tiers; identical questions asked at once
 // share one call.
@@ -13,6 +14,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,15 +48,17 @@ type Decider struct {
 	cache  *memcache.Cache[[32]byte, string]
 	now    func() time.Time
 
+	lat latencies
+
 	mu       sync.Mutex
 	inflight map[[32]byte]*flight
 }
 
 // flight is a question being asked: callers asking the same wait for it.
 type flight struct {
-	done chan struct{}
-	tier string
-	err  error
+	done    chan struct{}
+	tier    string
+	outcome string
 }
 
 // New returns a Decider sending calls with transport (safehttp's).
@@ -64,45 +68,73 @@ func New(transport http.RoundTripper) *Decider {
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
-	return &Decider{client: client, now: time.Now, inflight: map[[32]byte]*flight{},
+	return &Decider{client: client, now: time.Now, inflight: map[[32]byte]*flight{}, lat: latencies{byID: map[string]*ring{}},
 		cache: memcache.New[[32]byte, string](CacheTTL, time.Second, 100_000)}
 }
 
 // Decide implements resolver.Decider: the tier the model picks ("" when it
-// picks none), within the question's timeout. Only the call that asked
-// pays: a cached answer, or one shared with a question asked at the same
-// time, returns no usage. An answer naming no tier isn't cached.
-func (d *Decider) Decide(ctx context.Context, q resolver.Question) (string, wire.Usage, error) {
+// picks none), within the question's timeout (or the model's auto one),
+// and how the question went. Only the call that asked pays: a cached
+// answer, or one shared with a question asked at the same time, returns no
+// usage. An answer naming no tier isn't cached.
+func (d *Decider) Decide(ctx context.Context, q resolver.Question) resolver.Decision {
+	out := resolver.Decision{Timeout: q.Timeout}
+	if out.Timeout <= 0 {
+		out.Timeout = d.lat.timeout(q.Target.ID)
+	}
 	key := keyOf(q)
 	if tier, ok := d.cache.Peek(key, d.now()); ok {
-		return tier, wire.Usage{}, nil
+		out.Tier, out.Outcome = tier, resolver.DecisionCached
+		return out
 	}
+	begin := time.Now()
 	d.mu.Lock()
 	if f, ok := d.inflight[key]; ok {
 		d.mu.Unlock()
-		wait, cancel := context.WithTimeout(ctx, q.Timeout)
-		defer cancel()
+		wait := time.NewTimer(out.Timeout)
+		defer wait.Stop()
 		select {
 		case <-f.done:
-			return f.tier, wire.Usage{}, f.err
-		case <-wait.Done():
-			return "", wire.Usage{}, wait.Err()
+			out.Tier, out.Outcome = f.tier, f.outcome
+			if out.Outcome == resolver.DecisionAnswered {
+				out.Outcome = resolver.DecisionCached // another call's answer
+			}
+		case <-wait.C:
+			out.Outcome = resolver.DecisionTimeout
+		case <-ctx.Done():
+			out.Outcome = resolver.DecisionError
 		}
+		out.Took = time.Since(begin)
+		return out
 	}
 	f := &flight{done: make(chan struct{})}
 	d.inflight[key] = f
 	d.mu.Unlock()
 
-	tier, usage, err := d.ask(ctx, q)
-	if err == nil && tier != "" {
+	tier, usage, err := d.ask(ctx, q, out.Timeout)
+	out.Tier, out.Usage, out.Took = tier, usage, time.Since(begin)
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		// It took the whole wait at least: counted so, a wait too short
+		// for the model grows.
+		out.Outcome = resolver.DecisionTimeout
+		d.lat.add(q.Target.ID, out.Timeout)
+	case err != nil:
+		out.Outcome = resolver.DecisionError
+	case tier == "":
+		out.Outcome = resolver.DecisionUnreadable
+		d.lat.add(q.Target.ID, out.Took)
+	default:
+		out.Outcome = resolver.DecisionAnswered
+		d.lat.add(q.Target.ID, out.Took)
 		d.cache.Set(key, tier, d.now())
 	}
-	f.tier, f.err = tier, err
+	f.tier, f.outcome = tier, out.Outcome
 	d.mu.Lock()
 	delete(d.inflight, key)
 	d.mu.Unlock()
 	close(f.done)
-	return tier, usage, err
+	return out
 }
 
 // keyOf keys a question by what the model reads, its tiers included.
@@ -127,8 +159,8 @@ func keyOf(q resolver.Question) [32]byte {
 	return k
 }
 
-func (d *Decider) ask(ctx context.Context, q resolver.Question) (string, wire.Usage, error) {
-	ctx, cancel := context.WithTimeout(ctx, q.Timeout)
+func (d *Decider) ask(ctx context.Context, q resolver.Question, timeout time.Duration) (string, wire.Usage, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	t := q.Target
 	f := wire.OpenAIChat

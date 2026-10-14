@@ -33,7 +33,8 @@ const MaxPerProject = 20
 const (
 	DefaultQualityFloor = 0.95
 	DefaultBudgetMicros = 100_000_000 // $100 a month
-	DefaultTimeoutMS    = 150
+	// MaxTimeoutMS bounds how long a call waits on the decision model.
+	MaxTimeoutMS = 3000
 	// ShadowSampleRate and ActiveSampleRate are the shares of calls
 	// evaluated when a router sets none.
 	ShadowSampleRate = 0.10
@@ -77,7 +78,8 @@ type Input struct {
 	EvalBudgetMicros int64
 	Judge            string
 	DecisionModel    string
-	// DecisionTimeoutMS is 20 to 2,000 (0: DefaultTimeoutMS).
+	// DecisionTimeoutMS is 20 to MaxTimeoutMS, or 0: the gateway waits as
+	// long as the decision model's slow answers take (an auto timeout).
 	DecisionTimeoutMS int
 }
 
@@ -160,9 +162,6 @@ func (s *Service) Check(in *Input) error {
 	if in.QualityFloor == 0 {
 		in.QualityFloor = DefaultQualityFloor
 	}
-	if in.DecisionTimeoutMS == 0 {
-		in.DecisionTimeoutMS = DefaultTimeoutMS
-	}
 	bad := func(format string, args ...any) error {
 		return &InvalidError{Reason: fmt.Sprintf(format, args...), Rule: -1}
 	}
@@ -181,8 +180,8 @@ func (s *Service) Check(in *Input) error {
 		return bad("the evaluation budget is 0 (off) to $1,000,000 a month")
 	case len(in.Judge) > 300 || len(in.DecisionModel) > 300:
 		return bad("judge and decision_model are a model, or provider/model")
-	case in.DecisionTimeoutMS < 20 || in.DecisionTimeoutMS > 2000:
-		return bad("the decision timeout is 20 to 2,000 ms")
+	case in.DecisionTimeoutMS != 0 && (in.DecisionTimeoutMS < 20 || in.DecisionTimeoutMS > MaxTimeoutMS):
+		return bad("the decision timeout is 20 to 3,000 ms, or 0 for auto")
 	}
 	if err := in.Spec.Check(); err != nil {
 		var ie *tiers.InvalidError

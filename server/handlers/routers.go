@@ -83,7 +83,7 @@ type RouterOut struct {
 	EvalBudgetMicros  int64         `json:"eval_budget_micros" doc:"What evaluation may spend a month on the project's keys; 0: off"`
 	Judge             string        `json:"judge" doc:"The model that judges answers; empty: claude-sonnet-5-5 when the project has an Anthropic provider"`
 	DecisionModel     string        `json:"decision_model" doc:"Asked when the classifier is unsure; empty: never"`
-	DecisionTimeoutMS int           `json:"decision_timeout_ms"`
+	DecisionTimeoutMS int           `json:"decision_timeout_ms" doc:"0: auto, as long as the decision model's slow answers take"`
 	ActivatedAt       *time.Time    `json:"activated_at"`
 	Demoted           []DemotionOut `json:"demoted" doc:"Tiers the canary demoted: the router places no call on them until restored"`
 	ReadyAt           *time.Time    `json:"ready_at" doc:"When the router's shadow evidence first met its floor (router.ready)"`
@@ -139,7 +139,7 @@ type RouterIn struct {
 	EvalBudgetMicros  *int64        `json:"eval_budget_micros,omitempty" doc:"Default 100000000 ($100 a month); 0 turns evaluation off"`
 	Judge             string        `json:"judge,omitempty"`
 	DecisionModel     string        `json:"decision_model,omitempty"`
-	DecisionTimeoutMS int           `json:"decision_timeout_ms,omitempty" doc:"20 to 2000 (default 150)"`
+	DecisionTimeoutMS int           `json:"decision_timeout_ms,omitempty" doc:"20 to 3000, or 0 (default): auto, as long as the decision model's slow answers take (2000 until measured)"`
 	Override          bool          `json:"override,omitempty" doc:"Make the router active without the evidence asked for: each cheaper tier it chose in shadow mode meeting the floor"`
 }
 
