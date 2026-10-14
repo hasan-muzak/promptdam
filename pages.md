@@ -373,7 +373,9 @@ Tabs:
   see the tier it would serve and why (step, rule, confidence, unsure), what the call needs of a model (tools, images,
   files, JSON schema, context size), which tiers' models can take it, and the providers and models it would try, in
   order. No provider is called.
-- **Settings:** status, default tier, quality floor, sample rate, evaluation budget, judge, decision model and timeout
+- **Settings:** status, default tier, quality floor, sample rate, evaluation budget, judge, decision model (decision models
+  first, from the price list's decisions: "picks a tier, writes nothing, priced by input"; chat models after; decision
+  models never offered for tiers, fallbacks or the judge) and timeout
   (Auto by default: "Promptdam measures your decision model and waits as long as its slow answers take, at most 3 s";
   or a fixed 20 to 3,000 ms);
   delete (refused with 409 `router_in_use` while a route uses it: name the routes).

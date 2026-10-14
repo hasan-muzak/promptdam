@@ -596,9 +596,13 @@ func (e *Evaluator) judgeOnce(ctx context.Context, t gateway.Target, prompt stri
 	} else {
 		req = map[string]any{"model": t.Model, "messages": []map[string]string{
 			{"role": "system", "content": judgeSystem}, {"role": "user", "content": prompt}}}
-		if t.Kind == "openai" {
+		reasons, _ := md.Has(llm.FeatureReasoning)
+		switch {
+		case t.Kind == "openai":
 			req["max_completion_tokens"] = 4096 // reasoning models think first
-		} else {
+		case reasons:
+			req["max_tokens"] = 4096
+		default:
 			req["max_tokens"] = 1024
 		}
 		if schema {

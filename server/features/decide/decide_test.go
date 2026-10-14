@@ -336,3 +336,86 @@ func TestDecideOnModelsThatThink(t *testing.T) {
 	}
 	ask(gateway.Target{Provider: "openai", Kind: "openai", BaseURL: srv.URL, Model: "gpt-5-nano"})
 }
+
+// A decision model is asked one choice through OpenRouter's Decisions API:
+// the tiers' names, their descriptions and examples as the criteria, the
+// call as the state. The call gets the cheapest tier at least Enough
+// likely to do, leaning up when the model is torn; the cost is the one the
+// provider reports.
+func TestDecisionModels(t *testing.T) {
+	var got map[string]any
+	answer := `{"answers":{"tier":{"type":"choice","choice":"fast","confidence":0.94,"probabilities":{"fast":0.96,"smart":0.04}}},
+		"usage":{"input_tokens":177,"output_tokens":0,"cost":0.0000177}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/alpha/decisions" || r.Header.Get("Authorization") != "Bearer or-key" {
+			http.Error(w, "wrong path or key", http.StatusNotFound)
+			return
+		}
+		got = nil
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(answer))
+	}))
+	defer srv.Close()
+	d := decide.New(safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true}))
+	luna := gateway.Target{ID: "or:luna", Provider: "openrouter", Kind: "openrouter", BaseURL: srv.URL + "/v1", Model: "openai/gpt-6-luna-decisions",
+		Decisions: true, Header: http.Header{"Authorization": {"Bearer or-key"}}}
+	ask := func(request string) resolver.Decision {
+		t.Helper()
+		q := question(srv.URL, time.Second)
+		q.Target, q.Request = luna, request
+		return d.Decide(context.Background(), q)
+	}
+
+	sure := ask("How many times is price used?")
+	if sure.Outcome != resolver.DecisionAnswered || sure.Tier != "fast" || sure.Confidence != 0.96 || sure.Micros != 18 || sure.Usage.Input != 177 {
+		t.Fatalf("sure: %+v", sure)
+	}
+	asked, _ := got["questions"].(map[string]any)["tier"].(map[string]any)
+	criteria, _ := asked["criteria"].(map[string]any)
+	state, _ := got["state"].(map[string]any)
+	if got["model"] != "openai/gpt-6-luna-decisions" || asked["type"] != "choice" ||
+		criteria["fast"] != "Counting and lists Example: How many?" || criteria["smart"] != "Legal judgment" ||
+		state["request"] != "How many times is price used?" || state["instructions"] != "You read contracts." {
+		t.Fatalf("the question asked: %v", got)
+	}
+
+	answer = `{"answers":{"tier":{"type":"choice","choice":"fast","probabilities":{"fast":0.6,"smart":0.4}}},"usage":{"cost":0.00002}}`
+	if torn := ask("Is this clause enforceable?"); torn.Tier != "smart" || torn.Confidence != 1 {
+		t.Fatalf("a torn model leads up: %+v", torn)
+	}
+	answer = `{"answers":{"tier":{"type":"choice","choice":"smart"}},"usage":{"cost":0.00002}}`
+	if bare := ask("A third question"); bare.Tier != "smart" || bare.Confidence != 0 {
+		t.Fatalf("a choice without probabilities: %+v", bare)
+	}
+
+	// Decision models are OpenRouter's: elsewhere they aren't asked.
+	q := question(srv.URL, time.Second)
+	q.Target = luna
+	q.Target.Kind, q.Request = "openai", "A fourth question"
+	if wrong := d.Decide(context.Background(), q); wrong.Outcome != resolver.DecisionError || wrong.Tier != "" {
+		t.Fatalf("a decision model on another provider: %+v", wrong)
+	}
+}
+
+// A chat model that reasons, asked through OpenRouter, reasons little and
+// has room to before it names a tier.
+func TestReasoningChatModelsDecide(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"tier\": \"fast\"}"}}],"usage":{"prompt_tokens":80,"completion_tokens":40}}`))
+	}))
+	defer srv.Close()
+	d := decide.New(safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true}))
+	q := question(srv.URL, time.Second)
+	q.Target = gateway.Target{Provider: "openrouter", Kind: "openrouter", BaseURL: srv.URL, Model: "openai/gpt-6-luna", Reasoning: true}
+	if a := d.Decide(context.Background(), q); a.Tier != "fast" {
+		t.Fatalf("%+v", a)
+	}
+	reasoning, _ := got["reasoning"].(map[string]any)
+	if got["max_tokens"] != 1024.0 || reasoning["effort"] != "low" {
+		t.Fatalf("the question asked: %v", got)
+	}
+}

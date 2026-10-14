@@ -122,8 +122,8 @@ type Target struct {
 	// own (0): a Chat Completions call sent to a Messages provider, or the
 	// other way round, translated both ways (features/translate).
 	Format wire.Format
-	// Reasoning reports that the target's model takes a reasoning effort,
-	// which translation passes on rather than drops.
+	// Reasoning reports that the target's model reasons (takes a reasoning
+	// effort): translation passes an effort on rather than drops it.
 	Reasoning bool
 	// MaxTokens caps a translated Messages call that set no limit (0: the
 	// translation's default).
@@ -145,6 +145,9 @@ type Target struct {
 	ThinkingOff  string
 	AlwaysThinks bool
 	NoSampling   bool
+	// Decisions marks a decision model (llm.Model's): a router's decision
+	// model asked through OpenRouter's Decisions API, never a call's.
+	Decisions bool
 }
 
 // formatOf is the API format a target is called in for a call of format f.

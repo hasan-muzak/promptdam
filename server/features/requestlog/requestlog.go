@@ -204,7 +204,9 @@ func (l *Log) Record(r *gateway.Record) {
 	// A router's decision model spent on the call, whatever became of it.
 	var routerMicros int64
 	if d := m.Decision; d.Target.Model != "" {
-		if price, ok := l.price(m, d.Target.Provider, d.Target.Kind, d.Target.Model); ok {
+		if d.Micros > 0 {
+			routerMicros = d.Micros // the provider's own figure
+		} else if price, ok := l.price(m, d.Target.Provider, d.Target.Kind, d.Target.Model); ok {
 			routerMicros = CostAt(price, d.Usage)
 		}
 		l.cfg.Spend.Add(m.Who(), routerMicros)

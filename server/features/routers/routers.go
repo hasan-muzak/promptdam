@@ -190,6 +190,19 @@ func (s *Service) Check(in *Input) error {
 		}
 		return err
 	}
+	// A decision model picks among options and writes no text: it can
+	// decide the tier, not answer as one, nor judge answers.
+	for _, t := range in.Spec.Tiers {
+		for _, m := range append([]string{t.Model}, t.Fallbacks...) {
+			if s.decides(m) {
+				return bad("%s is a decision model: it picks a tier but writes no answers. Make it the router's decision model, "+
+					"and give tier %s a model that answers", m, t.Name)
+			}
+		}
+	}
+	if in.Judge != "" && s.decides(in.Judge) {
+		return bad("%s is a decision model: it can't compare answers; the judge needs a model that writes", in.Judge)
+	}
 	for i, r := range in.Spec.Rules {
 		if _, err := s.env.Compile(r.When); err != nil {
 			var ce *policy.CompileError
@@ -209,6 +222,22 @@ func (s *Service) isModel(name string) bool {
 	}
 	m, ok := s.prices.Current().Lookup("", name)
 	return ok && m.ID == name
+}
+
+// decides reports a model the price list knows as a decision model, named
+// as a router names models ("provider/model" or a model).
+func (s *Service) decides(name string) bool {
+	if s.prices == nil {
+		return false
+	}
+	cur := s.prices.Current()
+	_, model, _ := strings.Cut(name, "/")
+	for _, n := range []string{name, model} {
+		if m, ok := cur.Lookup("", n); n != "" && ok && m.Decisions {
+			return true
+		}
+	}
+	return false
 }
 
 // List returns a project's routers by name.

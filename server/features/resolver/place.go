@@ -177,7 +177,7 @@ func (r *Resolver) placeCall(ctx context.Context, snap *snapshot.Snapshot, rt *r
 		// explaining (a call it would wait on must change what serves it),
 		// and never mid-turn: a turn's calls keep its tier.
 		if rt.DecisionModel != "" && rt.Status == tiers.Active && !all && r.cfg.Decider != nil && (turn == nil || !turn.continuing) {
-			call.Decide = func() string { return r.decide(ctx, snap, rt, c, m) }
+			call.Decide = func() (string, float64) { return r.decide(ctx, snap, rt, c, m) }
 		}
 	}
 	choice, err := spec.Choose(call)
@@ -419,13 +419,13 @@ func (r *Resolver) Explain(snap *snapshot.Snapshot, rt *routers.Router, pin stri
 
 // decide asks the router's decision model, on the project's own key, which
 // tier the call needs ("" when it can't say in time).
-func (r *Resolver) decide(ctx context.Context, snap *snapshot.Snapshot, rt *routers.Router, c *gateway.Call, m *Meta) string {
+func (r *Resolver) decide(ctx context.Context, snap *snapshot.Snapshot, rt *routers.Router, c *gateway.Call, m *Meta) (string, float64) {
 	if m.Firewall != nil && m.Firewall.Blocked {
-		return "" // what the firewall blocks goes to no provider
+		return "", 0 // what the firewall blocks goes to no provider
 	}
 	ts := r.fallback(snap, wire.OpenAIChat, rt.DecisionModel, nil)
 	if len(ts) == 0 {
-		return ""
+		return "", 0
 	}
 	// The decision model reads the call: not when a policy would keep the
 	// call from its provider.
@@ -434,7 +434,7 @@ func (r *Resolver) decide(ctx context.Context, snap *snapshot.Snapshot, rt *rout
 		snap.Firewall.Decide(&asked, RuleRequest(c, m), r.policyCall(ctx, snap, m,
 			firewall.Target{Provider: ts[0].Provider, Kind: ts[0].Kind, Model: ts[0].Model}))
 		if asked.Blocked || asked.RouteTo != "" {
-			return ""
+			return "", 0
 		}
 	}
 	md, known := r.model(ts[0].Kind, ts[0].Model)
@@ -443,8 +443,8 @@ func (r *Resolver) decide(ctx context.Context, snap *snapshot.Snapshot, rt *rout
 		Tiers: rt.Spec.Tiers, Instructions: c.Request.Prefix.System, Request: c.Request.Turn.Text,
 		Timeout: time.Duration(rt.DecisionTimeoutMS) * time.Millisecond}
 	d := r.cfg.Decider.Decide(ctx, q)
-	m.Decision.Target, m.Decision.Usage, m.Decision.Outcome, m.Decision.Took = ts[0], d.Usage, d.Outcome, d.Took
-	return d.Tier
+	m.Decision.Target, m.Decision.Usage, m.Decision.Micros, m.Decision.Outcome, m.Decision.Took = ts[0], d.Usage, d.Micros, d.Outcome, d.Took
+	return d.Tier, d.Confidence
 }
 
 // planHas reports whether the organization's plan has a feature; when the

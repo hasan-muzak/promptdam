@@ -83,6 +83,7 @@ type Meta struct {
 	Decision struct {
 		Target  gateway.Target
 		Usage   wire.Usage
+		Micros  int64
 		Outcome string
 		Took    time.Duration
 	}
@@ -161,6 +162,12 @@ type Decision struct {
 	// long the call waited for it, and Timeout how long it could.
 	Outcome       string
 	Took, Timeout time.Duration
+	// Confidence is how likely the tier is enough, from a decision model's
+	// probabilities (0 when the model gave none).
+	Confidence float64
+	// Micros is what the question cost, when the provider said (0: priced
+	// from Usage).
+	Micros int64
 }
 
 // How a decision model's question went, as the request log says.
@@ -593,6 +600,8 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 		// when a call is moved to it.
 		reasons, sure := m.Has(llm.FeatureReasoning)
 		t.NoReasoning = sure && !reasons
+		t.Reasoning = reasons
+		t.Decisions = m.Decisions
 	} else {
 		// A model the price list doesn't have yet: what its docs say.
 		m = llm.Known(model)
@@ -606,10 +615,10 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 	if t.Format == 0 {
 		return t, false
 	}
-	// Translation passes a reasoning effort on to models that take one,
-	// and lets Messages answers run as long as the model writes.
+	// Translation passes a reasoning effort on to models that take one
+	// (Reasoning), and lets Messages answers run as long as the model
+	// writes.
 	if known {
-		t.Reasoning, _ = m.Has(llm.FeatureReasoning)
 		t.MaxTokens = int(min(m.MaxOutput, maxTranslatedTokens))
 	}
 	return t, true

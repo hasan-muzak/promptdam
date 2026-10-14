@@ -121,7 +121,9 @@ func TestChooseLearned(t *testing.T) {
 		return func() (string, float64, bool) { return tier, p, unsure }
 	}
 	asked := 0
-	decide := func(tier string) func() string { return func() string { asked++; return tier } }
+	decide := func(tier string) func() (string, float64) {
+		return func() (string, float64) { asked++; return tier, 0.9 }
+	}
 	for _, tt := range []struct {
 		name   string
 		call   Call
@@ -143,6 +145,9 @@ func TestChooseLearned(t *testing.T) {
 		}
 		if tt.source == SourceClassifier && asked != 0 {
 			t.Errorf("%s: the decision model was asked", tt.name)
+		}
+		if tt.source == SourceDecision && ch.Confidence != 0.9 {
+			t.Errorf("%s: the decision model's confidence is lost: %+v", tt.name, ch)
 		}
 	}
 }

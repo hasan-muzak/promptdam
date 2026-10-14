@@ -213,8 +213,8 @@ type Call struct {
 	// classifier is unsure (then Decide is asked).
 	Learned func() (tier string, p float64, unsure bool)
 	// Decide asks the decision model for a tier ("" when it didn't
-	// answer in time).
-	Decide func() string
+	// answer in time) and how likely the tier is enough (0 unknown).
+	Decide func() (tier string, p float64)
 	// Demoted reports a tier the canary demoted: the router places no
 	// call on it, but a client may name it.
 	Demoted func(i int) bool
@@ -284,8 +284,8 @@ func (s *Spec) Choose(c Call) (Choice, error) {
 		unsure = u
 	}
 	if !placed && unsure && c.Decide != nil {
-		if i := s.Index(c.Decide()); i >= 0 {
-			ch, placed = Choice{Tier: i, Source: SourceDecision, Rule: -1}, true
+		if tier, p := c.Decide(); s.Index(tier) >= 0 {
+			ch, placed = Choice{Tier: s.Index(tier), Source: SourceDecision, Rule: -1, Confidence: p}, true
 		}
 	}
 	ch.Unsure = !placed && unsure

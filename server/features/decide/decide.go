@@ -1,7 +1,9 @@
 // Package decide asks a router's decision model which tier a call needs,
 // when the classifier is unsure (project.md §6.2): the model reads the
 // tiers' descriptions and examples and an excerpt of the call, and answers
-// a tier, held to a schema where it takes one. A hard timeout falls back to
+// a tier. A chat model answers in words, held to a schema where it takes
+// one; a decision model (OpenRouter's Decisions API) gives each tier a
+// probability, and the call gets the cheapest tier likely Enough. A hard timeout falls back to
 // the default tier: the router's, else one measured on the model's latest
 // answers (latency.go). Answers are cached per project, router, family, the
 // question and the tiers as the model read them, so an edited router never
@@ -17,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"regexp"
 	"strings"
@@ -24,10 +27,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/hasan-muzak/keel-core/pkg/llm"
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 	"github.com/hasan-muzak/keel-core/pkg/memcache"
 
+	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/resolver"
+	"github.com/hasan-muzak/promptdam/server/features/translate"
 )
 
 // CacheTTL is how long a decision is reused for the same router, family
@@ -45,7 +51,7 @@ const (
 // Decider asks decision models; it implements resolver.Decider.
 type Decider struct {
 	client *http.Client
-	cache  *memcache.Cache[[32]byte, string]
+	cache  *memcache.Cache[[32]byte, cached]
 	now    func() time.Time
 
 	lat latencies
@@ -54,11 +60,26 @@ type Decider struct {
 	inflight map[[32]byte]*flight
 }
 
+// cached is an answer kept for the same question: its tier and how likely
+// the tier is enough (0 when the model gave no probabilities).
+type cached struct {
+	tier string
+	p    float64
+}
+
 // flight is a question being asked: callers asking the same wait for it.
 type flight struct {
 	done    chan struct{}
-	tier    string
+	answer  cached
 	outcome string
+}
+
+// answer is what a decision model answered and what that cost: the usage,
+// and the cost itself when the provider reports it (micros).
+type answer struct {
+	cached
+	usage  wire.Usage
+	micros int64
 }
 
 // New returns a Decider sending calls with transport (safehttp's).
@@ -69,7 +90,7 @@ func New(transport http.RoundTripper) *Decider {
 		return http.ErrUseLastResponse
 	}}
 	return &Decider{client: client, now: time.Now, inflight: map[[32]byte]*flight{}, lat: latencies{byID: map[string]*ring{}},
-		cache: memcache.New[[32]byte, string](CacheTTL, time.Second, 100_000)}
+		cache: memcache.New[[32]byte, cached](CacheTTL, time.Second, 100_000)}
 }
 
 // Decide implements resolver.Decider: the tier the model picks ("" when it
@@ -83,8 +104,8 @@ func (d *Decider) Decide(ctx context.Context, q resolver.Question) resolver.Deci
 		out.Timeout = d.lat.timeout(q.Target.ID)
 	}
 	key := keyOf(q)
-	if tier, ok := d.cache.Peek(key, d.now()); ok {
-		out.Tier, out.Outcome = tier, resolver.DecisionCached
+	if a, ok := d.cache.Peek(key, d.now()); ok {
+		out.Tier, out.Confidence, out.Outcome = a.tier, a.p, resolver.DecisionCached
 		return out
 	}
 	begin := time.Now()
@@ -95,7 +116,7 @@ func (d *Decider) Decide(ctx context.Context, q resolver.Question) resolver.Deci
 		defer wait.Stop()
 		select {
 		case <-f.done:
-			out.Tier, out.Outcome = f.tier, f.outcome
+			out.Tier, out.Confidence, out.Outcome = f.answer.tier, f.answer.p, f.outcome
 			if out.Outcome == resolver.DecisionAnswered {
 				out.Outcome = resolver.DecisionCached // another call's answer
 			}
@@ -111,8 +132,8 @@ func (d *Decider) Decide(ctx context.Context, q resolver.Question) resolver.Deci
 	d.inflight[key] = f
 	d.mu.Unlock()
 
-	tier, usage, err := d.ask(ctx, q, out.Timeout)
-	out.Tier, out.Usage, out.Took = tier, usage, time.Since(begin)
+	a, err := d.ask(ctx, q, out.Timeout)
+	out.Tier, out.Confidence, out.Usage, out.Micros, out.Took = a.tier, a.p, a.usage, a.micros, time.Since(begin)
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		// It took the whole wait at least: counted so, a wait too short
@@ -121,15 +142,15 @@ func (d *Decider) Decide(ctx context.Context, q resolver.Question) resolver.Deci
 		d.lat.add(q.Target.ID, out.Timeout)
 	case err != nil:
 		out.Outcome = resolver.DecisionError
-	case tier == "":
+	case a.tier == "":
 		out.Outcome = resolver.DecisionUnreadable
 		d.lat.add(q.Target.ID, out.Took)
 	default:
 		out.Outcome = resolver.DecisionAnswered
 		d.lat.add(q.Target.ID, out.Took)
-		d.cache.Set(key, tier, d.now())
+		d.cache.Set(key, a.cached, d.now())
 	}
-	f.tier, f.outcome = tier, out.Outcome
+	f.answer, f.outcome = a.cached, out.Outcome
 	d.mu.Lock()
 	delete(d.inflight, key)
 	d.mu.Unlock()
@@ -159,18 +180,18 @@ func keyOf(q resolver.Question) [32]byte {
 	return k
 }
 
-func (d *Decider) ask(ctx context.Context, q resolver.Question, timeout time.Duration) (string, wire.Usage, error) {
+func (d *Decider) ask(ctx context.Context, q resolver.Question, timeout time.Duration) (answer, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if q.Target.Decisions {
+		return d.askDecisions(ctx, q)
+	}
 	t := q.Target
 	f := wire.OpenAIChat
 	if t.Format != 0 {
 		f = t.Format
 	}
-	names := make([]string, len(q.Tiers))
-	for i, tier := range q.Tiers {
-		names[i] = tier.Name
-	}
+	names := tierNames(q)
 	schema := map[string]any{"type": "object", "properties": map[string]any{"tier": map[string]any{"type": "string", "enum": names}},
 		"required": []string{"tier"}, "additionalProperties": false}
 	system, user := Prompt(q)
@@ -200,33 +221,167 @@ func (d *Decider) ask(ctx context.Context, q resolver.Question, timeout time.Dur
 	} else {
 		req = map[string]any{"model": t.Model, "messages": []map[string]string{
 			{"role": "system", "content": system}, {"role": "user", "content": user}}}
+		// A model that reasons before it answers gets room to, at a low
+		// effort (below), or its reasoning spends the answer's tokens.
+		limit := 64
+		if t.Reasoning {
+			limit = 1024
+		}
 		if t.Kind == "openai" {
-			req["max_completion_tokens"] = 256
+			req["max_completion_tokens"] = max(limit, 256)
 		} else {
-			req["max_tokens"] = 64
+			req["max_tokens"] = limit
 		}
 		if q.Schema {
 			req["response_format"] = map[string]any{"type": "json_schema",
 				"json_schema": map[string]any{"name": "tier", "schema": schema, "strict": true}}
 		}
 	}
-	var payload bytes.Buffer
-	enc := json.NewEncoder(&payload)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(req); err != nil {
-		return "", wire.Usage{}, err
+	payload, err := encode(req)
+	if err != nil {
+		return answer{}, err
+	}
+	if !f.Anthropic() && t.Reasoning {
+		if low, ok, err := translate.SetEffort(payload, wire.OpenAIChat, t.Kind, "low"); err == nil && ok {
+			payload = low
+		}
 	}
 	path := "/chat/completions"
 	if f.Anthropic() {
 		path = "/messages"
 	}
-	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+path, &payload)
+	body, err := d.post(ctx, t, strings.TrimRight(t.BaseURL, "/")+path, payload, f.Anthropic())
 	if err != nil {
-		return "", wire.Usage{}, err
+		return answer{}, err
+	}
+	meter := wire.NewMeter(f)
+	meter.Body(body)
+	usage, _ := meter.Usage()
+	return answer{cached: cached{tier: pick(f, body, names)}, usage: usage}, nil
+}
+
+// Enough is how likely the tier a decision model's answer leads to must be
+// to answer the call as well as the strongest tier: the call gets the
+// cheapest tier whose probability, with the cheaper tiers', reaches it. A
+// model sure of a cheap tier gets it; one torn between tiers leads to the
+// stronger.
+const Enough = 0.8
+
+// askDecisions asks a decision model, through OpenRouter's Decisions API,
+// one choice: the tier, among the tiers' names with their descriptions and
+// examples as the criteria, about a state of the call's instructions and
+// request. The answer gives each tier a probability and says what it cost.
+func (d *Decider) askDecisions(ctx context.Context, q resolver.Question) (answer, error) {
+	t := q.Target
+	if t.Kind != "openrouter" {
+		return answer{}, fmt.Errorf("decide: %s is a decision model, served by OpenRouter's Decisions API: use it on an OpenRouter provider", t.Model)
+	}
+	names := tierNames(q)
+	criteria := make(map[string]string, len(q.Tiers))
+	for _, tier := range q.Tiers {
+		c := tier.Description
+		if c == "" {
+			c = "The " + tier.Name + " tier."
+		}
+		for i, e := range tier.Examples {
+			if i == maxExamples {
+				break
+			}
+			c += " Example: " + clip(e, maxExample)
+		}
+		criteria[tier.Name] = c
+	}
+	state := map[string]string{"request": clip(q.Request, maxRequest)}
+	if q.Instructions != "" {
+		state["instructions"] = clip(q.Instructions, maxInstructions)
+	}
+	payload, err := encode(map[string]any{"model": t.Model, "state": state, "questions": map[string]any{
+		"tier": map[string]any{"type": "choice", "criteria": criteria, "instructions": "Which tier of AI models should answer the request? " +
+			"The tiers, from cheapest to strongest: " + strings.Join(names, ", ") + ". Pick the cheapest tier that will answer the request " +
+			"as well as the strongest would; when unsure, a stronger one."}}})
+	if err != nil {
+		return answer{}, err
+	}
+	body, err := d.post(ctx, t, decisionsURL(t.BaseURL), payload, false)
+	if err != nil {
+		return answer{}, err
+	}
+	var res struct {
+		Answers map[string]struct {
+			Choice        string             `json:"choice"`
+			Probabilities map[string]float64 `json:"probabilities"`
+		} `json:"answers"`
+		Usage struct {
+			Input  uint64  `json:"input_tokens"`
+			Output uint64  `json:"output_tokens"`
+			Cost   float64 `json:"cost"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &res); err != nil {
+		return answer{}, fmt.Errorf("decide: %s's answer: %w", t.Provider, err)
+	}
+	a := answer{usage: wire.Usage{Usage: llm.Usage{Input: res.Usage.Input, Output: res.Usage.Output}},
+		micros: int64(math.Round(max(res.Usage.Cost, 0) * 1e6))}
+	ans := res.Answers["tier"]
+	a.tier, a.p = enough(names, ans.Probabilities, ans.Choice)
+	return a, nil
+}
+
+// enough is the cheapest tier whose probability, with the cheaper tiers',
+// reaches Enough, and that probability; the model's choice when it gave
+// no probabilities ("" when it names no tier).
+func enough(names []string, probs map[string]float64, choice string) (string, float64) {
+	if len(probs) == 0 {
+		for _, n := range names {
+			if strings.EqualFold(n, strings.TrimSpace(choice)) {
+				return n, 0
+			}
+		}
+		return "", 0
+	}
+	sum := 0.0
+	for _, n := range names {
+		sum += probs[n]
+		if sum >= Enough {
+			return n, min(sum, 1)
+		}
+	}
+	return names[len(names)-1], min(sum, 1) // probabilities short of it: the strongest
+}
+
+// decisionsURL is OpenRouter's Decisions API beside a provider's base URL
+// (https://openrouter.ai/api/v1: https://openrouter.ai/api/alpha/decisions).
+func decisionsURL(base string) string {
+	return strings.TrimSuffix(strings.TrimRight(base, "/"), "/v1") + "/alpha/decisions"
+}
+
+func tierNames(q resolver.Question) []string {
+	names := make([]string, len(q.Tiers))
+	for i, tier := range q.Tiers {
+		names[i] = tier.Name
+	}
+	return names
+}
+
+func encode(v any) ([]byte, error) {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+// post sends a question to a decision model at url and reads its answer.
+func (d *Decider) post(ctx context.Context, t gateway.Target, url string, payload []byte, anthropic bool) ([]byte, error) {
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
 	}
 	hreq.Header.Set("Content-Type", "application/json")
 	hreq.Header.Set("Accept-Encoding", "identity")
-	if f.Anthropic() {
+	if anthropic {
 		hreq.Header.Set("Anthropic-Version", "2023-06-01")
 	}
 	for k, v := range t.Header {
@@ -234,20 +389,17 @@ func (d *Decider) ask(ctx context.Context, q resolver.Question, timeout time.Dur
 	}
 	res, err := d.client.Do(hreq)
 	if err != nil {
-		return "", wire.Usage{}, fmt.Errorf("decide: %w", err)
+		return nil, fmt.Errorf("decide: %w", err)
 	}
 	defer func() { _ = res.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
-		return "", wire.Usage{}, fmt.Errorf("decide: %w", err)
+		return nil, fmt.Errorf("decide: %w", err)
 	}
 	if res.StatusCode != http.StatusOK {
-		return "", wire.Usage{}, fmt.Errorf("decide: %s answered %d", t.Provider, res.StatusCode)
+		return nil, fmt.Errorf("decide: %s answered %d", t.Provider, res.StatusCode)
 	}
-	meter := wire.NewMeter(f)
-	meter.Body(body)
-	usage, _ := meter.Usage()
-	return pick(f, body, names), usage, nil
+	return body, nil
 }
 
 // Prompt is what the decision model reads: the tiers, cheapest first, and
