@@ -55,6 +55,10 @@ type Request struct {
 	User             string    `ch:"end_user"`
 	Tags             []string  `ch:"tags"`
 	Route            string    `ch:"route"`
+	Conversation     string    `ch:"conversation"`
+	TurnKind         string    `ch:"turn_kind"`
+	HumanTurns       uint16    `ch:"human_turns"`
+	ChainGapMs       uint32    `ch:"chain_gap_ms"`
 	Router           string    `ch:"router"`
 	Tier             string    `ch:"tier"`
 	DecidedTier      string    `ch:"decided_tier"`
@@ -91,7 +95,8 @@ type Request struct {
 	Family           string    `ch:"family_id"`
 }
 
-const requestColumns = `ts, trace, key_id, developer, end_user, tags, route, router, tier, decided_tier, tier_source,
+const requestColumns = `ts, trace, key_id, developer, end_user, tags, route, conversation, turn_kind, human_turns,
+	chain_gap_ms, router, tier, decided_tier, tier_source,
 	tier_confidence, shadow, firewall_action, firewall_kinds, payload_ref, api_format, provider, requested_model,
 	served_model, stream, translated, status, error_code, attempts, ttfb_ms, latency_ms, upstream_ms, usage_known, input_tokens,
 	output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_micros, priced, savings_micros,

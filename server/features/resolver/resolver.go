@@ -31,6 +31,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/conversation"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
@@ -89,6 +90,10 @@ type Meta struct {
 	// Capture keeps the call's payload, masked by its engine (nil: kept
 	// not).
 	Capture *payloads.Capture
+	// Turn is the call's place in its conversation; InTurn is false for a
+	// call without a human message (or of an API without turns).
+	Turn   conversation.Keys
+	InTurn bool
 }
 
 // Who is what the call's spend counts against.
@@ -128,6 +133,9 @@ type Config struct {
 	// Decider asks routers' decision models (features/decide); nil never
 	// does.
 	Decider Decider
+	// Turns keeps what the gateway knows of each conversation's turns
+	// (features/conversation); nil keeps nothing.
+	Turns *conversation.Store
 }
 
 // Decider asks a decision model which tier a call needs.
@@ -320,6 +328,14 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	if rt != nil && pin == "" {
 		pin = strings.TrimSpace(c.Header.Get(brand.HeaderTier))
 	}
+	// The call's turn: its conversation's calls are known by it, whichever
+	// replica serves them.
+	routerName := ""
+	if rt != nil {
+		routerName = rt.Name
+	}
+	m.Turn, m.InTurn = conversation.KeysOf(conversation.Scope{Project: m.Project, APIKey: m.Key, User: m.User, Route: m.Route,
+		Router: routerName, Family: c.Shape.Family}, conversation.Session(c.Header), c.Request.Turn)
 
 	if settings.RPM > 0 {
 		ok, err := r.cfg.Rates.Allow(ctx, m.Project.String()+":"+m.Key.String(), counter.Minute, 1, int64(settings.RPM))

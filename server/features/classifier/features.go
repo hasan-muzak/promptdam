@@ -11,7 +11,6 @@ package classifier
 
 import (
 	"bytes"
-	"encoding/json"
 	"math/bits"
 	"slices"
 	"strconv"
@@ -32,31 +31,36 @@ const (
 	maxTokenLen     = 32
 )
 
-// Input is what a call's features are computed from.
+// Input is what a call's features are computed from: its turn, the human
+// message it answers and the conversation up to it. Every call of a turn
+// (an agent's tool loop) has the same input, so the classifier places
+// them alike, and a sample judged at a turn's start trains on what the
+// gateway sees for the whole turn.
 type Input struct {
-	// System is the instructions; LastUser the text of the last user
-	// message (tool results included).
-	System, LastUser string
-	Family           string
-	Tags             []string
-	// InputTokens is estimated (the body's bytes / 4).
+	// System is the instructions; Ask the text of the turn's human
+	// message.
+	System, Ask string
+	Family      string
+	Tags        []string
+	// InputTokens is the turn's view estimated (its bytes / 4); Messages
+	// counts its messages.
 	InputTokens, MaxTokens, Messages int
 	Tools, JSON, Stream, Images      bool
 }
 
-// InputOf reads a call's features' input from its request.
-func InputOf(f wire.Format, req wire.Request, body []byte, family string, tags []string) Input {
-	images := bytes.Contains(body, []byte(`"image_url"`)) || HasType(body, "image")
-	return Input{System: req.Prefix.System, LastUser: LastUser(f, body), Family: family, Tags: tags,
-		InputTokens: len(body) / 4, MaxTokens: req.MaxTokens, Messages: req.Messages, Tools: req.Tools,
-		JSON: req.Prefix.Format != "", Stream: req.Stream, Images: images}
+// InputOf reads a call's features' input from its request's turn.
+func InputOf(req wire.Request, family string, tags []string) Input {
+	t := req.Turn
+	return Input{System: req.Prefix.System, Ask: t.Text, Family: family, Tags: tags,
+		InputTokens: t.ViewBytes / 4, MaxTokens: req.MaxTokens, Messages: t.Human + 1, Tools: req.Tools,
+		JSON: req.Prefix.Format != "", Stream: req.Stream, Images: t.Images}
 }
 
 // Features are the call's feature buckets, sorted and unique.
 func Features(in Input) []uint32 {
 	out := make([]uint32, 0, 2*maxUserTokens+maxSystemTokens+16)
 	add := func(prefix, value string) { out = append(out, hash(prefix, value)) }
-	words(in.LastUser, maxUserTokens, func(prev, w []byte) {
+	words(in.Ask, maxUserTokens, func(prev, w []byte) {
 		out = append(out, hash("u:", w))
 		if len(prev) > 0 {
 			out = append(out, hash2("b:", prev, w))
@@ -72,12 +76,12 @@ func Features(in Input) []uint32 {
 	add("msgs:", strconv.Itoa(bucket(in.Messages)))
 	add("in:", strconv.Itoa(bucket(in.InputTokens)))
 	add("max:", strconv.Itoa(bucket(in.MaxTokens)))
-	add("len:", strconv.Itoa(bucket(len(in.LastUser))))
+	add("len:", strconv.Itoa(bucket(len(in.Ask))))
 	for _, f := range []struct {
 		on   bool
 		name string
 	}{{in.Tools, "tools"}, {in.JSON, "json"}, {in.Stream, "stream"}, {in.Images, "images"},
-		{strings.Contains(in.LastUser, "```"), "code"}} {
+		{strings.Contains(in.Ask, "```"), "code"}} {
 		if f.on {
 			add("has:", f.name)
 		}
@@ -155,65 +159,6 @@ func hash2(prefix string, a, b []byte) uint32 {
 		h = (h ^ uint32(b[i])) * prime32
 	}
 	return h & (Dim - 1)
-}
-
-// LastUser is the text of a request's last user message: its text parts
-// and tool results' text.
-func LastUser(f wire.Format, body []byte) string {
-	var req struct {
-		Messages []struct {
-			Role    string          `json:"role"`
-			Content json.RawMessage `json:"content"`
-		} `json:"messages"`
-		Input json.RawMessage `json:"input"`
-	}
-	if json.Unmarshal(body, &req) != nil {
-		return ""
-	}
-	for i := len(req.Messages) - 1; i >= 0; i-- {
-		m := req.Messages[i]
-		if m.Role == "user" || m.Role == "tool" && f == wire.OpenAIChat {
-			return contentText(m.Content)
-		}
-	}
-	return contentText(req.Input)
-}
-
-// contentText is the text of a content: a string, or the text of its
-// parts and of the tool results among them.
-func contentText(raw json.RawMessage) string {
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 {
-		return ""
-	}
-	if raw[0] == '"' {
-		var s string
-		_ = json.Unmarshal(raw, &s)
-		return s
-	}
-	var parts []struct {
-		Type    string          `json:"type"`
-		Text    string          `json:"text"`
-		Content json.RawMessage `json:"content"`
-	}
-	if json.Unmarshal(raw, &parts) != nil {
-		return ""
-	}
-	var b bytes.Buffer
-	for _, p := range parts {
-		s := p.Text
-		if p.Type == "tool_result" {
-			s = contentText(p.Content)
-		}
-		if s == "" {
-			continue
-		}
-		if b.Len() > 0 {
-			b.WriteByte('\n')
-		}
-		b.WriteString(s)
-	}
-	return b.String()
 }
 
 // HasType reports a JSON member "type" whose value is the string name,

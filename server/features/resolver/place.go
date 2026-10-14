@@ -144,7 +144,7 @@ func (r *Resolver) placeCall(ctx context.Context, snap *snapshot.Snapshot, rt *r
 			if cm == nil {
 				return "", 0, true // not trained yet
 			}
-			pl := cm.Place(classifier.Features(classifier.InputOf(c.Format, c.Request, c.Body, c.Shape.Family, m.Tags)))
+			pl := cm.Place(classifier.Features(classifier.InputOf(c.Request, c.Shape.Family, m.Tags)))
 			return pl.Tier, pl.P, pl.Unsure
 		}
 		// The decision model answers for active routers only, never when
@@ -273,7 +273,7 @@ func (r *Resolver) decide(ctx context.Context, snap *snapshot.Snapshot, rt *rout
 	md, known := r.model(ts[0].Kind, ts[0].Model)
 	schema, _ := md.Has(llm.FeatureJSONSchema)
 	q := Question{Project: m.Project, Router: rt.Name, Family: c.Shape.Family, Target: ts[0], Schema: schema || !known || md.Features == nil,
-		Tiers: rt.Spec.Tiers, Instructions: c.Request.Prefix.System, Request: classifier.LastUser(c.Format, c.Body),
+		Tiers: rt.Spec.Tiers, Instructions: c.Request.Prefix.System, Request: c.Request.Turn.Text,
 		Timeout: time.Duration(rt.DecisionTimeoutMS) * time.Millisecond}
 	tier, usage, err := r.cfg.Decider.Decide(ctx, q)
 	m.Decision.Target, m.Decision.Usage = ts[0], usage

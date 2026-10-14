@@ -9,7 +9,7 @@ import (
 )
 
 func TestFeatures(t *testing.T) {
-	in := Input{LastUser: "Is this NDA clause enforceable in Germany?", System: "You are a lawyer.", Family: "f1",
+	in := Input{Ask: "Is this NDA clause enforceable in Germany?", System: "You are a lawyer.", Family: "f1",
 		Tags: []string{"legal"}, InputTokens: 300, Messages: 2, Tools: true}
 	fs := Features(in)
 	if !slices.IsSorted(fs) || len(slices.Compact(slices.Clone(fs))) != len(fs) {
@@ -25,45 +25,47 @@ func TestFeatures(t *testing.T) {
 	}
 	// Words, not their case or punctuation, make a feature.
 	same := in
-	same.LastUser = "is THIS nda clause, enforceable in germany"
+	same.Ask = "is THIS nda clause, enforceable in germany"
 	if !slices.Equal(Features(same), fs) {
 		t.Fatal("case and punctuation changed the features")
 	}
 	other := in
-	other.LastUser = "How many times is the word revenue used?"
+	other.Ask = "How many times is the word revenue used?"
 	if slices.Equal(Features(other), fs) {
 		t.Fatal("different questions share their features")
 	}
 	// The text read is bounded.
 	long := in
-	long.LastUser = strings.Repeat("word ", 10_000)
+	long.Ask = strings.Repeat("word ", 10_000)
 	if n := len(Features(long)); n > 2*maxUserTokens+maxSystemTokens+16 {
 		t.Fatalf("%d features", n)
 	}
 }
 
-func TestLastUser(t *testing.T) {
-	chat := `{"model":"m","messages":[{"role":"system","content":"S"},{"role":"user","content":"first"},
-		{"role":"assistant","content":"a"},{"role":"user","content":[{"type":"text","text":"second"},{"type":"image_url","image_url":{"url":"x"}}]}]}`
-	if got := LastUser(wire.OpenAIChat, []byte(chat)); got != "second" {
-		t.Fatalf("chat: %q", got)
+// A call's input is its turn's: every call of an agent's tool loop reads
+// as the question that started it, never the tool results after it.
+func TestInputOfReadsTheTurn(t *testing.T) {
+	parse := func(f wire.Format, body string) wire.Request {
+		t.Helper()
+		r, err := wire.ParseRequest(f, []byte(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
 	}
-	tool := `{"model":"m","messages":[{"role":"user","content":"q"},{"role":"assistant","tool_calls":[]},{"role":"tool","tool_call_id":"c","content":"42"}]}`
-	if got := LastUser(wire.OpenAIChat, []byte(tool)); got != "42" {
-		t.Fatalf("a tool result: %q", got)
+	start := parse(wire.AnthropicMessages, `{"model":"m","max_tokens":9,"system":"S","messages":[
+		{"role":"user","content":[{"type":"text","text":"why does the build fail?"}]}]}`)
+	loop := parse(wire.AnthropicMessages, `{"model":"m","max_tokens":9,"system":"S","messages":[
+		{"role":"user","content":[{"type":"text","text":"why does the build fail?"}]},
+		{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"sh","input":{"cmd":"go build"}}]},
+		{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"undefined: x"},{"type":"text","text":"<reminder/>"}]}]}`)
+	a, b := InputOf(start, "f", nil), InputOf(loop, "f", nil)
+	if a.Ask != "why does the build fail?" || !slices.Equal(Features(a), Features(b)) {
+		t.Fatalf("the tool loop's input %+v differs from its turn's %+v", b, a)
 	}
-	messages := `{"model":"m","max_tokens":1,"messages":[{"role":"user","content":[
-		{"type":"tool_result","tool_use_id":"t","content":[{"type":"text","text":"rows: 3"}]},{"type":"text","text":"and now?"}]}]}`
-	if got := LastUser(wire.AnthropicMessages, []byte(messages)); got != "rows: 3\nand now?" {
-		t.Fatalf("messages: %q", got)
-	}
-}
-
-func BenchmarkFeatures(b *testing.B) {
-	in := Input{LastUser: strings.Repeat("Extract the invoice number, total and due date from this text. ", 40),
-		System: strings.Repeat("You extract fields from invoices. ", 30), Family: "f", Messages: 2, InputTokens: 2000}
-	b.ReportAllocs()
-	for b.Loop() {
-		Features(in)
+	chat := parse(wire.OpenAIChat, `{"model":"m","messages":[{"role":"system","content":"S"},{"role":"user","content":"first"},
+		{"role":"assistant","content":"a"},{"role":"user","content":[{"type":"text","text":"second"},{"type":"image_url","image_url":{"url":"x"}}]}]}`)
+	if in := InputOf(chat, "f", nil); in.Ask != "second" || !in.Images || in.Messages != 4 {
+		t.Fatalf("chat %+v", in)
 	}
 }

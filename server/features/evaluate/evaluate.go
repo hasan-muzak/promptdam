@@ -274,8 +274,8 @@ func (e *Evaluator) run(ctx context.Context, rec *gateway.Record) {
 		return
 	}
 	judge, judgeModel := e.judgeTarget(snap, rt)
-	lastUser := classifier.LastUser(rec.Format, rec.Body)
-	features := classifier.Features(classifier.InputOf(rec.Format, rec.Request, rec.Body, rec.Shape.Family, m.Tags))
+	ask := rec.Request.Turn.Text
+	features := classifier.Features(classifier.InputOf(rec.Request, rec.Shape.Family, m.Tags))
 	retention := e.retention(ctx, m.Org)
 	wantJSON := rec.Request.Prefix.Format != ""
 	now := time.Now().UTC()
@@ -303,7 +303,7 @@ func (e *Evaluator) run(ctx context.Context, rec *gateway.Record) {
 			row.Check = CheckNoJudge
 		default:
 			row.Check, row.JudgeModel = CheckJudge, judgeModel
-			verdict, consistent, micros, err := e.judge(ctx, m, *judge, rec.Request.Prefix.System, lastUser, base.answer, run.answer)
+			verdict, consistent, micros, err := e.judge(ctx, m, *judge, rec.Request.Prefix.System, ask, base.answer, run.answer)
 			row.JudgeMicros, total = micros, total+micros
 			if err != nil {
 				row.Check = CheckJudgeError

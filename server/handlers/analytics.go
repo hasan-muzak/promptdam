@@ -51,6 +51,10 @@ type RequestOut struct {
 	User             string    `json:"user" doc:"The end user the client named (X-Promptdam-User)"`
 	Tags             []string  `json:"tags"`
 	Route            string    `json:"route"`
+	Conversation     string    `json:"conversation" doc:"The conversation the call belongs to (the client's X-Promptdam-Session, else its first message)"`
+	TurnKind         string    `json:"turn_kind" doc:"start: the call answers a human message; continuation: it continues one (an agent's tool loop)"`
+	HumanTurns       int       `json:"human_turns" doc:"The conversation's human messages so far"`
+	ChainGapMs       int       `json:"chain_gap_ms" doc:"How long after the conversation's previous call this one started, 0 when unknown"`
 	Router           string    `json:"router" doc:"The model router that placed the call, if any"`
 	Tier             string    `json:"tier" doc:"The router's tier that served the call"`
 	DecidedTier      string    `json:"decided_tier" doc:"The tier the router chose: the served one, unless the router is in shadow mode"`
@@ -89,7 +93,8 @@ type RequestOut struct {
 func requestOut(r analytics.Request) RequestOut {
 	return RequestOut{
 		ID: r.Trace, Time: r.TS.UTC(), Key: ids.Encode(ids.APIKey, r.KeyID), Developer: r.Developer, User: r.User,
-		Tags: r.Tags, Route: r.Route, Router: r.Router, Tier: r.Tier, DecidedTier: r.DecidedTier, TierSource: r.TierSource,
+		Tags: r.Tags, Route: r.Route, Conversation: r.Conversation, TurnKind: r.TurnKind, HumanTurns: int(r.HumanTurns),
+		ChainGapMs: int(r.ChainGapMs), Router: r.Router, Tier: r.Tier, DecidedTier: r.DecidedTier, TierSource: r.TierSource,
 		TierConfidence: r.TierConfidence, Shadow: r.Shadow, FirewallAction: r.FirewallAction, FirewallKinds: r.FirewallKinds,
 		APIFormat: r.APIFormat, Provider: r.Provider, RequestedModel: r.RequestedModel,
 		ServedModel: r.ServedModel, Stream: r.Stream, Translated: r.Translated, Status: int(r.Status), ErrorCode: r.ErrorCode, Attempts: int(r.Attempts),

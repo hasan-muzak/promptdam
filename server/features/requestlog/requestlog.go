@@ -17,9 +17,11 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/billing"
 	"github.com/hasan-muzak/keel-core/pkg/events"
 	"github.com/hasan-muzak/keel-core/pkg/llm"
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
+	"github.com/hasan-muzak/promptdam/server/features/conversation"
 	"github.com/hasan-muzak/promptdam/server/features/families"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
@@ -40,6 +42,9 @@ type Row struct {
 	ProjectID, OrgID, KeyID                                 uuid.UUID
 	TS                                                      time.Time
 	Trace, Developer, User, Route                           string
+	Conversation, TurnKind, ChainState                      string
+	HumanTurns                                              uint16
+	ChainGapMs                                              uint32
 	FamilyID, PrefixHash                                    string
 	PrefixFlags                                             uint16
 	PrefixTokens, EstInput, Messages, MaxTokens             uint32
@@ -71,7 +76,8 @@ type Row struct {
 }
 
 var columns = []string{
-	"project_id", "ts", "trace", "org_id", "key_id", "developer", "end_user", "tags", "route", "family_id", "prefix_hash",
+	"project_id", "ts", "trace", "org_id", "key_id", "developer", "end_user", "tags", "route", "conversation", "turn_kind",
+	"human_turns", "chain_gap_ms", "chain_state", "family_id", "prefix_hash",
 	"prefix_flags", "prefix_tokens", "est_input_tokens", "messages", "max_tokens", "has_tools", "json_output", "rule",
 	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "router_micros", "firewall_action",
 	"firewall_kinds", "payload_ref", "api_format", "provider",
@@ -83,7 +89,8 @@ var columns = []string{
 
 func values(r Row) []any {
 	return []any{
-		r.ProjectID, r.TS, r.Trace, r.OrgID, r.KeyID, r.Developer, r.User, r.Tags, r.Route, r.FamilyID, r.PrefixHash,
+		r.ProjectID, r.TS, r.Trace, r.OrgID, r.KeyID, r.Developer, r.User, r.Tags, r.Route, r.Conversation, r.TurnKind,
+		r.HumanTurns, r.ChainGapMs, r.ChainState, r.FamilyID, r.PrefixHash,
 		r.PrefixFlags, r.PrefixTokens, r.EstInput, r.Messages, r.MaxTokens, r.HasTools, r.JSONOutput, r.Rule,
 		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.RouterMicros, r.FirewallAction,
 		r.FirewallKinds, r.PayloadRef, r.APIFormat, r.Provider,
@@ -107,6 +114,9 @@ type Config struct {
 	// Payloads keeps the payloads of the calls projects capture (nil:
 	// none are kept).
 	Payloads *payloads.Store
+	// Turns learns what each turn's calls cost and cached, and how long
+	// after the conversation's previous call each started (nil: nothing).
+	Turns *conversation.Store
 }
 
 // Log records finished calls.
@@ -220,6 +230,22 @@ func (l *Log) Record(r *gateway.Record) {
 	if row.Tags == nil {
 		row.Tags = []string{}
 	}
+	// A served call adds to its turn (in the background, below): an
+	// answer from the response cache touched no provider's cache.
+	var turn *turnCall
+	if m.InTurn {
+		row.Conversation, row.HumanTurns = m.Turn.Conversation.String(), uint16(min(m.Turn.HumanTurns, 65535))
+		row.TurnKind = TurnStart
+		if m.Turn.Continuation {
+			row.TurnKind = TurnContinuation
+		}
+		if r.UsageKnown && r.Cache != "hit" {
+			u := r.Usage
+			turn = &turnCall{project: m.Project, keys: m.Turn, f: conversation.Finished{Start: r.Start.UnixMilli(),
+				Input: int64(u.Input), CacheRead: int64(u.CacheRead), CacheWrite: int64(u.CacheWrite), Output: int64(u.Output),
+				Model: r.ServedModel, Provider: r.Provider, Kind: r.Kind, TTL: cacheTTL(u)}}
+		}
+	}
 	var fw []firewall.Event
 	row.FirewallKinds = []string{}
 	if o := m.Firewall; o != nil {
@@ -240,7 +266,34 @@ func (l *Log) Record(r *gateway.Record) {
 		keep = &payloads.Entry{Org: m.Org, Project: m.Project, At: row.TS, Capture: m.Capture, Format: r.Format,
 			Stream: r.Stream, Status: r.Status, Request: r.Body, Answer: r.Answer}
 	}
-	l.writing.Go(func() { l.write(m.Org, row, fw, keep) })
+	l.writing.Go(func() { l.write(m.Org, row, fw, keep, turn) })
+}
+
+// Turn kinds: a call that starts its turn (answers a human message), or one
+// that continues it (an agent's tool loop).
+const (
+	TurnStart        = "start"
+	TurnContinuation = "continuation"
+)
+
+// turnCall is a served call to add to its turn.
+type turnCall struct {
+	project uuid.UUID
+	keys    conversation.Keys
+	f       conversation.Finished
+}
+
+// cacheTTL is how long a call's prompt cache entries live: an hour when it
+// wrote one-hour entries, five minutes when it read or wrote others, ""
+// when it used no cache.
+func cacheTTL(u wire.Usage) string {
+	switch {
+	case u.CacheWrite1h > 0:
+		return "1h"
+	case u.CacheRead > 0 || u.CacheWrite > 0:
+		return "5m"
+	}
+	return ""
 }
 
 // kinds are the detectors of hits, sorted, each once.
@@ -307,9 +360,13 @@ func (l *Log) ledger(r *gateway.Record, m *resolver.Meta, cost int64) Ledger {
 	return led
 }
 
-func (l *Log) write(org uuid.UUID, row Row, fw []firewall.Event, keep *payloads.Entry) {
+func (l *Log) write(org uuid.UUID, row Row, fw []firewall.Event, keep *payloads.Entry, turn *turnCall) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	if turn != nil && l.cfg.Turns != nil {
+		gap, state := l.cfg.Turns.Finish(ctx, turn.project, turn.keys.Turn, turn.keys.Prev, turn.f)
+		row.ChainGapMs, row.ChainState = uint32(min(max(gap, 0), 1<<31)), state
+	}
 	row.RetentionDays = defaultRetention
 	if e, err := l.cfg.Entitlements(ctx, org); err == nil {
 		if days, ok := e.Limit(catalog.RetentionDays); ok && days > 0 {

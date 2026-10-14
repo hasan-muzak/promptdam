@@ -20,6 +20,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/safehttp"
 
 	"github.com/hasan-muzak/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/features/conversation"
 	"github.com/hasan-muzak/promptdam/server/features/decide"
 	"github.com/hasan-muzak/promptdam/server/features/evaluate"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
@@ -68,12 +69,16 @@ func run() error {
 	// Providers' base URLs are public addresses; a local stack's fake
 	// provider runs on this machine.
 	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: cfg.Env == config.Development})
+	// Conversations' turns, shared by every gateway replica through Valkey.
+	turns := conversation.New(c.KV, conversation.Options{})
 	res := resolver.New(resolver.Config{
 		Keys: c.APIKeys, Snapshots: snapshots, Quota: c.Metering, Spend: app.Spend, Rates: rates, Prices: app.Prices,
 		Scope: core.ScopeGateway, Rules: app.RuleEnv, Entitlements: c.Metering.Entitlements, Decider: decide.New(transport),
+		Turns: turns,
 	})
 	log := requestlog.New(requestlog.Config{
 		Events: c.Events, Prices: app.Prices, Spend: app.Spend, Entitlements: c.Metering.Entitlements, Payloads: app.PayloadStore,
+		Turns: turns,
 	})
 	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})
 	eval := evaluate.New(evaluate.Config{
@@ -99,7 +104,7 @@ func run() error {
 	// The payload store starts before the log and stops after it: the
 	// log's last rows add the last payloads.
 	for _, l := range []lifecycle{app.Prices, c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, evalSpend, snapshots,
-		app.PayloadStore, log, eval} {
+		turns, app.PayloadStore, log, eval} {
 		if err := l.Start(ctx); err != nil {
 			return err
 		}

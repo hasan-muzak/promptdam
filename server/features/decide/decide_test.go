@@ -98,6 +98,45 @@ func TestDecide(t *testing.T) {
 	}
 }
 
+// An answer is about the tiers the model read: an edited router asks again.
+// Identical questions asked at once share one call, and its cost counts
+// once.
+func TestDecideSharesAndForgets(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		time.Sleep(50 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"tier\": \"fast\"}"}}],"usage":{"prompt_tokens":80,"completion_tokens":5}}`))
+	}))
+	defer srv.Close()
+	d := decide.New(safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true}))
+	ctx := context.Background()
+
+	var paid atomic.Int64
+	done := make(chan struct{})
+	for range 5 {
+		go func() {
+			defer func() { done <- struct{}{} }()
+			if tier, usage, err := d.Decide(ctx, question(srv.URL, time.Second)); err == nil && tier == "fast" {
+				paid.Add(int64(usage.Input))
+			}
+		}()
+	}
+	for range 5 {
+		<-done
+	}
+	if calls.Load() != 1 || paid.Load() != 80 {
+		t.Fatalf("%d calls, %d input tokens paid: want one call, paid once", calls.Load(), paid.Load())
+	}
+
+	edited := question(srv.URL, time.Second)
+	edited.Tiers[0].Description = "Counting, lists and extraction"
+	if _, usage, _ := d.Decide(ctx, edited); calls.Load() != 2 || usage.Input != 80 {
+		t.Fatalf("an edited router reused an answer: %d calls", calls.Load())
+	}
+}
+
 // An active router asks its decision model about the calls its classifier
 // is unsure of (here, every call: it isn't trained yet), and the call
 // counts what that cost.

@@ -38,6 +38,10 @@ const (
 	// "model": "<router>:<tier>" does. The response names the tier that
 	// served it.
 	HeaderTier = HeaderPrefix + "Tier"
+	// HeaderSession names the conversation a call belongs to, for clients
+	// that keep one; others' conversations are told apart by their
+	// messages.
+	HeaderSession = HeaderPrefix + "Session"
 )
 
 // Response headers the gateway adds.

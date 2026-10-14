@@ -26,7 +26,7 @@ func judged(n int, seed uint64) ([]Sample, []Sample) {
 		for range rng.IntN(40) {
 			text += " filler"
 		}
-		fs := Features(Input{LastUser: text, System: "You read contracts.", Family: "f", Messages: 1, InputTokens: len(text) / 4})
+		fs := Features(Input{Ask: text, System: "You read contracts.", Family: "f", Messages: 1, InputTokens: len(text) / 4})
 		noise := rng.Float64() < 0.02
 		down = append(down, Sample{Features: fs, Y: ok != noise})
 		up = append(up, Sample{Features: fs, Y: !ok && rng.Float64() < 0.8})
@@ -46,12 +46,12 @@ func TestTrainTier(t *testing.T) {
 	}
 
 	m := Model{Default: "smart", Tiers: []TierModel{cheap, strong}}
-	count := Features(Input{LastUser: "How many times is the word warranty used?" + string(make([]byte, 0)), System: "You read contracts.",
+	count := Features(Input{Ask: "How many times is the word warranty used?" + string(make([]byte, 0)), System: "You read contracts.",
 		Family: "f", Messages: 1, InputTokens: 10})
 	if p := m.Place(count); p.Tier != "fast" || p.P < float64(cheap.Threshold) {
 		t.Fatalf("a counting question: %+v", p)
 	}
-	legal := Features(Input{LastUser: "Is this warranty contract legal in Germany?", System: "You read contracts.", Family: "f",
+	legal := Features(Input{Ask: "Is this warranty contract legal in Germany?", System: "You read contracts.", Family: "f",
 		Messages: 1, InputTokens: 10})
 	if p := m.Place(legal); p.Tier == "fast" {
 		t.Fatalf("a legal question went to the cheap tier: %+v", p)

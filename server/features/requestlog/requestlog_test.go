@@ -364,3 +364,54 @@ func TestRouterCalls(t *testing.T) {
 		t.Fatalf("row %+v", r)
 	}
 }
+
+// An agent's conversation is logged a turn at a time: each call says
+// whether it starts its turn or continues it, which conversation it is,
+// and how long after the conversation's previous call it started.
+func TestTurnsAreLogged(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true})
+	ctx := context.Background()
+	calls := []string{
+		`{"model":"gpt-5-mini","messages":[{"role":"system","content":"You fix code."},{"role":"user","content":"fix the bug"}]}`,
+		`{"model":"gpt-5-mini","messages":[{"role":"system","content":"You fix code."},{"role":"user","content":"fix the bug"},
+			{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"read","arguments":"{}"}}]},
+			{"role":"tool","tool_call_id":"c1","content":"package a"}]}`,
+		`{"model":"gpt-5-mini","messages":[{"role":"system","content":"You fix code."},{"role":"user","content":"fix the bug"},
+			{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"read","arguments":"{}"}}]},
+			{"role":"tool","tool_call_id":"c1","content":"package a"},{"role":"assistant","content":"fixed"},
+			{"role":"user","content":"now add a test"}]}`,
+	}
+	for _, body := range calls {
+		if status, _, out := w.Call("/v1/chat/completions", body); status != 200 {
+			t.Fatalf("%d %s", status, out)
+		}
+		time.Sleep(20 * time.Millisecond) // the calls' starts are apart
+	}
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct {
+		Conversation string `ch:"conversation"`
+		Kind         string `ch:"turn_kind"`
+		Humans       uint16 `ch:"human_turns"`
+		Gap          uint32 `ch:"chain_gap_ms"`
+		State        string `ch:"chain_state"`
+	}
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT conversation, turn_kind, human_turns,
+		chain_gap_ms, chain_state FROM requests WHERE {tenant} ORDER BY ts`); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("%d rows", len(rows))
+	}
+	first, loop, next := rows[0], rows[1], rows[2]
+	if first.Kind != "start" || first.State != "start" || first.Humans != 1 || first.Conversation == "" {
+		t.Fatalf("the first question %+v", first)
+	}
+	if loop.Kind != "continuation" || loop.State != "continued" || loop.Gap < 20 || loop.Conversation != first.Conversation {
+		t.Fatalf("the tool loop %+v", loop)
+	}
+	if next.Kind != "start" || next.State != "continued" || next.Gap < 20 || next.Humans != 2 || next.Conversation != first.Conversation {
+		t.Fatalf("the next question %+v", next)
+	}
+}

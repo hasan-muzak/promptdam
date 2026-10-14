@@ -51,7 +51,7 @@ func TestTrainedRoutersPlaceCalls(t *testing.T) {
 			tmpl, verdict = hard[rng.IntN(len(hard))], "loss"
 		}
 		text := fmt.Sprintf(tmpl, noun[rng.IntN(len(noun))])
-		in := classifier.Input{LastUser: text, Messages: 1, InputTokens: (len(`{"model":"auto","messages":[{"role":"user","content":""}]}`) + len(text)) / 4}
+		in := classifier.Input{Ask: text, Messages: 1, InputTokens: (len(`{"model":"auto","messages":[{"role":"user","content":""}]}`) + len(text)) / 4}
 		if err := batch.Append(w.Project, time.Now(), w.Org, "auto", "smart", "fast", int8(-1), verdict, "judge",
 			classifier.Features(in), uint16(7)); err != nil {
 			t.Fatal(err)

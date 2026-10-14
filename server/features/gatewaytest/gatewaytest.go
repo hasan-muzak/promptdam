@@ -31,6 +31,7 @@ import (
 
 	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
 	"github.com/hasan-muzak/promptdam/server/core"
+	"github.com/hasan-muzak/promptdam/server/features/conversation"
 	"github.com/hasan-muzak/promptdam/server/features/decide"
 	"github.com/hasan-muzak/promptdam/server/features/evaluate"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
@@ -75,6 +76,8 @@ type World struct {
 	Log      *requestlog.Log
 	// Eval evaluates routers' sampled calls (with ClickHouse).
 	Eval *evaluate.Evaluator
+	// Turns keeps conversations' turns (on the test's Valkey).
+	Turns *conversation.Store
 	// Stripe is the fake Stripe billing goes through (Options.Stripe).
 	Stripe *billingtest.FakeGateway
 	// Customer is the organization's customer at the fake Stripe, once
@@ -139,15 +142,16 @@ func New(t *testing.T, opts Options) *World {
 
 	snaps := snapshot.NewStore(c.KV, w.App.Sources())
 	rates := counter.New(c.KV, "rpm", counter.Options{})
+	w.Turns = conversation.New(c.KV, conversation.Options{})
 	w.Log = requestlog.New(requestlog.Config{
 		Events: c.Events, Prices: w.App.Prices, Spend: w.App.Spend, Entitlements: c.Metering.Entitlements,
-		Payloads: w.App.PayloadStore,
+		Payloads: w.App.PayloadStore, Turns: w.Turns,
 	})
 	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true})
 	res := resolver.New(resolver.Config{
 		Keys: c.APIKeys, Snapshots: snaps, Quota: c.Metering, Spend: w.App.Spend, Rates: rates, Prices: w.App.Prices,
 		Scope: core.ScopeGateway, Rules: w.App.RuleEnv, Sample: opts.Sample, Entitlements: c.Metering.Entitlements,
-		Decider: decide.New(transport),
+		Decider: decide.New(transport), Turns: w.Turns,
 	})
 	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})
 	w.Eval = evaluate.New(evaluate.Config{Resolver: res, Transport: transport, Events: c.Events, Prices: w.App.Prices,
@@ -155,7 +159,7 @@ func New(t *testing.T, opts Options) *World {
 	for _, l := range []interface {
 		Start(context.Context) error
 		Stop(context.Context) error
-	}{snaps, rates, w.App.SpendCounters, evalSpend, w.App.PayloadStore, w.Log, w.Eval} {
+	}{snaps, rates, w.App.SpendCounters, evalSpend, w.Turns, w.App.PayloadStore, w.Log, w.Eval} {
 		if err := l.Start(ctx); err != nil {
 			t.Fatal(err)
 		}

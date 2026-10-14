@@ -2,7 +2,10 @@
 // when the classifier is unsure (project.md §6.2): the model reads the
 // tiers' descriptions and examples and an excerpt of the call, and answers
 // a tier, held to a schema where it takes one. A hard timeout falls back to
-// the default tier; answers are cached per router, family and message.
+// the default tier. Answers are cached per project, router, family, the
+// question and the tiers as the model read them, so an edited router never
+// reuses an answer about its old tiers; identical questions asked at once
+// share one call.
 package decide
 
 import (
@@ -15,6 +18,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -41,6 +45,16 @@ type Decider struct {
 	client *http.Client
 	cache  *memcache.Cache[[32]byte, string]
 	now    func() time.Time
+
+	mu       sync.Mutex
+	inflight map[[32]byte]*flight
+}
+
+// flight is a question being asked: callers asking the same wait for it.
+type flight struct {
+	done chan struct{}
+	tier string
+	err  error
 }
 
 // New returns a Decider sending calls with transport (safehttp's).
@@ -50,25 +64,67 @@ func New(transport http.RoundTripper) *Decider {
 	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
-	return &Decider{client: client, now: time.Now,
+	return &Decider{client: client, now: time.Now, inflight: map[[32]byte]*flight{},
 		cache: memcache.New[[32]byte, string](CacheTTL, time.Second, 100_000)}
 }
 
 // Decide implements resolver.Decider: the tier the model picks ("" when it
-// picks none), within the question's timeout. A cached answer costs
-// nothing and returns no usage.
+// picks none), within the question's timeout. Only the call that asked
+// pays: a cached answer, or one shared with a question asked at the same
+// time, returns no usage. An answer naming no tier isn't cached.
 func (d *Decider) Decide(ctx context.Context, q resolver.Question) (string, wire.Usage, error) {
-	key := sha256.Sum256([]byte(q.Project.String() + "\x00" + q.Router + "\x00" + q.Family + "\x00" + q.Instructions + "\x00" + q.Request))
-	var usage wire.Usage
-	tier, err := d.cache.Get(key, d.now(), func() (string, error) {
-		t, u, err := d.ask(ctx, q)
-		usage = u
-		if err != nil {
-			return "", memcache.Uncached{Err: err}
+	key := keyOf(q)
+	if tier, ok := d.cache.Peek(key, d.now()); ok {
+		return tier, wire.Usage{}, nil
+	}
+	d.mu.Lock()
+	if f, ok := d.inflight[key]; ok {
+		d.mu.Unlock()
+		wait, cancel := context.WithTimeout(ctx, q.Timeout)
+		defer cancel()
+		select {
+		case <-f.done:
+			return f.tier, wire.Usage{}, f.err
+		case <-wait.Done():
+			return "", wire.Usage{}, wait.Err()
 		}
-		return t, nil
-	})
+	}
+	f := &flight{done: make(chan struct{})}
+	d.inflight[key] = f
+	d.mu.Unlock()
+
+	tier, usage, err := d.ask(ctx, q)
+	if err == nil && tier != "" {
+		d.cache.Set(key, tier, d.now())
+	}
+	f.tier, f.err = tier, err
+	d.mu.Lock()
+	delete(d.inflight, key)
+	d.mu.Unlock()
+	close(f.done)
 	return tier, usage, err
+}
+
+// keyOf keys a question by what the model reads, its tiers included.
+func keyOf(q resolver.Question) [32]byte {
+	h := sha256.New()
+	for _, s := range []string{q.Project.String(), q.Router, q.Family, q.Instructions, q.Request} {
+		_, _ = io.WriteString(h, s)
+		_, _ = h.Write([]byte{0})
+	}
+	for _, t := range q.Tiers {
+		_, _ = io.WriteString(h, t.Name)
+		_, _ = h.Write([]byte{0})
+		_, _ = io.WriteString(h, t.Description)
+		_, _ = h.Write([]byte{0})
+		for _, e := range t.Examples {
+			_, _ = io.WriteString(h, e)
+			_, _ = h.Write([]byte{1})
+		}
+	}
+	var k [32]byte
+	copy(k[:], h.Sum(nil))
+	return k
 }
 
 func (d *Decider) ask(ctx context.Context, q resolver.Question) (string, wire.Usage, error) {
