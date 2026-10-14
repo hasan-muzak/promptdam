@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
@@ -114,6 +115,40 @@ func sessionHeader(h http.Header, client http.Header, body []byte, kind, session
 	}
 	h.Set("X-Session-Id", session)
 	return true
+}
+
+// withAvoided keeps a call to a router of providers off the backends its
+// model's profile says never cache it (avoid, their slugs): OpenRouter's
+// provider.ignore, appended, so the prompt's bytes don't move. Never
+// provider.order, which would end OpenRouter's keeping a conversation on
+// one backend; never over the client's own provider preferences. It
+// reports whether it added any.
+func withAvoided(body []byte, avoid []string) ([]byte, bool) {
+	if len(avoid) == 0 {
+		return body, false
+	}
+	if _, set, err := wire.Field(body, "provider"); err != nil || set {
+		return body, false
+	}
+	ignore, err := json.Marshal(struct {
+		Ignore []string `json:"ignore"`
+	}{avoid})
+	if err != nil {
+		return body, false
+	}
+	out, err := wire.SetField(body, "provider", ignore)
+	if err != nil {
+		return body, false
+	}
+	return out, true
+}
+
+// refusedAvoided reports OpenRouter's refusal of a call no backend is
+// left to serve once the avoided ones are taken out.
+func refusedAvoided(body []byte) bool {
+	b := bytes.ToLower(body)
+	return bytes.Contains(b, []byte("have been ignored")) || bytes.Contains(b, []byte("ignored providers")) ||
+		bytes.Contains(b, []byte("no endpoints")) || bytes.Contains(b, []byte("no allowed providers"))
 }
 
 // refusedCaching is what of the gateway's caching a provider's 400 names:

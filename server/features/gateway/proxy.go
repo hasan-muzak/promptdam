@@ -391,8 +391,15 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 	// is switched off for the model (Config.CacheRefused).
 	healing, unmarking, session := true, c.promptCache, c.promptCache
 	kill := false
+	// The backends its model never caches on are avoided (withAvoided),
+	// until none is left to serve the call.
+	avoiding := c.promptCache && CacheDialectOf(t.Kind, false).Avoids && format == wire.OpenAIChat
 	for {
-		up, rerr := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+path, bytes.NewReader(body))
+		send, avoided := body, false
+		if avoiding {
+			send, avoided = withAvoided(body, t.Cache.Avoid)
+		}
+		up, rerr := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+path, bytes.NewReader(send))
 		if rerr != nil {
 			c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_misconfigured", Message: "the provider's base URL is invalid"})
 			return answered, false
@@ -407,25 +414,32 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 		c.rec.Upstream += time.Since(sent)
 		thinking := healing && c.rewrote && format == wire.AnthropicMessages
 		marked := unmarking && (c.rec.PromptCached || sessioned)
-		if err != nil || res.StatusCode != http.StatusBadRequest || eventStream(res.Header) || !thinking && !marked {
+		refusable := res != nil && (res.StatusCode == http.StatusBadRequest && (thinking || marked) ||
+			avoided && (res.StatusCode == http.StatusBadRequest || res.StatusCode == http.StatusNotFound))
+		if err != nil || !refusable || eventStream(res.Header) {
 			break
 		}
 		raw, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorBody))
 		_ = res.Body.Close()
+		if avoided && refusedAvoided(raw) {
+			avoiding = false
+			c.rec.Healed = heals(c.rec.Healed, HealUnavoided)
+			continue
+		}
 		if thinking {
 			if healed, how, needs, ok := healThinking(body, raw); ok {
-				body, beta, c.rec.Healed, healing = healed, needs, how, false
+				body, beta, c.rec.Healed, healing = healed, needs, heals(c.rec.Healed, how), false
 				if p, _, _, ok := healThinking(plain, raw); ok {
 					plain = p
 				}
 				continue
 			}
 		}
-		if refused := refusedCaching(raw); marked && refused != refusedNothing {
+		if refused := refusedCaching(raw); marked && res.StatusCode == http.StatusBadRequest && refused != refusedNothing {
 			kill = refused == refusedMarkers && c.rec.PromptCached && c.rec.CacheStrategy == promptcache.Markers &&
 				killsMarkers(t.Kind, format == wire.AnthropicMessages)
 			body, unmarking, session, c.rec.PromptCached = plain, false, false, false
-			c.rec.Healed = strings.TrimPrefix(c.rec.Healed+","+HealUnmarked, ",")
+			c.rec.Healed = heals(c.rec.Healed, HealUnmarked)
 			continue
 		}
 		res.Body = io.NopCloser(bytes.NewReader(raw))

@@ -86,7 +86,18 @@ const (
 	// HealUnmarked: the call was sent again without the gateway's cache
 	// breakpoints and session, which its provider refused.
 	HealUnmarked = "unmarked"
+	// HealUnavoided: the call was sent again to any backend, none being
+	// left once those that never cache were taken out.
+	HealUnavoided = "unavoided"
 )
+
+// heals adds a heal to those of a call (Record.Healed, comma-separated).
+func heals(healed, heal string) string {
+	if healed == "" {
+		return heal
+	}
+	return healed + "," + heal
+}
 
 // healThinking is a Messages call sent again after the provider refused a
 // thinking block "bound to a different conversation" (refusal, its error

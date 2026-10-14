@@ -61,7 +61,7 @@ type RequestOut struct {
 	TierSource       string    `json:"tier_source" doc:"The step that chose the tier: explicit, rule, classifier, decision, default, or held (a new turn kept on its conversation's warm tier: switching would have cost more in cache than it saved)"`
 	TierConfidence   float32   `json:"tier_confidence" doc:"How sure that step was, 0 to 1"`
 	Shadow           bool      `json:"shadow" doc:"The router only watched: it served its default tier"`
-	Healed           string    `json:"healed" doc:"How a call its provider refused was sent again: drop_block or strip_thinking (thinking a firewall rewrite invalidated), unmarked (without the gateway's cache breakpoints), both comma-separated, or empty"`
+	Healed           string    `json:"healed" doc:"How a call its provider refused was sent again, comma-separated: drop_block or strip_thinking (thinking a firewall rewrite invalidated), unmarked (without the gateway's cache breakpoints), unavoided (to any backend, none being left once those that never cache were taken out); empty when it wasn't"`
 	Effort           string    `json:"effort" doc:"The reasoning effort the gateway sent the call with (its tier's, fitted to the model); empty: the client's own"`
 	FirewallAction   string    `json:"firewall_action" doc:"The strongest action the firewall took: block, tokenize, redact, alert, or empty"`
 	FirewallKinds    []string  `json:"firewall_kinds" doc:"What the firewall found (detectors: aws_access_key, email…), never the values"`

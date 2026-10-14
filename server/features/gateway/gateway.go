@@ -228,8 +228,8 @@ type Record struct {
 	Effort string
 	// Healed says how a call a provider refused was sent again: its thinking
 	// a rewrite invalidated (HealDropBlock, HealStripThinking), the
-	// gateway's caching (HealUnmarked), or both, comma-separated; "" when it
-	// wasn't.
+	// gateway's caching (HealUnmarked), the backends it was kept off
+	// (HealUnavoided); comma-separated, "" when it wasn't.
 	Healed string
 	// Body and Answer are a sampled or captured call's request (as the
 	// provider got it) and the answer the client got (a whole response or

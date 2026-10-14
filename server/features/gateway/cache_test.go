@@ -290,6 +290,63 @@ func TestRefusedMarkersAreDropped(t *testing.T) {
 	}
 }
 
+// An OpenRouter call is kept off the backends its model never caches on,
+// by provider.ignore appended to the body; a client's own provider
+// preferences win; when no backend is left, the call goes to any.
+func TestOpenRouterAvoidsBackends(t *testing.T) {
+	answer := `{"id":"c","object":"chat.completion","model":"google/gemini-3.8-flash","provider":"Google AI Studio",
+		"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],
+		"usage":{"prompt_tokens":5,"completion_tokens":1}}`
+	var mu sync.Mutex
+	var bodies []string
+	var allIgnored atomic.Bool
+	up, _ := provider(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(body))
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if allIgnored.Load() && bytes.Contains(body, []byte(`"ignore"`)) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"error":{"message":"All providers have been ignored. To change your default ignored providers, visit: https://openrouter.ai/settings/privacy","code":404}}`)
+			return
+		}
+		_, _ = io.WriteString(w, answer)
+	})
+	e := setup(t, fakeupstream.Options{}, func(string) gateway.Resolver {
+		return routeResolver{gateway.Route{PromptCache: true, Session: "pd-conv", Targets: []gateway.Target{{Provider: "openrouter",
+			Kind: "openrouter", BaseURL: up.URL + "/v1", Model: "google/gemini-3.8-flash",
+			Cache: gateway.CachePlan{Strategy: "markers", Avoid: []string{"google-vertex"}}}}}}
+	})
+	chat := `{"model":"google/gemini-3.8-flash","messages":[{"role":"user","content":"a"}]}`
+	last := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return bodies[len(bodies)-1]
+	}
+
+	if res, _ := e.post(t, "/v1/chat/completions", chat); res.StatusCode != 200 ||
+		!strings.HasPrefix(last(), strings.TrimSuffix(chat, "}")) || !strings.Contains(last(), `"provider":{"ignore":["google-vertex"]}`) {
+		t.Fatalf("%d: %s", res.StatusCode, last())
+	}
+	theirs := `{"model":"google/gemini-3.8-flash","provider":{"order":["google-vertex"]},"messages":[{"role":"user","content":"a"}]}`
+	if _, _ = e.post(t, "/v1/chat/completions", theirs); strings.Contains(last(), "ignore") {
+		t.Fatalf("the client's provider preferences: %s", last())
+	}
+
+	allIgnored.Store(true)
+	mu.Lock()
+	bodies = nil
+	mu.Unlock()
+	res, out := e.post(t, "/v1/chat/completions", chat)
+	mu.Lock()
+	sent := len(bodies)
+	mu.Unlock()
+	if res.StatusCode != 200 || sent != 2 || strings.Contains(last(), "ignore") || e.record(t).Healed != gateway.HealUnavoided {
+		t.Fatalf("none left: %d %s, %d sent, last %s", res.StatusCode, out, sent, last())
+	}
+}
+
 func fmtJSON(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
