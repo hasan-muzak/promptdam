@@ -42,7 +42,7 @@ type Cache struct {
 func New(store *kv.Store) *Cache { return &Cache{kv: store} }
 
 // ignored are request fields that don't change the answer.
-var ignored = []string{"user", "metadata", "store", "stream_options", "service_tier"}
+var ignored = []string{"user", "metadata", "store", "stream_options", "service_tier", "prompt_cache_key"}
 
 // Key is the cache key of a request in a scope (a project and route,
 // which the key names so purges find it). ok is false for a body that

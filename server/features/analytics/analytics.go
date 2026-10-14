@@ -66,6 +66,7 @@ type Request struct {
 	TierConfidence   float32   `ch:"tier_confidence"`
 	Shadow           bool      `ch:"shadow"`
 	Effort           string    `ch:"effort"`
+	Healed           string    `ch:"healed"`
 	FirewallAction   string    `ch:"firewall_action"`
 	FirewallKinds    []string  `ch:"firewall_kinds"`
 	PayloadRef       string    `ch:"payload_ref"`
@@ -98,7 +99,7 @@ type Request struct {
 
 const requestColumns = `ts, trace, key_id, developer, end_user, tags, route, conversation, turn_kind, human_turns,
 	chain_gap_ms, router, tier, decided_tier, tier_source,
-	tier_confidence, shadow, effort, firewall_action, firewall_kinds, payload_ref, api_format, provider, requested_model,
+	tier_confidence, shadow, effort, healed, firewall_action, firewall_kinds, payload_ref, api_format, provider, requested_model,
 	served_model, stream, translated, status, error_code, attempts, ttfb_ms, latency_ms, upstream_ms, usage_known, input_tokens,
 	output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_micros, priced, savings_micros,
 	savings_reason, savings_basis, cache, family_id`

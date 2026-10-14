@@ -440,6 +440,11 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	promptCache := route.PromptCache && r.planHas(ctx, m.Org, catalog.PromptCaching)
 	out := &gateway.Route{Targets: targets, Retries: route.Retries, PromptCache: promptCache, Header: header, Meta: m,
 		Sample: m.Sampled}
+	// OpenAI keeps a conversation's calls on the machines that cached them
+	// when they share a key: a conversation that goes on gets its own.
+	if promptCache && m.InTurn && (m.Turn.HumanTurns >= 2 || m.Turn.Continuation) {
+		out.PromptKey = "pd-" + m.Turn.Conversation.String()
+	}
 	if o := m.Firewall; o != nil {
 		out.Body = o.Body
 		if a := snap.Firewall.Response(o); a != nil {
@@ -558,6 +563,7 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 		// when a call is moved to it.
 		reasons, sure := m.Has(llm.FeatureReasoning)
 		t.NoReasoning = sure && !reasons
+		t.MinCache = int(m.MinCacheTokens)
 	}
 	if p.Format == apiFormat(f) {
 		return t, true

@@ -57,8 +57,11 @@ type Route struct {
 	// response cache, in CacheScope (the project and route).
 	CacheTTL   time.Duration
 	CacheScope string
-	// PromptCache adds Anthropic cache breakpoints to calls without any.
+	// PromptCache adds Anthropic cache breakpoints to calls without any,
+	// and PromptKey (a conversation's) to OpenAI calls without a
+	// prompt_cache_key.
 	PromptCache bool
+	PromptKey   string
 	// Header is set on the response (e.g. the router's tier).
 	Header http.Header
 	// Sample keeps the call's request and answer in its Record (Body,
@@ -125,6 +128,9 @@ type Target struct {
 	// a client's effort is taken out.
 	Effort, DefaultEffort string
 	NoReasoning           bool
+	// MinCache is the shortest prefix the model's provider caches (0:
+	// unknown), below which prompt cache breakpoints aren't added.
+	MinCache int
 }
 
 // formatOf is the API format a target is called in for a call of format f.
@@ -189,6 +195,9 @@ type Record struct {
 	// Effort is the reasoning effort the gateway sent the call with ("":
 	// the client's own, or none).
 	Effort string
+	// Healed says how a call whose thinking a rewrite invalidated was sent
+	// again (HealDropBlock, HealStripThinking), "" when it wasn't.
+	Healed string
 	// Body and Answer are a sampled or captured call's request (as the
 	// provider got it) and the answer the client got (a whole response or
 	// its stream, in the client's format), held in memory; Answer is nil

@@ -54,7 +54,7 @@ type Row struct {
 	Router, Tier, DecidedTier, TierSource                   string
 	TierConfidence                                          float32
 	Shadow                                                  bool
-	Effort                                                  string
+	Effort, Healed                                          string
 	RouterMicros                                            int64
 	FirewallAction                                          string
 	FirewallKinds                                           []string
@@ -81,7 +81,7 @@ var columns = []string{
 	"project_id", "ts", "trace", "org_id", "key_id", "developer", "end_user", "tags", "route", "conversation", "turn_kind",
 	"human_turns", "chain_gap_ms", "chain_state", "family_id", "prefix_hash",
 	"prefix_flags", "prefix_tokens", "est_input_tokens", "messages", "max_tokens", "has_tools", "json_output", "rule",
-	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "effort", "router_micros", "firewall_action",
+	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "effort", "healed", "router_micros", "firewall_action",
 	"firewall_kinds", "payload_ref", "api_format", "provider",
 	"kind", "requested_model", "served_model", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
 	"upstream_ms", "usage_known", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
@@ -94,7 +94,7 @@ func values(r Row) []any {
 		r.ProjectID, r.TS, r.Trace, r.OrgID, r.KeyID, r.Developer, r.User, r.Tags, r.Route, r.Conversation, r.TurnKind,
 		r.HumanTurns, r.ChainGapMs, r.ChainState, r.FamilyID, r.PrefixHash,
 		r.PrefixFlags, r.PrefixTokens, r.EstInput, r.Messages, r.MaxTokens, r.HasTools, r.JSONOutput, r.Rule,
-		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.Effort, r.RouterMicros, r.FirewallAction,
+		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.Effort, r.Healed, r.RouterMicros, r.FirewallAction,
 		r.FirewallKinds, r.PayloadRef, r.APIFormat, r.Provider,
 		r.Kind, r.RequestedModel, r.ServedModel, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
 		r.UpstreamMs, r.UsageKnown, r.InputTokens, r.OutputTokens, r.CacheRead, r.CacheWrite, r.Think, r.CostMicros,
@@ -218,7 +218,7 @@ func (l *Log) Record(r *gateway.Record) {
 		EstInput: uint32(min(r.RequestBytes/4, 1<<31)), Messages: uint32(min(r.Request.Messages, 1<<31)),
 		MaxTokens: uint32(min(r.Request.MaxTokens, 1<<31)), HasTools: r.Request.Tools, JSONOutput: r.Request.Prefix.Format != "",
 		Rule: m.Rule, Router: m.Router, Tier: m.Tier, DecidedTier: m.Decided, TierSource: m.TierSource,
-		TierConfidence: float32(m.TierConfidence), Shadow: m.Shadow, Effort: r.Effort, RouterMicros: routerMicros, APIFormat: r.Format.String(),
+		TierConfidence: float32(m.TierConfidence), Shadow: m.Shadow, Effort: r.Effort, Healed: r.Healed, RouterMicros: routerMicros, APIFormat: r.Format.String(),
 		Provider: r.Provider, Kind: r.Kind,
 		RequestedModel: r.RequestedModel, ServedModel: r.ServedModel, Stream: r.Stream, Translated: r.Translated, Status: uint16(min(r.Status, 65535)),
 		ErrorCode: r.ErrorCode, Attempts: uint8(min(r.Attempts, 255)), TTFBms: ms(r.TTFB), LatencyMs: ms(r.Latency),

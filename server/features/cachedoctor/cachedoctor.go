@@ -173,7 +173,11 @@ func (s *Service) diagnose(family string, rows []prefixRow, days float64) Diagno
 	if d.InputTokens > 0 {
 		d.HitRate = float64(d.CacheReadTokens) / float64(d.InputTokens)
 	}
-	d.Findings = findings(d, flags)
+	minTokens := promptcache.DefaultMinTokens
+	if price, ok := s.price(d.Kind, d.Model); ok && price.MinCacheTokens > 0 {
+		minTokens = int(price.MinCacheTokens)
+	}
+	d.Findings = findings(d, flags, minTokens)
 
 	// At most every call after the first reads the prefix from the cache.
 	if price, ok := s.price(d.Kind, d.Model); ok && d.Requests > 1 && days > 0 {
@@ -200,14 +204,15 @@ func (s *Service) price(kind, model string) (llm.Model, bool) {
 	return s.prices.Current().Lookup(catalogName, model)
 }
 
-// findings explain a family's misses, most important first.
-func findings(d Diagnosis, flags families.Flags) []Finding {
+// findings explain a family's misses, most important first. minTokens is
+// the shortest prefix its model's provider caches.
+func findings(d Diagnosis, flags families.Flags, minTokens int) []Finding {
 	var out []Finding
 	anthropic := d.Kind == "anthropic" || (d.Kind == providers.Custom && len(d.Model) > 7 && d.Model[:7] == "claude-")
-	if d.PrefixTokens < uint64(promptcache.MinTokens(d.Model)) {
+	if d.PrefixTokens < uint64(minTokens) {
 		return []Finding{{Code: TooShort, Severity: "info", Title: "The prefix is too short to cache",
 			Detail: fmt.Sprintf("Providers cache prefixes from about %d tokens; this family's are about %d.",
-				promptcache.MinTokens(d.Model), d.PrefixTokens),
+				minTokens, d.PrefixTokens),
 			Fix: "Nothing to fix. Caching pays off once the instructions and tools are long and stable."}}
 	}
 	changing := d.Prefixes > 1 && float64(d.Prefixes) > 0.05*float64(d.Requests)

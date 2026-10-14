@@ -21,7 +21,6 @@ import (
 
 	"github.com/hasan-muzak/promptdam/server/brand"
 	"github.com/hasan-muzak/promptdam/server/features/families"
-	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 	"github.com/hasan-muzak/promptdam/server/features/translate"
 )
@@ -57,9 +56,12 @@ type call struct {
 	answer                    []byte
 	// filter rewrites the provider's answer (Route.Response).
 	filter ResponseFilter
-	// marked reports that the body has the prompt cache's breakpoints
-	// (Anthropic calls of routes with prompt_cache).
-	marked bool
+	// promptKey is the conversation's key for OpenAI's prompt cache
+	// (Route.PromptKey).
+	promptKey string
+	// rewrote reports a body the gateway changed before routing it (the
+	// firewall's): a thinking block it invalidates is healed, not refused.
+	rewrote bool
 	// wait is how long the next try of the same target waits: a provider's
 	// Retry-After, when it named one.
 	wait time.Duration
@@ -184,10 +186,7 @@ func (c *call) serve() {
 		}
 	}
 
-	c.promptCache = route.PromptCache
-	if route.PromptCache && c.ep.format == wire.AnthropicMessages {
-		body, c.marked = promptcache.Mark(body, req)
-	}
+	c.promptCache, c.promptKey, c.rewrote = route.PromptCache, route.PromptKey, route.Body != nil
 
 	// Token counts come in streams only when asked for: ask on the
 	// client's behalf, and leave the extra chunk out of what it receives.
@@ -308,7 +307,7 @@ func pause(ctx context.Context, d time.Duration) bool {
 func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastTarget, lastTry bool) (next outcome, failed bool) {
 	canAgain, canOnward := !lastTarget || !lastTry, !lastTarget
 	format, path := t.formatOf(c.ep.format), c.ep.path
-	c.rec.PromptCached = c.marked && format == c.ep.format
+	c.rec.PromptCached = false
 	// A call moved to another model answers as the model asked for:
 	// agents keep state (thinking) by the model they called.
 	c.answerModel = ""
@@ -336,11 +335,6 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 			return answered, false
 		}
 		body, dropped, path, dropUsage = out, d, paths[format], false
-		if c.promptCache && format == wire.AnthropicMessages {
-			if areq, err := wire.ParseRequest(format, body); err == nil {
-				body, c.rec.PromptCached = promptcache.Mark(body, areq)
-			}
-		}
 	case t.Model != req.Model:
 		model, _ := json.Marshal(t.Model)
 		swapped, err := wire.SetField(body, "model", model)
@@ -355,6 +349,9 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 	if effortDropped {
 		dropped = append(dropped, "effort")
 	}
+	if c.promptCache {
+		body = c.cachePrompt(body, format, t, req)
+	}
 	ctx, cancel := context.WithCancel(c.r.Context())
 	defer cancel()
 	// Whether the whole request reached the provider: one that did may be
@@ -365,16 +362,38 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 			wrote.Store(true)
 		}
 	}})
-	up, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+path, bytes.NewReader(body))
-	if err != nil {
-		c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_misconfigured", Message: "the provider's base URL is invalid"})
-		return answered, false
+	// A thinking block a firewall rewrite invalidated (Anthropic refuses a
+	// conversation whose history changed under it) is healed once: sent
+	// again with the block dropped.
+	var res *http.Response
+	var err error
+	beta := ""
+	for healing := true; ; healing = false {
+		up, rerr := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.BaseURL, "/")+path, bytes.NewReader(body))
+		if rerr != nil {
+			c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_misconfigured", Message: "the provider's base URL is invalid"})
+			return answered, false
+		}
+		upstreamHeader(up.Header, c.r.Header, format, t.Header)
+		if beta != "" {
+			addBeta(up.Header, beta)
+		}
+		sent := time.Now()
+		res, err = c.h.cfg.Transport.RoundTrip(up)
+		c.rec.Upstream += time.Since(sent)
+		if err != nil || !healing || !c.rewrote || format != wire.AnthropicMessages || res.StatusCode != http.StatusBadRequest ||
+			eventStream(res.Header) {
+			break
+		}
+		raw, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorBody))
+		_ = res.Body.Close()
+		healed, how, needs, ok := healThinking(body, raw)
+		if !ok {
+			res.Body = io.NopCloser(bytes.NewReader(raw))
+			break
+		}
+		body, beta, c.rec.Healed = healed, needs, how
 	}
-	upstreamHeader(up.Header, c.r.Header, format, t.Header)
-
-	sent := time.Now()
-	res, err := c.h.cfg.Transport.RoundTrip(up)
-	c.rec.Upstream += time.Since(sent)
 	if err != nil {
 		if c.r.Context().Err() != nil {
 			c.rec.Status, c.rec.ErrorCode = statusClientClosed, "client_closed"
