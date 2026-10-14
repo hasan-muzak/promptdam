@@ -100,7 +100,7 @@ func TestFamiliesCachedAnHour(t *testing.T) {
 	})
 
 	// The doctor says so.
-	doctor := cachedoctor.New(w.C.Events, w.App.Prices, w.App.CachePolicy)
+	doctor := cachedoctor.New(w.C.Events, w.App.Prices, w.App.CachePolicy, w.App.CacheProfiles)
 	ds, err := doctor.Diagnose(w.Scoped(), w.Project, shape.Family, time.Now().Add(-4*24*time.Hour), time.Now().Add(time.Hour))
 	if err != nil || len(ds) != 1 {
 		t.Fatalf("%+v %v", ds, err)

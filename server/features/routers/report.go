@@ -1,9 +1,11 @@
 package routers
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -68,6 +70,11 @@ type TierReport struct {
 	// chose it for.
 	Served, Decided uint64
 	CostMicros      int64
+	// Input are the input tokens of the calls it answered, CacheRead those
+	// read from providers' caches; Models its calls by the model that
+	// answered them, its own first, then its fallbacks by calls.
+	Input, CacheRead uint64
+	Models           []TierModel
 	// Judged calls and their verdicts against the default tier;
 	// Unjudged those that needed a judge and got none.
 	Judged, Wins, Ties, Losses, Unjudged uint64
@@ -87,6 +94,50 @@ type TierReport struct {
 	// asked both ways; JudgeBoth that every verdict is judged both ways.
 	FlipRate  float64
 	JudgeBoth bool
+}
+
+// TierModel is the calls of a tier one model answered: the tier's own, or
+// one of its fallbacks (a provider's, the model the gateway asked for).
+// Calls from before models were counted have neither.
+type TierModel struct {
+	Provider, Model  string
+	Fallback         bool
+	Calls            uint64
+	CostMicros       int64
+	Input, CacheRead uint64
+}
+
+// CacheRate is the share of the calls' input read from providers' caches.
+func (m TierModel) CacheRate() float64 { return rate(m.CacheRead, m.Input) }
+
+// CostPerCall is what a call cost on average, in micro-dollars.
+func (m TierModel) CostPerCall() int64 { return perCall(m.CostMicros, m.Calls) }
+
+// CacheRate is the share of the tier's input read from providers' caches.
+func (t TierReport) CacheRate() float64 { return rate(t.CacheRead, t.Input) }
+
+// CostPerCall is what a call the tier answered cost on average, in
+// micro-dollars.
+func (t TierReport) CostPerCall() int64 { return perCall(t.CostMicros, t.Served) }
+
+func rate(part, whole uint64) float64 {
+	if whole == 0 {
+		return 0
+	}
+	return float64(part) / float64(whole)
+}
+
+func perCall(micros int64, calls uint64) int64 {
+	if calls == 0 {
+		return 0
+	}
+	return int64(math.Round(float64(micros) / float64(calls)))
+}
+
+// own reports whether a tier's model reference (a model, or
+// provider/model) names the model a provider was asked for.
+func own(ref, provider, model string) bool {
+	return ref == model || ref == provider+"/"+model
 }
 
 // FamilyReport is one family's judged calls on one tier: right are, for
@@ -109,6 +160,8 @@ type hourly struct {
 	Decided  string `ch:"decided_tier"`
 	Source   string `ch:"tier_source"`
 	Shadow   bool   `ch:"shadow"`
+	Provider string `ch:"provider"`
+	Model    string `ch:"target_model"`
 	Calls    uint64 `ch:"calls"`
 	Errors   uint64 `ch:"errors"`
 	Priced   uint64 `ch:"priced"`
@@ -198,14 +251,15 @@ func BuildReport(ctx context.Context, db *events.DB, project uuid.UUID, r Router
 	}
 
 	var hours []hourly
-	if err := db.Select(ctx, &hours, events.Project(project), `SELECT tier, decided_tier, tier_source, shadow,
-		sum(calls) AS calls, sum(errors) AS errors, sum(priced) AS priced, sum(cost_micros) AS cost,
+	if err := db.Select(ctx, &hours, events.Project(project), `SELECT tier, decided_tier, tier_source, shadow, provider,
+		target_model, sum(calls) AS calls, sum(errors) AS errors, sum(priced) AS priced, sum(cost_micros) AS cost,
 		sum(savings_micros) AS savings, sum(input_tokens) AS input, sum(output_tokens) AS output,
 		sum(cache_read_tokens) AS cache_read, sum(cache_write_tokens) AS cache_write
 		FROM routers_hourly WHERE {tenant} AND router = ? AND hour >= toStartOfHour(?) AND hour < ?
-		GROUP BY tier, decided_tier, tier_source, shadow`, r.Name, from, to); err != nil {
+		GROUP BY tier, decided_tier, tier_source, shadow, provider, target_model`, r.Name, from, to); err != nil {
 		return nil, fmt.Errorf("routers: report calls: %w", err)
 	}
+	models := map[[3]string]*TierModel{}
 	prices := map[string]*llm.Model{}
 	priceOf := func(tier string) *llm.Model {
 		i, ok := index[tier]
@@ -234,8 +288,21 @@ func BuildReport(ctx context.Context, db *events.DB, project uuid.UUID, r Router
 		}
 		rep.Sources[source] += h.Calls
 		if i, ok := index[h.Tier]; ok {
-			rep.Tiers[i].Served += h.Calls
-			rep.Tiers[i].CostMicros += h.Cost
+			t := &rep.Tiers[i]
+			t.Served += h.Calls
+			t.CostMicros += h.Cost
+			t.Input += h.Input
+			t.CacheRead += h.CacheIn
+			m := models[[3]string{h.Tier, h.Provider, h.Model}]
+			if m == nil {
+				m = &TierModel{Provider: h.Provider, Model: h.Model,
+					Fallback: h.Model != "" && !own(spec.Tiers[i].Model, h.Provider, h.Model)}
+				models[[3]string{h.Tier, h.Provider, h.Model}] = m
+			}
+			m.Calls += h.Calls
+			m.CostMicros += h.Cost
+			m.Input += h.Input
+			m.CacheRead += h.CacheIn
 		}
 		if i, ok := index[h.Decided]; ok {
 			rep.Tiers[i].Decided += h.Calls
@@ -254,6 +321,22 @@ func BuildReport(ctx context.Context, db *events.DB, project uuid.UUID, r Router
 			u := wire.Usage{Usage: llm.Usage{Input: h.Input, Output: uint64(math.Round(out))}}
 			rep.EstimatedMicros += int64(m.CostMicros(u.Usage))
 		}
+	}
+
+	for k, m := range models {
+		t := &rep.Tiers[index[k[0]]]
+		t.Models = append(t.Models, *m)
+	}
+	for i := range rep.Tiers {
+		slices.SortFunc(rep.Tiers[i].Models, func(a, b TierModel) int {
+			if a.Fallback != b.Fallback {
+				if a.Fallback {
+					return 1
+				}
+				return -1
+			}
+			return cmp.Or(cmp.Compare(b.Calls, a.Calls), cmp.Compare(a.Provider+"/"+a.Model, b.Provider+"/"+b.Model))
+		})
 	}
 
 	var verdicts []struct {

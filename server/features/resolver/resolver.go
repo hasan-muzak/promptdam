@@ -152,9 +152,12 @@ type Config struct {
 
 // CachePlanner plans how a call to a target uses its provider's prompt
 // cache: def is the target's strategy by its price list, conversation the
-// call's conversation key ("" outside one).
+// call's conversation key ("" outside one). ReadShare is the share of what
+// a model's calls should read from its cache that they do (1 until
+// measured).
 type CachePlanner interface {
 	Plan(kind string, anthropic bool, model, def, conversation string, inTurn bool) gateway.CachePlan
+	ReadShare(kind, model string) float64
 }
 
 // Decider asks a decision model which tier a call needs.

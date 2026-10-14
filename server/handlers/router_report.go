@@ -32,26 +32,40 @@ type ClassifierTierOut struct {
 
 // RouterReportTierOut is one tier's part of a report.
 type RouterReportTierOut struct {
-	Name        string             `json:"name"`
-	Model       string             `json:"model"`
-	Rank        int                `json:"rank" doc:"Place against the default tier: negative cheaper, positive stronger"`
-	Served      uint64             `json:"served" doc:"Calls the tier answered"`
-	Decided     uint64             `json:"decided" doc:"Calls the router chose it for (in shadow mode, would have)"`
-	CostMicros  int64              `json:"cost_micros"`
-	Judged      uint64             `json:"judged" doc:"Calls whose answer on this tier was judged against the default tier's"`
-	Wins        uint64             `json:"wins"`
-	Ties        uint64             `json:"ties"`
-	Losses      uint64             `json:"losses"`
-	Unjudged    uint64             `json:"unjudged" doc:"Calls only a judge could decide that got none"`
-	Quality     float64            `json:"quality" doc:"Cheaper tiers: the share of answers as good or better; stronger tiers: the share better (needed)"`
-	QualityLow  float64            `json:"quality_low" doc:"95% interval (Wilson)"`
-	QualityHigh float64            `json:"quality_high"`
-	MeetsFloor  bool               `json:"meets_floor" doc:"Cheaper tiers: the interval's low end meets the quality floor, on 50 judged calls or more"`
-	Demoted     bool               `json:"demoted" doc:"The canary demoted the tier: the router places no call on it until restored"`
-	Classifier  *ClassifierTierOut `json:"classifier"`
-	JudgeLeans  string             `json:"judge_leans" doc:"tier or default: the judge's vendor makes one of the two models, the other's another vendor's; models judged against their own vendor's tend to win. Pick a judge from a third vendor for this comparison"`
-	FlipRate    float64            `json:"flip_rate" doc:"How often the judge disagreed with itself when asked in both orders"`
-	JudgeBoth   bool               `json:"judge_both" doc:"Every verdict is judged in both orders: the judge flipped too often"`
+	Name        string               `json:"name"`
+	Model       string               `json:"model"`
+	Rank        int                  `json:"rank" doc:"Place against the default tier: negative cheaper, positive stronger"`
+	Served      uint64               `json:"served" doc:"Calls the tier answered"`
+	Decided     uint64               `json:"decided" doc:"Calls the router chose it for (in shadow mode, would have)"`
+	CostMicros  int64                `json:"cost_micros"`
+	CostPerCall int64                `json:"cost_per_call_micros" doc:"What a call the tier answered cost on average"`
+	CacheRate   float64              `json:"cache_rate" doc:"The share of the tier's input tokens read from providers' prompt caches"`
+	Models      []RouterTierModelOut `json:"models" doc:"The tier's calls by the model that answered them: its own first, then its fallbacks"`
+	Judged      uint64               `json:"judged" doc:"Calls whose answer on this tier was judged against the default tier's"`
+	Wins        uint64               `json:"wins"`
+	Ties        uint64               `json:"ties"`
+	Losses      uint64               `json:"losses"`
+	Unjudged    uint64               `json:"unjudged" doc:"Calls only a judge could decide that got none"`
+	Quality     float64              `json:"quality" doc:"Cheaper tiers: the share of answers as good or better; stronger tiers: the share better (needed)"`
+	QualityLow  float64              `json:"quality_low" doc:"95% interval (Wilson)"`
+	QualityHigh float64              `json:"quality_high"`
+	MeetsFloor  bool                 `json:"meets_floor" doc:"Cheaper tiers: the interval's low end meets the quality floor, on 50 judged calls or more"`
+	Demoted     bool                 `json:"demoted" doc:"The canary demoted the tier: the router places no call on it until restored"`
+	Classifier  *ClassifierTierOut   `json:"classifier"`
+	JudgeLeans  string               `json:"judge_leans" doc:"tier or default: the judge's vendor makes one of the two models, the other's another vendor's; models judged against their own vendor's tend to win. Pick a judge from a third vendor for this comparison"`
+	FlipRate    float64              `json:"flip_rate" doc:"How often the judge disagreed with itself when asked in both orders"`
+	JudgeBoth   bool                 `json:"judge_both" doc:"Every verdict is judged in both orders: the judge flipped too often"`
+}
+
+// RouterTierModelOut is the calls of a tier one model answered.
+type RouterTierModelOut struct {
+	Provider    string  `json:"provider" doc:"The project's provider; empty for calls from before models were counted"`
+	Model       string  `json:"model" doc:"The model the gateway asked for"`
+	Fallback    bool    `json:"fallback" doc:"One of the tier's fallbacks, not its own model"`
+	Calls       uint64  `json:"calls"`
+	CostMicros  int64   `json:"cost_micros"`
+	CostPerCall int64   `json:"cost_per_call_micros"`
+	CacheRate   float64 `json:"cache_rate" doc:"The share of its input tokens read from the provider's prompt cache"`
 }
 
 // RouterReportFamilyOut is a family's judged calls on one tier.
@@ -165,8 +179,14 @@ func (h *Handlers) GetRouterReport(ctx *muzak.Context, in RouterReportIn) (Route
 		}
 	}
 	for i, t := range rep.Tiers {
+		models := make([]RouterTierModelOut, len(t.Models))
+		for j, m := range t.Models {
+			models[j] = RouterTierModelOut{Provider: m.Provider, Model: m.Model, Fallback: m.Fallback, Calls: m.Calls,
+				CostMicros: m.CostMicros, CostPerCall: m.CostPerCall(), CacheRate: m.CacheRate()}
+		}
 		out.Tiers[i] = RouterReportTierOut{Name: t.Name, Model: rt.Spec.Tiers[i].Model, Rank: t.Rank, Served: t.Served,
-			Decided: t.Decided, CostMicros: t.CostMicros, Judged: t.Judged, Wins: t.Wins, Ties: t.Ties, Losses: t.Losses,
+			Decided: t.Decided, CostMicros: t.CostMicros, CostPerCall: t.CostPerCall(), CacheRate: t.CacheRate(), Models: models,
+			Judged: t.Judged, Wins: t.Wins, Ties: t.Ties, Losses: t.Losses,
 			Unjudged: t.Unjudged, Quality: t.Quality, QualityLow: t.Low, QualityHigh: t.High, MeetsFloor: t.MeetsFloor,
 			Demoted: rt.IsDemoted(t.Name), Classifier: byTier[t.Name], JudgeLeans: t.JudgeLeans, FlipRate: t.FlipRate,
 			JudgeBoth: t.JudgeBoth}

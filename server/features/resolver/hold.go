@@ -27,12 +27,15 @@ const maxTurnsAhead = 4
 const defaultMinCache = 1024
 
 // switchSide is a model a conversation is on, or could switch to: its
-// prices, its provider's kind, and how much it writes against the router's
-// default tier (outputScale: 1 when not measured).
+// prices, its provider's kind, how much it writes against the router's
+// default tier (outputScale: 1 when not measured), and the share of what
+// its calls should read from its cache that they don't (misses, measured
+// across projects: cacheprofile; 0 until measured).
 type switchSide struct {
 	model       llm.Model
 	kind        string
 	outputScale float64
+	misses      float64
 }
 
 // holdsWarm reports whether a conversation whose previous turn ran on cur
@@ -56,7 +59,7 @@ func holdsWarm(cur, next switchSide, rec conversation.Record, humanTurns int, no
 	// A turn's cost on a model while warm: its calls reading the cached
 	// prefix, writing what each adds, and its output.
 	turn := func(s switchSide, scale float64) float64 {
-		read, write := cachePrices(s.model, s.kind, rec.TTL)
+		read, write := cachePrices(s.model, s.kind, rec.TTL, s.misses)
 		return read*calls*pw + write*float64(rec.CacheWrite) + s.model.Output*float64(rec.Output)*scale
 	}
 	// The next model writes what it writes against the current one.
@@ -65,7 +68,7 @@ func holdsWarm(cur, next switchSide, rec conversation.Record, humanTurns int, no
 		scale = cur.outputScale / next.outputScale
 	}
 	saving := turn(cur, 1) - turn(next, scale)
-	readNext, writeNext := cachePrices(next.model, next.kind, rec.TTL)
+	readNext, writeNext := cachePrices(next.model, next.kind, rec.TTL, next.misses)
 	rebuild := (writeNext - readNext) * pw
 	ahead := float64(min(max(humanTurns-1, 1), maxTurnsAhead))
 	return ahead*saving < rebuild
@@ -83,12 +86,14 @@ func cacheLifetime(ttl string) time.Duration {
 
 // cachePrices are a model's prices for reading and writing cached input,
 // per million tokens: providers that cache implicitly (OpenAI's kind)
-// charge no write premium, a write costs the input price there.
-func cachePrices(m llm.Model, kind, ttl string) (read, write float64) {
+// charge no write premium, a write costs the input price there. A read
+// the cache misses (misses: its share) costs the input price.
+func cachePrices(m llm.Model, kind, ttl string, misses float64) (read, write float64) {
 	read = m.CachedInput
 	if read <= 0 {
 		read = m.Input
 	}
+	read += min(max(misses, 0), 1) * (m.Input - read)
 	write = m.CacheWrite
 	if ttl == "1h" {
 		write = m.CacheWrite1h

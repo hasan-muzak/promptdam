@@ -14,12 +14,14 @@ import (
 )
 
 // A shadow router's report says where its calls went, what following it
-// would save, and each tier's measured quality against the default tier.
+// would save, each tier's measured quality against the default tier, and
+// its calls' cost and cache rate by the model that answered them, its
+// fallbacks apart.
 func TestReport(t *testing.T) {
 	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true, Sample: func() float64 { return 1 }})
 	ctx := context.Background()
 	row, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Shadow,
-		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-mini"}, {Name: "smart", Model: "gpt-5"},
+		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-mini"}, {Name: "smart", Model: "gpt-5", Fallbacks: []string{"main/gpt-5-mini"}},
 			{Name: "expert", Model: "gpt-5-pro"}}, Default: "smart",
 			Rules: []tiers.Rule{{When: "request.messages == 1", Tier: "fast"}}}})
 	if err != nil {
@@ -32,6 +34,8 @@ func TestReport(t *testing.T) {
 	for range 4 {
 		w.Call("/v1/chat/completions", `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`)
 	}
+	w.Fake.Fail(503, 503, 503) // the smart tier's own model fails: its fallback answers
+	w.Call("/v1/chat/completions", `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`)
 	if err := w.Log.Stop(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -71,6 +75,14 @@ func TestReport(t *testing.T) {
 	// The fast tier costs less: following the router would save.
 	if rep.EstimatedMicros <= 0 || rep.EstimatedMicros >= rep.CostMicros || rep.Unpriced != 0 {
 		t.Fatalf("cost %d, estimated %d, unpriced %d", rep.CostMicros, rep.EstimatedMicros, rep.Unpriced)
+	}
+	// The fake provider reads 40 of every 100 input tokens from its cache.
+	if len(smart.Models) != 2 || smart.Models[0] != (routers.TierModel{Provider: "main", Model: "gpt-5", Calls: rep.Calls - 1,
+		CostMicros: smart.Models[0].CostMicros, Input: smart.Models[0].Input, CacheRead: smart.Models[0].CacheRead}) ||
+		!smart.Models[1].Fallback || smart.Models[1].Model != "gpt-5-mini" || smart.Models[1].Calls != 1 ||
+		smart.CacheRate() != 0.4 || smart.Models[1].CacheRate() != 0.4 || smart.CostPerCall() <= 0 ||
+		smart.Models[1].CostPerCall() >= smart.Models[0].CostPerCall() {
+		t.Fatalf("smart's models %+v", smart.Models)
 	}
 	if fast.Rank != -1 || fast.Judged != 90 || fast.Quality != 1 || !fast.MeetsFloor || fast.Low < 0.95 {
 		t.Fatalf("fast %+v", fast)

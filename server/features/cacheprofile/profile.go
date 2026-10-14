@@ -56,6 +56,37 @@ type Endpoints struct {
 	Slugs   map[string]string `json:"slugs"`
 }
 
+// shareEvidence is the calls expecting a cache read a model's read share
+// is trusted from, to price it.
+const shareEvidence = 100
+
+// ReadShare is the share of what a model's calls should read from its
+// cache that they do, to price it: 1 (a cache that works) until enough
+// calls show otherwise.
+func (d *Doc) ReadShare(kind, model string) float64 {
+	p, ok := d.Of(kind, model)
+	if !ok || p.Evidence < shareEvidence {
+		return 1
+	}
+	return p.ReadShare
+}
+
+// Of is a model's profile, when one was learned.
+func (d *Doc) Of(kind, model string) (Profile, bool) {
+	if d == nil {
+		return Profile{}, false
+	}
+	p, ok := d.Models[Key(kind, model)]
+	return p, ok
+}
+
+// Shown is a model's profile as a project may be shown it: one learned
+// from MinProjects projects or more, never one other project's traffic.
+func (d *Doc) Shown(kind, model string) (Profile, bool) {
+	p, ok := d.Of(kind, model)
+	return p, ok && p.Projects >= MinProjects
+}
+
 // Key is a profile's key: a model is profiled per provider kind.
 func Key(kind, model string) string { return kind + "/" + model }
 

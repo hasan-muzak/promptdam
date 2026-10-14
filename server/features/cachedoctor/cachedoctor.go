@@ -2,8 +2,10 @@
 // prompt caches, and what fixing it is worth. It reads only the prefix
 // rollup (never prompts): how many different prefixes a family's calls
 // sent, which changing values their instructions held, whether tools
-// came in changing order, whether Anthropic calls had breakpoints, how
-// long prefixes are, and how much input the caches served.
+// came in changing order, whether calls had the breakpoints their model
+// needs, how long prefixes are, and how much input the caches served;
+// and what every project's calls showed of the model (cacheprofile): one
+// that never reads its cache, backends that never cache it.
 package cachedoctor
 
 import (
@@ -12,6 +14,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,8 +22,10 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/events"
 	"github.com/hasan-muzak/keel-core/pkg/llm"
 
+	"github.com/hasan-muzak/promptdam/server/features/cacheprofile"
 	"github.com/hasan-muzak/promptdam/server/features/cachettl"
 	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
@@ -47,7 +52,17 @@ const (
 	KeptOneHour = "kept_one_hour"
 	// ColdParallel: calls wrote the same prefix at once, none reading it.
 	ColdParallel = "parallel_cold_writes"
+	// ModelNeverCaches: across projects, the model read next to nothing
+	// of what its cache should have served.
+	ModelNeverCaches = "model_never_caches"
+	// BackendNeverCaches: some of a router of providers' backends never
+	// cached the model while another did; the gateway keeps calls off
+	// them.
+	BackendNeverCaches = "backend_never_caches"
 )
+
+// neverCaches is the read share below which a model is said not to cache.
+const neverCaches = 0.05
 
 // Finding is one reason a family misses the cache, and its fix.
 type Finding struct {
@@ -62,6 +77,9 @@ type Finding struct {
 type Diagnosis struct {
 	Family      string
 	Model, Kind string
+	// Target is the model the gateway asked for (a router of providers
+	// names the one it served its own way, Model).
+	Target string
 	Requests    uint64
 	// Prefixes counts the different prefixes the calls sent.
 	Prefixes        uint64
@@ -85,17 +103,24 @@ type Policies interface {
 	Families(ctx context.Context, project uuid.UUID) (map[string]cachettl.Family, error)
 }
 
+// Profiles are every model's caching as all projects' calls showed it
+// (cacheprofile.Store).
+type Profiles interface {
+	Current() *cacheprofile.Doc
+}
+
 // Service diagnoses families.
 type Service struct {
 	db       *events.DB
 	prices   prices.Prices
 	policies Policies
+	profiles Profiles
 }
 
 // New returns a Service; db may be nil (no ClickHouse: nothing to say),
-// and policies (nothing learned to report).
-func New(db *events.DB, p prices.Prices, policies Policies) *Service {
-	return &Service{db: db, prices: p, policies: policies}
+// and policies and profiles (nothing learned to report).
+func New(db *events.DB, p prices.Prices, policies Policies, profiles Profiles) *Service {
+	return &Service{db: db, prices: p, policies: policies, profiles: profiles}
 }
 
 type prefixRow struct {
@@ -106,6 +131,7 @@ type prefixRow struct {
 	Flags      uint16 `ch:"prefix_flags"`
 	Tokens     uint32 `ch:"prefix_tokens"`
 	Model      string `ch:"served_model"`
+	Target     string `ch:"target_model"`
 	Kind       string `ch:"kind"`
 	PrefixHash string `ch:"prefix_hash"`
 }
@@ -144,7 +170,7 @@ func (s *Service) Diagnose(ctx context.Context, project uuid.UUID, family string
 	err := s.db.Select(ctx, &rows, events.Project(project), `SELECT family_id, prefix_hash, sum(requests) AS requests,
 		sum(input_tokens) AS input_tokens, sum(cache_read_tokens) AS cache_read_tokens,
 		groupBitOr(prefix_flags) AS prefix_flags, max(prefix_tokens) AS prefix_tokens,
-		any(served_model) AS served_model, any(kind) AS kind
+		any(served_model) AS served_model, any(target_model) AS target_model, any(kind) AS kind
 		FROM prefixes_hourly`+window+` AND family_id IN (?) GROUP BY family_id, prefix_hash`,
 		append(args, names)...)
 	if err != nil {
@@ -181,19 +207,19 @@ func (s *Service) diagnose(family string, rows []prefixRow, days float64) Diagno
 	d := Diagnosis{Family: family, Prefixes: uint64(len(rows))}
 	var flags families.Flags
 	var weighted uint64
-	byModel := map[[2]string]uint64{}
+	byModel := map[[3]string]uint64{}
 	for _, r := range rows {
 		d.Requests += r.Requests
 		d.InputTokens += r.Input
 		d.CacheReadTokens += r.CacheRead
 		flags |= families.Flags(r.Flags)
 		weighted += uint64(r.Tokens) * r.Requests
-		byModel[[2]string{r.Kind, r.Model}] += r.Requests
+		byModel[[3]string{r.Kind, r.Model, r.Target}] += r.Requests
 	}
 	var top uint64
 	for k, n := range byModel {
 		if n > top {
-			top, d.Kind, d.Model = n, k[0], k[1]
+			top, d.Kind, d.Model, d.Target = n, k[0], k[1], k[2]
 		}
 	}
 	if d.Requests > 0 {
@@ -203,13 +229,24 @@ func (s *Service) diagnose(family string, rows []prefixRow, days float64) Diagno
 		d.HitRate = float64(d.CacheReadTokens) / float64(d.InputTokens)
 	}
 	minTokens := promptcache.DefaultMinTokens
-	if price, ok := s.price(d.Kind, d.Model); ok && price.MinCacheTokens > 0 {
+	price, priced := s.price(d.Kind, d.Model)
+	if !priced && d.Target != "" {
+		price, priced = s.price(d.Kind, d.Target)
+	}
+	if priced && price.MinCacheTokens > 0 {
 		minTokens = int(price.MinCacheTokens)
 	}
 	d.Findings = findings(d, flags, minTokens)
+	if d.Findings[0].Code != TooShort {
+		var doc *cacheprofile.Doc
+		if s.profiles != nil {
+			doc = s.profiles.Current()
+		}
+		pooled(&d, flags, doc, price.CacheWritePriced)
+	}
 
 	// At most every call after the first reads the prefix from the cache.
-	if price, ok := s.price(d.Kind, d.Model); ok && d.Requests > 1 && days > 0 {
+	if priced && d.Requests > 1 && days > 0 {
 		could := float64(d.Requests-1) * float64(d.PrefixTokens)
 		missed := math.Max(0, could-float64(d.CacheReadTokens))
 		cached := price.CachedInput
@@ -231,6 +268,53 @@ func (s *Service) price(kind, model string) (llm.Model, bool) {
 		catalogName = k.Catalog
 	}
 	return s.prices.Current().Lookup(catalogName, model)
+}
+
+// pooled adds what every project's calls showed of the family's model
+// (doc: nil when nothing was learned): breakpoints a router of providers'
+// model needs and these calls lack (its strategy as learned, else by its
+// price list: writePriced), a model that doesn't read its cache, backends
+// the gateway keeps its calls off. Figures from other projects are shown
+// only from cacheprofile.MinProjects up; a warning replaces "caching
+// well".
+func pooled(d *Diagnosis, flags families.Flags, doc *cacheprofile.Doc, writePriced bool) {
+	model := d.Target
+	if model == "" {
+		model = d.Model
+	}
+	var add []Finding
+	strategies := gateway.CacheDialectOf(d.Kind, false).Strategies
+	strategy := gateway.DefaultCacheStrategy(d.Kind, false, writePriced)
+	if p, ok := doc.Of(d.Kind, model); ok && slices.Contains(strategies, p.Use) {
+		strategy = p.Use
+	}
+	if len(strategies) > 1 && strategy == promptcache.Markers && flags&(families.Breakpoints|families.GatewayBreakpoints) == 0 {
+		add = append(add, Finding{Code: NoBreakpoints, Severity: "warning", Title: "No cache breakpoints",
+			Detail: "This model caches only prompts marked with cache_control, and these calls mark none.",
+			Fix:    "Turn on prompt_cache on the route (the gateway marks them), or add cache_control to the last system message."})
+	}
+	if p, ok := doc.Shown(d.Kind, model); ok {
+		if p.Evidence >= cacheprofile.Evidence && p.ReadShare < neverCaches {
+			add = append(add, Finding{Code: ModelNeverCaches, Severity: "warning", Title: "The model doesn't read its cache",
+				Detail: fmt.Sprintf("Across %d projects' calls, %s read %.0f%% of the prompt its cache should have served.",
+					p.Projects, model, p.ReadShare*100),
+				Fix: "Prompt changes won't help here: for long conversations, prefer a model that caches (the router report " +
+					"shows each model's cache rate)."})
+		}
+		if len(p.Avoid) > 0 {
+			add = append(add, Finding{Code: BackendNeverCaches, Severity: "info", Title: "Some of the model's backends never cache",
+				Detail: fmt.Sprintf("Across %d projects' calls, %s never read this model's cache while another backend did.",
+					p.Projects, strings.Join(p.Avoid, ", ")),
+				Fix: "Nothing to do: the gateway keeps your calls off them, unless your calls set their own provider preferences."})
+		}
+	}
+	if len(add) == 0 {
+		return
+	}
+	if d.Findings[0].Code == OK && slices.ContainsFunc(add, func(f Finding) bool { return f.Severity == "warning" }) {
+		d.Findings = d.Findings[:0]
+	}
+	d.Findings = append(d.Findings, add...)
 }
 
 // policyDays is the window the learner weighs (cachepolicy.Window), to make
@@ -306,9 +390,13 @@ func findings(d Diagnosis, flags families.Flags, minTokens int) []Finding {
 			Detail: "Anthropic caches only prefixes marked with cache_control, and these calls mark none.",
 			Fix:    "Turn on prompt_cache on the route, or add cache_control to the last system block and tool."})
 	}
-	if len(out) == 0 {
+	if len(out) == 0 && d.HitRate >= neverCaches {
 		out = append(out, Finding{Code: OK, Severity: "info", Title: "Caching well",
 			Detail: fmt.Sprintf("The prefix is stable; the caches served %.0f%% of input tokens.", d.HitRate*100)})
+	} else if len(out) == 0 {
+		out = append(out, Finding{Code: OK, Severity: "info", Title: "The prefix is stable",
+			Detail: fmt.Sprintf("The caches served %.0f%% of input tokens: calls may come back after their cache expired, "+
+				"or the model may not cache.", d.HitRate*100)})
 	}
 	return out
 }

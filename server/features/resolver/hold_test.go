@@ -18,6 +18,8 @@ func TestHoldsWarm(t *testing.T) {
 	thinksLess.outputScale = 3 // the default writes 3x what this tier does
 	gpt := switchSide{model: llm.Model{Input: 2, CachedInput: 0.2, Output: 8}, kind: "openai", outputScale: 1}
 	gptMini := switchSide{model: llm.Model{Input: 1.9, CachedInput: 0.19, Output: 7.6}, kind: "openai", outputScale: 1}
+	never := func(s switchSide) switchSide { s.misses = 1; return s }
+	half := func(s switchSide) switchSide { s.misses = 0.5; return s }
 	warm := conversation.Record{Calls: 8, CacheWrite: 30_000, Output: 20_000, Cached: 100_000, Last: now.Add(-time.Minute).UnixMilli(), TTL: "5m"}
 
 	tests := []struct {
@@ -43,6 +45,9 @@ func TestHoldsWarm(t *testing.T) {
 		{"a prefix too short to cache", opus, nearly, func(r conversation.Record) conversation.Record { r.Cached = 300; return r }, 2, false},
 		{"an unpriced model never holds", opus, switchSide{kind: "anthropic"}, nil, 2, false},
 		{"implicit caches: no write premium, the rebuild is the read discount", gpt, gptMini, nil, 2, true},
+		{"a model measured never reading its cache keeps nothing warm", never(opus), nearly, nil, 2, false},
+		{"against one that reads it all, one reading half switches", half(opus), nearly, nil, 2, false},
+		{"both reading half: the rebuild still costs more than it saves", half(opus), half(nearly), nil, 2, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -358,7 +358,11 @@ func (r *Resolver) holdTier(p *placer, rt *routers.Router, ch tiers.Choice, turn
 			return switchSide{}, false
 		}
 		m, ok := r.model(ts[0].Kind, ts[0].Model)
-		return switchSide{model: m, kind: ts[0].Kind, outputScale: writes(rt, i)}, ok
+		s := switchSide{model: m, kind: ts[0].Kind, outputScale: writes(rt, i)}
+		if r.cfg.Caching != nil {
+			s.misses = 1 - r.cfg.Caching.ReadShare(ts[0].Kind, ts[0].Model)
+		}
+		return s, ok
 	}
 	curSide, ok1 := side(cur)
 	nextSide, ok2 := side(ch.Tier)

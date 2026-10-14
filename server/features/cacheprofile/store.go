@@ -76,6 +76,9 @@ func (s *Store) Plan(kind string, anthropic bool, model, def, conversation strin
 	return s.Current().Plan(kind, anthropic, model, def, conversation, inTurn, (*s.off.Load())[Key(kind, model)])
 }
 
+// ReadShare implements resolver.CachePlanner.
+func (s *Store) ReadShare(kind, model string) float64 { return s.Current().ReadShare(kind, model) }
+
 // Refused switches a strategy off for a model whose provider refused it
 // (gateway.Config.CacheRefused): at once in this process, and, in the
 // background, for every process for offFor (a Valkey hash, announced).
