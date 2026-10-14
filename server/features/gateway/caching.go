@@ -16,16 +16,16 @@ import (
 // on its own); "" is the format's own default (breakpoints on Anthropic
 // Messages calls). Trial marks a conversation trying the strategy the
 // model's profile is learning about; Avoid are backends of a router of
-// providers the call shouldn't go to. Session keeps the conversation on
-// one of them (OpenRouter's X-Session-Id), for a model several backends
-// serve, each caching apart: with one backend a session only splits its
-// cache by conversation (OpenAI's models, measured 2026-10-14: no
-// conversation read the instructions another had cached).
+// providers the call shouldn't go to. A strategy with a session
+// (promptcache.Sessions) keeps the conversation on one of them
+// (OpenRouter's X-Session-Id): worth it where several backends serve a
+// model, each caching apart; with one, a session only splits its cache by
+// conversation (OpenAI's models, measured 2026-10-14: no conversation read
+// the instructions another had cached). Which helps is learned per model.
 type CachePlan struct {
 	Strategy string
 	Trial    bool
 	Avoid    []string
-	Session  bool
 }
 
 // strategy is the plan's strategy for a call in format f.
@@ -48,9 +48,9 @@ const (
 	// only spread the load less).
 	affinityKey
 	// affinitySession: OpenRouter's X-Session-Id header, from the
-	// conversation's first call, for a model several backends serve
-	// (CachePlan.Session): OpenRouter keeps a session on the backend that
-	// served it, where otherwise it sticks only after a cache hit.
+	// conversation's first call, for a strategy with a session
+	// (promptcache.Sessions): OpenRouter keeps a session on the backend
+	// that served it, where otherwise it sticks only after a cache hit.
 	affinitySession
 )
 
@@ -69,6 +69,8 @@ var (
 	markersOnly   = []string{promptcache.Markers}
 	autoOnly      = []string{promptcache.Auto}
 	autoOrMarkers = []string{promptcache.Auto, promptcache.Markers}
+	withSessions  = []string{promptcache.Auto, promptcache.Markers, promptcache.WithSession(promptcache.Auto),
+		promptcache.WithSession(promptcache.Markers)}
 )
 
 // CacheDialectOf is the dialect of a provider kind; anthropic is a custom
@@ -80,7 +82,7 @@ func CacheDialectOf(kind string, anthropic bool) CacheDialect {
 	case kind == "openai":
 		return CacheDialect{Strategies: autoOnly, affinity: affinityKey}
 	case kind == "openrouter":
-		return CacheDialect{Strategies: autoOrMarkers, Avoids: true, affinity: affinitySession}
+		return CacheDialect{Strategies: withSessions, Avoids: true, affinity: affinitySession}
 	case kind == "custom":
 		return CacheDialect{Strategies: autoOrMarkers}
 	}

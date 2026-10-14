@@ -405,7 +405,7 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 			return answered, false
 		}
 		upstreamHeader(up.Header, c.r.Header, format, t.Header)
-		sessioned := sessionHeader(up.Header, c.r.Header, body, t.Kind, c.session, session && t.Cache.Session)
+		sessioned := sessionHeader(up.Header, c.r.Header, body, t.Kind, c.session, session && promptcache.Sessions(t.Cache.Strategy))
 		if beta != "" {
 			addBeta(up.Header, beta)
 		}
@@ -436,7 +436,7 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 			}
 		}
 		if refused := refusedCaching(raw); marked && res.StatusCode == http.StatusBadRequest && refused != refusedNothing {
-			kill = refused == refusedMarkers && c.rec.PromptCached && c.rec.CacheStrategy == promptcache.Markers &&
+			kill = refused == refusedMarkers && c.rec.PromptCached && promptcache.Marks(c.rec.CacheStrategy) &&
 				t.Pooled && killsMarkers(t.Kind, format == wire.AnthropicMessages)
 			// Sent as no strategy: what it reads teaches no profile.
 			body, unmarking, session, c.rec.PromptCached = plain, false, false, false

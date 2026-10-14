@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
+	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 )
 
 // TrialShare is the percentage of a model's conversations that try the
@@ -96,9 +97,9 @@ func Key(kind, model string) string { return kind + "/" + model }
 // model's profile uses, else def (the target's default, from its price
 // list); the trial strategy for TrialShare of the model's conversations
 // (decided by the conversation, so a conversation keeps its arm on every
-// replica); never one the provider refused (off: Store.Refused); the
-// backends to keep it off, and whether to keep its conversation on one
-// (several serve the model). Strategies its kind doesn't take are ignored.
+// replica); never one the provider refused (off: Store.Refused; markers
+// refused are refused with or without a session); and the backends to
+// keep it off. Strategies its kind doesn't take are ignored.
 func (d *Doc) Plan(kind string, anthropic bool, model, def, conversation string, inTurn bool, off []string) gateway.CachePlan {
 	strategies := gateway.CacheDialectOf(kind, anthropic).Strategies
 	plan := gateway.CachePlan{Strategy: def}
@@ -106,7 +107,9 @@ func (d *Doc) Plan(kind string, anthropic bool, model, def, conversation string,
 	if d != nil {
 		p = d.Models[Key(kind, model)]
 	}
-	refused := func(s string) bool { return slices.Contains(off, s) }
+	refused := func(s string) bool {
+		return slices.Contains(off, s) || promptcache.Marks(s) && slices.Contains(off, promptcache.Markers)
+	}
 	if p.Use != "" && slices.Contains(strategies, p.Use) {
 		plan.Strategy = p.Use
 	}
@@ -115,15 +118,24 @@ func (d *Doc) Plan(kind string, anthropic bool, model, def, conversation string,
 		plan.Strategy, plan.Trial = p.Trial, true
 	}
 	if refused(plan.Strategy) {
+		// The provider's own caching instead, keeping the session.
 		plan.Trial = false
-		for _, s := range strategies {
-			if !refused(s) {
-				plan.Strategy = s
-				break
+		fallback := promptcache.Auto
+		if promptcache.Sessions(plan.Strategy) {
+			fallback = promptcache.WithSession(fallback)
+		}
+		if !slices.Contains(strategies, fallback) || refused(fallback) {
+			fallback = ""
+			for _, s := range strategies {
+				if !refused(s) {
+					fallback = s
+					break
+				}
 			}
 		}
+		plan.Strategy = fallback
 	}
-	plan.Avoid, plan.Session = p.Avoid, p.Backends > 1
+	plan.Avoid = p.Avoid
 	return plan
 }
 

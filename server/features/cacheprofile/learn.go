@@ -20,6 +20,7 @@ import (
 
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
+	"github.com/hasan-muzak/promptdam/server/features/promptcache"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 )
 
@@ -28,16 +29,15 @@ const (
 	// Window is how far back calls are weighed: a backend that started or
 	// stopped caching shows within a week.
 	Window = 7 * 24 * time.Hour
-	// Evidence is the calls expecting a cache read a strategy is judged
-	// on: a model's strategy with fewer is tried against, and a switch
-	// needs both strategies judged.
+	// Evidence is the calls a candidate strategy is judged on: one with
+	// fewer is tried, and a switch needs both judged.
 	Evidence = 300
 	// Switch is how much cheaper per input token a strategy must be to
 	// take over: below 0.9 of the one in use, so noise doesn't flip it.
 	Switch = 0.9
-	// Healthy is the read share at which a model's strategy stops being
-	// tried against, and a backend's hit rate that makes another backend
-	// of the model that never reads worth keeping calls off.
+	// Healthy is the read share a strategy needs to replace one never
+	// seen, and a backend's hit rate that makes another backend of the
+	// model that never reads worth keeping calls off.
 	Healthy = 0.5
 	// A backend is avoided when it read the cache on under avoidBelow of
 	// at least avoidEvidence calls that expected a read, while another of
@@ -113,6 +113,14 @@ type learned struct {
 // profiles before (prev, whose strategies are kept until another is
 // judged cheaper) and each model's default strategy (def, from its price
 // list), with the projects that contributed (by Key).
+//
+// A model's candidates are its kind's strategies (gateway.CacheDialect),
+// those with a session only where several backends serve it. The one in
+// use stays until another, judged on Evidence calls, costs under Switch of
+// it per input token (write premiums count, so one that writes and never
+// reads loses). While any candidate is unjudged, the least tried is the
+// trial: a session's cost shows in conversations' first calls, which no
+// read share sees, so trying stops only once every candidate is judged.
 func learn(rows []Row, projects map[string]int, prev *Doc, def func(kind, model string) string) map[string]learned {
 	type model struct {
 		kind, name string
@@ -141,21 +149,48 @@ func learn(rows []Row, projects map[string]int, prev *Doc, def func(kind, model 
 	out := make(map[string]learned, len(models))
 	for key, m := range models {
 		d := gateway.CacheDialectOf(m.kind, false)
+		l := learned{Profile: Profile{Projects: projects[key]}, kind: m.kind, model: m.name}
+		// Backends that never cache are judged by whether calls are
+		// marked, with or without a session: a session doesn't change what
+		// a backend caches.
+		avoided := map[string][]string{}
+		if d.Avoids {
+			byBase := map[string]map[string]*Row{}
+			for s, backends := range m.backends {
+				base := promptcache.Base(s)
+				if byBase[base] == nil {
+					byBase[base] = map[string]*Row{}
+				}
+				for name, b := range backends {
+					if byBase[base][name] == nil {
+						byBase[base][name] = &Row{}
+					}
+					byBase[base][name].add(*b)
+				}
+			}
+			var anywhere []string
+			for base, backends := range byBase {
+				avoided[base] = avoid(backends)
+				anywhere = append(anywhere, avoided[base]...)
+			}
+			l.Backends = serving(m.backends, anywhere)
+		}
+		candidates := d.Strategies
+		if l.Backends <= 1 {
+			candidates = slices.DeleteFunc(slices.Clone(candidates), promptcache.Sessions)
+		}
 		use := ""
 		if prev != nil {
 			use = prev.Models[key].Use
 		}
-		if !slices.Contains(d.Strategies, use) {
+		if !slices.Contains(candidates, use) {
 			use = def(m.kind, m.name)
-		}
-		if !slices.Contains(d.Strategies, use) {
-			use = d.Strategies[0]
-		}
-		other := ""
-		for _, s := range d.Strategies {
-			if s != use {
-				other = s
+			if l.Backends > 1 && slices.Contains(candidates, promptcache.WithSession(use)) {
+				use = promptcache.WithSession(use)
 			}
+		}
+		if !slices.Contains(candidates, use) {
+			use = candidates[0]
 		}
 		stat := func(s string) Row {
 			if r := m.strategy[s]; r != nil {
@@ -163,26 +198,32 @@ func learn(rows []Row, projects map[string]int, prev *Doc, def func(kind, model 
 			}
 			return Row{}
 		}
-		u, o := stat(use), stat(other)
-		// Both judged: a strategy cheaper per input token (writes count,
-		// so one that writes and never reads loses) takes over; one no
-		// cheaper is no longer tried. A strategy never seen gives way to
-		// one that caches well (a price list's default changed, or the
-		// profiles were lost).
-		judged := other != "" && u.Expects >= Evidence && o.Expects >= Evidence && u.Priced > 0 && o.Priced > 0
-		unseen := other != "" && u.Input == 0 && o.Expects >= Evidence && o.readShare() >= Healthy
-		if judged && o.price() < Switch*u.price() || unseen {
-			use, other, u, o = other, use, o, u
+		judged := func(s string) bool { r := stat(s); return r.Calls >= Evidence && r.Priced > 0 && r.Input > 0 }
+		// The cheapest judged candidate: a challenger, or, for a strategy
+		// never seen (a price list's default changed, the profiles lost),
+		// one that caches well.
+		u := stat(use)
+		best := ""
+		for _, c := range candidates {
+			if c == use || !judged(c) || u.Input == 0 && stat(c).readShare() < Healthy {
+				continue
+			}
+			if best == "" || stat(c).price() < stat(best).price() {
+				best = c
+			}
 		}
-		l := learned{Profile: Profile{Use: use, ReadShare: u.readShare(), Evidence: u.Expects, Projects: projects[key]},
-			kind: m.kind, model: m.name}
-		if other != "" && !judged && (u.Expects < Evidence || l.ReadShare < Healthy) {
-			l.Trial = other
+		if best != "" && (u.Input == 0 || judged(use) && stat(best).price() < Switch*u.price()) {
+			use = best
 		}
-		if d.Avoids {
-			l.avoid = avoid(m.backends[use])
-			l.Backends = serving(m.backends, l.avoid)
+		u = stat(use)
+		l.Use, l.ReadShare, l.Evidence = use, u.readShare(), u.Expects
+		least := int64(-1)
+		for _, c := range candidates {
+			if c != use && !judged(c) && (least < 0 || stat(c).Calls < least) {
+				l.Trial, least = c, stat(c).Calls
+			}
 		}
+		l.avoid = avoided[promptcache.Base(use)]
 		out[key] = l
 	}
 	return out

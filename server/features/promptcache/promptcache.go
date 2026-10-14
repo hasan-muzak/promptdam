@@ -14,6 +14,7 @@ package promptcache
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 )
@@ -26,11 +27,27 @@ const (
 )
 
 // Strategies of a call's prompt cache: the gateway adds breakpoints
-// (Markers), or the provider caches on its own (Auto).
+// (Markers), or the provider caches on its own (Auto); either may also keep
+// the call's conversation on one backend of a router of providers
+// (WithSession: "markers+session").
 const (
 	Markers = "markers"
 	Auto    = "auto"
 )
+
+const sessionSuffix = "+session"
+
+// WithSession is a strategy that also keeps a conversation on one backend.
+func WithSession(s string) string { return s + sessionSuffix }
+
+// Marks reports a strategy whose calls get the gateway's breakpoints.
+func Marks(s string) bool { return s == Markers || s == Markers+sessionSuffix }
+
+// Sessions reports a strategy that keeps a conversation on one backend.
+func Sessions(s string) bool { return strings.HasSuffix(s, sessionSuffix) }
+
+// Base is a strategy without its session.
+func Base(s string) string { return strings.TrimSuffix(s, sessionSuffix) }
 
 // DefaultMinTokens is the shortest prefix taken as cacheable when the
 // price list doesn't say the model's (512 to 4,096 tokens, by model).

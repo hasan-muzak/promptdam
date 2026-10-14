@@ -288,7 +288,7 @@ func pooled(d *Diagnosis, flags families.Flags, doc *cacheprofile.Doc, writePric
 	if p, ok := doc.Of(d.Kind, model); ok && slices.Contains(strategies, p.Use) {
 		strategy = p.Use
 	}
-	if len(strategies) > 1 && strategy == promptcache.Markers && flags&(families.Breakpoints|families.GatewayBreakpoints) == 0 {
+	if len(strategies) > 1 && promptcache.Marks(strategy) && flags&(families.Breakpoints|families.GatewayBreakpoints) == 0 {
 		add = append(add, Finding{Code: NoBreakpoints, Severity: "warning", Title: "No cache breakpoints",
 			Detail: "This model caches only prompts marked with cache_control, and these calls mark none.",
 			Fix:    "Turn on prompt_cache on the route (the gateway marks them), or add cache_control to the last system message."})

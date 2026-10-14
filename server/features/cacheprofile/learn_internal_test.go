@@ -9,19 +9,24 @@ import (
 )
 
 // row is calls with a strategy to a backend: expects of them expected a
-// read and hits read, each expecting 1000 tokens (all read on a hit); the
-// input cost price micro-dollars per 1000 tokens.
+// read and hits read, each expecting 1000 tokens (all read on a hit), and
+// ten more calls that expected none; the input cost price micro-dollars
+// per 1000 tokens.
 func row(kind, model, backend, strategy string, expects, hits int64, price float64) Row {
-	return Row{Kind: kind, Model: model, Backend: backend, Strategy: strategy, Expects: expects, Hits: hits,
+	return Row{Kind: kind, Model: model, Backend: backend, Strategy: strategy, Calls: expects + 10, Expects: expects, Hits: hits,
 		Expected: expects * 1000, Read: hits * 1000, Input: (expects + 10) * 1000, Priced: int64(price * float64(expects+10))}
 }
 
 func TestLearn(t *testing.T) {
 	const or, gemini = "openrouter", "google/gemini-3.8-flash"
 	markers, auto := promptcache.Markers, promptcache.Auto
+	markersS, autoS := promptcache.WithSession(markers), promptcache.WithSession(auto)
 	def := func(kind, model string) string { return gateway.DefaultCacheStrategy(kind, false, model == gemini) }
 	prevUsing := func(use string) *Doc {
 		return &Doc{Models: map[string]Profile{Key(or, gemini): {Use: use}}}
+	}
+	studio := func(strategy string, expects, hits int64, price float64) Row {
+		return row(or, gemini, "Google AI Studio", strategy, expects, hits, price)
 	}
 	tests := []struct {
 		name  string
@@ -31,32 +36,32 @@ func TestLearn(t *testing.T) {
 		trial string
 		avoid []string
 	}{
-		{"a new model: its price list's, the other tried", []Row{row(or, gemini, "Google AI Studio", markers, 40, 38, 300)},
-			nil, markers, auto, nil},
-		{"never seen, the other caches well: switched", []Row{row(or, gemini, "Google AI Studio", auto, 400, 380, 300)},
-			prevUsing(markers), auto, "", nil},
-		{"cheaper by more than a tenth: switched", []Row{
-			row(or, gemini, "Google AI Studio", auto, 400, 0, 1000), row(or, gemini, "Google AI Studio", markers, 400, 380, 850)},
-			prevUsing(auto), markers, "", nil},
-		{"unpriced: never judged, still tried", []Row{
-			row(or, gemini, "Google AI Studio", auto, 400, 0, 0), row(or, gemini, "Google AI Studio", markers, 400, 380, 0)},
-			prevUsing(auto), auto, markers, nil},
-		{"cheaper by less: kept, and no longer tried", []Row{
-			row(or, gemini, "Google AI Studio", auto, 400, 0, 1000), row(or, gemini, "Google AI Studio", markers, 400, 380, 950)},
-			prevUsing(auto), auto, "", nil},
-		{"healthy, the other untried: not tried", []Row{row(or, gemini, "Google AI Studio", markers, 400, 380, 300)},
-			prevUsing(markers), markers, "", nil},
-		{"unhealthy, the other untried: tried", []Row{row(or, gemini, "Google AI Studio", markers, 400, 40, 900)},
+		{"a new model: its price list's, the other tried", []Row{studio(markers, 40, 38, 300)}, nil, markers, auto, nil},
+		{"never seen, another caches well: switched, and still tried", []Row{studio(auto, 400, 380, 300)},
+			prevUsing(markers), auto, markers, nil},
+		{"cheaper by more than a tenth: switched; all judged, none tried", []Row{
+			studio(auto, 400, 0, 1000), studio(markers, 400, 380, 850)}, prevUsing(auto), markers, "", nil},
+		{"cheaper by less: kept; all judged, none tried", []Row{
+			studio(auto, 400, 0, 1000), studio(markers, 400, 380, 950)}, prevUsing(auto), auto, "", nil},
+		{"healthy, the other untried: tried until judged", []Row{studio(markers, 400, 380, 300)},
 			prevUsing(markers), markers, auto, nil},
-		{"a backend that never reads while another does: avoided", []Row{
-			row(or, gemini, "Google AI Studio", markers, 400, 390, 300), row(or, gemini, "Google", markers, 150, 2, 1100)},
-			prevUsing(markers), markers, "", []string{"Google"}},
-		{"too few calls to judge the backend", []Row{
-			row(or, gemini, "Google AI Studio", markers, 400, 390, 300), row(or, gemini, "Google", markers, 60, 0, 1100)},
-			prevUsing(markers), markers, "", nil},
-		{"no backend reads: none avoided", []Row{
-			row(or, gemini, "Google AI Studio", auto, 400, 2, 1000), row(or, gemini, "Google", auto, 400, 0, 1000)},
+		{"unpriced: never judged, still tried", []Row{studio(auto, 400, 0, 0), studio(markers, 400, 380, 0)},
 			prevUsing(auto), auto, markers, nil},
+		{"a backend that never reads while another does: avoided, one left, no session", []Row{
+			studio(markers, 400, 390, 300), row(or, gemini, "Google", markers, 150, 2, 1100)},
+			prevUsing(markers), markers, auto, []string{"Google"}},
+		{"too few calls to judge the backend: two serve, sessions tried too", []Row{
+			studio(auto, 400, 380, 900), studio(markers, 400, 390, 300), row(or, gemini, "Google", markers, 60, 0, 1100)},
+			prevUsing(markers), markers, autoS, nil},
+		{"no backend reads: none avoided", []Row{studio(auto, 400, 2, 1000), row(or, gemini, "Google", auto, 400, 0, 1000)},
+			prevUsing(auto), auto, markers, nil},
+		{"a session cheaper by more than a tenth on two backends: switched", []Row{
+			studio(auto, 400, 100, 1100), row(or, gemini, "Google", auto, 400, 100, 1100),
+			studio(markers, 400, 300, 1000), row(or, gemini, "Google", markers, 400, 300, 1000),
+			studio(autoS, 400, 200, 1200), studio(markersS, 400, 390, 800)},
+			prevUsing(markers), markersS, "", nil},
+		{"a new model several backends serve starts with a session", []Row{
+			studio(markers, 40, 38, 300), row(or, gemini, "Google", markers, 40, 30, 300)}, nil, markersS, auto, nil},
 	}
 	for _, tt := range tests {
 		got := learn(tt.rows, map[string]int{Key(or, gemini): 4}, tt.prev, def)[Key(or, gemini)]

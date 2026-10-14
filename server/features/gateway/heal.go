@@ -29,7 +29,7 @@ func (c *call) cachePrompt(body []byte, format wire.Format, t Target, req wire.R
 		return translated, err == nil
 	}
 	switch {
-	case format == wire.AnthropicMessages && strategy == promptcache.Markers:
+	case format == wire.AnthropicMessages && promptcache.Marks(strategy):
 		prefix, ok := prefix()
 		if !ok {
 			return body
@@ -44,7 +44,7 @@ func (c *call) cachePrompt(body []byte, format wire.Format, t Target, req wire.R
 			plan.Tail = or(c.promptTTL.Tail, promptcache.FiveMinutes)
 		}
 		body, c.rec.PromptCached = promptcache.Mark(body, prefix, plan)
-	case format == wire.OpenAIChat && strategy == promptcache.Markers:
+	case format == wire.OpenAIChat && promptcache.Marks(strategy):
 		prefix, ok := prefix()
 		if !ok {
 			return body

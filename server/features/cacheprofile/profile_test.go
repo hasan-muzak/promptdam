@@ -40,16 +40,18 @@ func TestPlan(t *testing.T) {
 	if p := nilDoc.Plan("openrouter", false, "m", promptcache.Markers, "", false, nil); p.Strategy != promptcache.Markers {
 		t.Fatalf("no profiles: %+v", p)
 	}
-	// A conversation is kept on one backend only where several serve the
-	// model.
-	several := &cacheprofile.Doc{Models: map[string]cacheprofile.Profile{
-		cacheprofile.Key("openrouter", "a"): {Use: promptcache.Auto, Backends: 3},
-		cacheprofile.Key("openrouter", "b"): {Use: promptcache.Auto, Backends: 1},
+	// A session is part of the strategy learned; refused markers keep it.
+	sessions := &cacheprofile.Doc{Models: map[string]cacheprofile.Profile{
+		cacheprofile.Key("openrouter", "a"): {Use: promptcache.WithSession(promptcache.Markers), Backends: 3},
 	}}
-	if !several.Plan("openrouter", false, "a", promptcache.Auto, "conv", true, nil).Session ||
-		several.Plan("openrouter", false, "b", promptcache.Auto, "conv", true, nil).Session ||
-		several.Plan("openrouter", false, "unknown", promptcache.Auto, "conv", true, nil).Session {
-		t.Fatal("sessions")
+	if p := sessions.Plan("openrouter", false, "a", promptcache.Auto, "conv", true, nil); p.Strategy != "markers+session" {
+		t.Fatalf("a session learned: %+v", p)
+	}
+	if p := sessions.Plan("openrouter", false, "a", promptcache.Auto, "conv", true, []string{promptcache.Markers}); p.Strategy != "auto+session" {
+		t.Fatalf("markers refused, the session kept: %+v", p)
+	}
+	if p := sessions.Plan("custom", false, "a", promptcache.Auto, "conv", true, nil); promptcache.Sessions(p.Strategy) {
+		t.Fatalf("a kind without sessions: %+v", p)
 	}
 }
 

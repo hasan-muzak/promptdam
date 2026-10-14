@@ -149,7 +149,9 @@ func TestLearner(t *testing.T) {
 	}
 	d := w.App.CacheProfiles.Current()
 	g := d.Models[cacheprofile.Key("openrouter", "google/gemini-3.8-flash")]
-	if g.Use != promptcache.Markers || g.Trial != "" || !slices.Equal(g.Avoid, []string{"google-vertex"}) || g.Projects != 3 ||
+	// Marked (it caches well, the price list's default never seen); the
+	// provider's own caching still tried, until judged too.
+	if g.Use != promptcache.Markers || g.Trial != promptcache.Auto || !slices.Equal(g.Avoid, []string{"google-vertex"}) || g.Projects != 3 ||
 		g.Evidence != 570 || g.Backends != 1 {
 		t.Fatalf("gemini %+v", g)
 	}

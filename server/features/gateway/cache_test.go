@@ -110,9 +110,9 @@ func TestThinkingIsHealedAfterARewrite(t *testing.T) {
 	}
 }
 
-// OpenRouter calls of a model several backends serve carry the
-// conversation's session from its first call, so OpenRouter keeps it on
-// one backend; others carry none; a model that caches what a request marks
+// OpenRouter calls whose strategy keeps a session (one learned for a
+// model several backends serve) carry the conversation's session from its
+// first call, so OpenRouter keeps it on one backend; others carry none; a model that caches what a request marks
 // gets breakpoints on its Chat content (calls translated to it too), one
 // that caches on its own gets none; a session the client chose wins, and
 // passes either way.
@@ -121,7 +121,7 @@ func TestOpenRouterCaching(t *testing.T) {
 		return func(base string) gateway.Resolver {
 			return routeResolver{gateway.Route{PromptCache: true, Session: session, Targets: []gateway.Target{{Provider: "openrouter",
 				Kind: "openrouter", BaseURL: base + "/v1", Model: "google/gemini-3.8-flash", MinCache: 512,
-				Cache: gateway.CachePlan{Strategy: strategy, Session: session != ""}}}}}
+				Cache: gateway.CachePlan{Strategy: strategy}}}}}
 		}
 	}
 	system, _ := json.Marshal(strings.Repeat("Follow the house style. ", 120)) // ~720 tokens
@@ -142,7 +142,7 @@ func TestOpenRouterCaching(t *testing.T) {
 		return parts[len(parts)-1].(map[string]any)["cache_control"] != nil
 	}
 
-	e := setup(t, fakeupstream.Options{}, route("markers", "pd-conv"))
+	e := setup(t, fakeupstream.Options{}, route("markers+session", "pd-conv"))
 	res, _ := e.post(t, "/v1/chat/completions", chat)
 	body, h := sent(e)
 	msgs, _ := body["messages"].([]any)
@@ -150,7 +150,7 @@ func TestOpenRouterCaching(t *testing.T) {
 		res.Header.Get(brand.HeaderCache) != "prompt" {
 		t.Fatalf("markers: session %q, body %v", h.Get("X-Session-Id"), body)
 	}
-	if rec := e.record(t); rec.CacheStrategy != "markers" {
+	if rec := e.record(t); rec.CacheStrategy != "markers+session" {
 		t.Fatalf("record %+v", rec)
 	}
 
@@ -166,7 +166,7 @@ func TestOpenRouterCaching(t *testing.T) {
 		t.Fatalf("translated: %v", body)
 	}
 
-	e = setup(t, fakeupstream.Options{}, route("auto", "pd-conv"))
+	e = setup(t, fakeupstream.Options{}, route("auto+session", "pd-conv"))
 	_, _ = e.post(t, "/v1/chat/completions", chat)
 	if body, h := sent(e); h.Get("X-Session-Id") != "pd-conv" || strings.Contains(fmtJSON(body), "cache_control") {
 		t.Fatalf("auto: session %q, body %v", h.Get("X-Session-Id"), body)
@@ -240,7 +240,7 @@ func TestRefusedMarkersAreDropped(t *testing.T) {
 		e := setup(t, fakeupstream.Options{}, func(string) gateway.Resolver {
 			return routeResolver{gateway.Route{PromptCache: true, Session: "pd-conv", Targets: []gateway.Target{{Provider: kind,
 				Kind: kind, BaseURL: up.URL + "/v1", Model: "google/gemini-3.8-flash", MinCache: 512, Pooled: pooled,
-				Cache: gateway.CachePlan{Strategy: "markers", Session: true}}}}}
+				Cache: gateway.CachePlan{Strategy: "markers+session"}}}}}
 		}, func(c *gateway.Config) {
 			c.CacheRefused = func(kind, model, strategy string) { kills = append(kills, kill{kind, model, strategy}) }
 		})
