@@ -146,7 +146,7 @@ func TestOpenRouterCaching(t *testing.T) {
 	res, _ := e.post(t, "/v1/chat/completions", chat)
 	body, h := sent(e)
 	msgs, _ := body["messages"].([]any)
-	if h.Get("X-Session-Id") != "pd-conv" || len(msgs) != 4 || !marked(msgs[0]) || marked(msgs[1]) || !marked(msgs[3]) ||
+	if h.Get("X-Session-Id") != "pd-conv" || len(msgs) != 4 || !marked(msgs[0]) || !marked(msgs[1]) || marked(msgs[2]) || !marked(msgs[3]) ||
 		res.Header.Get(brand.HeaderCache) != "prompt" {
 		t.Fatalf("markers: session %q, body %v", h.Get("X-Session-Id"), body)
 	}

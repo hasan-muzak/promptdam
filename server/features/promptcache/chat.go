@@ -10,8 +10,10 @@ import (
 // of its own, as content parts' cache_control (which routers of providers
 // such as OpenRouter pass on to the models that cache what a request
 // marks, Gemini's and Anthropic's): on the last of the leading system or
-// developer messages when the prefix is long enough to cache, and on the
-// last message (a user's or a tool's) when the plan has a tail. A string
+// developer messages when the prefix is long enough to cache, and, when the
+// plan has a tail, on the last message (a user's or a tool's) and where the
+// previous call's tail stood (previousLast), so a model that finds a cache
+// only at a breakpoint reads the whole conversation so far. A string
 // content becomes one text part, its JSON string kept as written; an
 // array gets the breakpoint on its last part. Only bytes are added: the
 // rest of the body is never moved or re-encoded, and nothing is decoded but
@@ -67,6 +69,9 @@ func MarkChat(body []byte, req wire.Request, p Plan) ([]byte, bool) {
 	if last := len(msgs) - 1; p.Tail != "" && last != system {
 		if role := roleOf(body, msgs[last]); role == "user" || role == "tool" {
 			mark(msgs[last], marker(p.Tail))
+			if prev := previousLast(body, msgs); prev > system {
+				mark(msgs[prev], marker(p.Tail))
+			}
 		}
 	}
 	if len(edits) == 0 {
@@ -84,6 +89,31 @@ func MarkChat(body []byte, req wire.Request, p Plan) ([]byte, bool) {
 		at = e.end
 	}
 	return append(out, body[at:]...), true
+}
+
+// previousLast is the index of the previous call's last message, where its
+// tail breakpoint stood: back from the newest message past what this call
+// added (a user's message, tool results) and the assistant's turn they
+// follow, to the user's or tool's message before it; -1 on a
+// conversation's first call. Marked again, it lets a model that finds a
+// cache only at a breakpoint (Gemini's, measured 2026-10-14) read what
+// the previous call wrote; models that look back on their own (Anthropic's)
+// read the same either way.
+func previousLast(doc []byte, msgs [][2]int) int {
+	i := len(msgs) - 2
+	for i >= 0 && roleOf(doc, msgs[i]) != "assistant" {
+		i--
+	}
+	for i >= 0 && roleOf(doc, msgs[i]) == "assistant" {
+		i--
+	}
+	if i < 0 {
+		return -1
+	}
+	if role := roleOf(doc, msgs[i]); role == "user" || role == "tool" {
+		return i
+	}
+	return -1
 }
 
 // roleOf is the role of the message at doc[span].

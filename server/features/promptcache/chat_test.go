@@ -2,6 +2,7 @@ package promptcache_test
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -51,9 +52,10 @@ func markedPart(t *testing.T, c any) string {
 }
 
 // A Chat prompt gets a breakpoint on its system prompt (the last of the
-// leading system messages) and, for a conversation, on its last message;
-// a string content becomes one text part with its JSON string as written,
-// and every byte outside the marked contents stays.
+// leading system messages) and, for a conversation, on its last message
+// and where the previous call's last breakpoint stood; a string content
+// becomes one text part with its JSON string as written, and every byte
+// outside the marked contents stays.
 func TestMarkChat(t *testing.T) {
 	system := strings.Repeat("You review contracts. ", 300)
 	body := `{"model":"google/gemini-3.8-flash","temperature":0.2,"messages":[` +
@@ -67,11 +69,18 @@ func TestMarkChat(t *testing.T) {
 	if !ok {
 		t.Fatal("nothing marked")
 	}
-	if markedPart(t, content(t, out, 0)) != "" || markedPart(t, content(t, out, 1)) != "5m" || markedPart(t, content(t, out, 4)) != "5m" {
+	if markedPart(t, content(t, out, 0)) != "" || markedPart(t, content(t, out, 1)) != "5m" || markedPart(t, content(t, out, 2)) != "5m" ||
+		markedPart(t, content(t, out, 4)) != "5m" {
 		t.Fatalf("marked %s", out)
 	}
-	if c, _ := content(t, out, 2).(string); c != `Is clause 4 "enforceable"?` {
+	if c, _ := content(t, out, 3).(string); c != "Probably." {
 		t.Fatalf("an unmarked message changed: %s", out)
+	}
+	if !strings.Contains(string(out), `{"type":"text","text":"Is clause 4 \"enforceable\"?","cache_control":{"type":"ephemeral"}}`) {
+		t.Fatalf("the previous call's last message lost its bytes: %s", out)
+	}
+	if n := strings.Count(string(out), "cache_control"); n != 3 {
+		t.Fatalf("%d breakpoints", n)
 	}
 	// The system prompt keeps its bytes: only the part's wrapping is added.
 	if !strings.Contains(string(out), `[{"type":"text","text":"`+system+`","cache_control":{"type":"ephemeral"}}]`) {
@@ -125,6 +134,53 @@ func TestMarkChatLeavesAlone(t *testing.T) {
 	}
 	if _, ok := promptcache.MarkChat([]byte(`{"model":"m","messages":[]}`), wire.Request{}, plan); ok {
 		t.Fatal("no messages")
+	}
+}
+
+// The previous call's last message keeps its breakpoint: in an agent's
+// tool loop, the result before the assistant's last tool call (or the
+// user's message, when the loop just began); on a conversation's first
+// call there is none.
+func TestMarkChatKeepsThePreviousBreakpoint(t *testing.T) {
+	plan := promptcache.Plan{Prefix: promptcache.FiveMinutes, Tail: promptcache.FiveMinutes}
+	call := func(name string) string {
+		return `{"role":"assistant","content":null,"tool_calls":[{"id":"` + name + `","type":"function","function":{"name":"ls","arguments":"{}"}}]}`
+	}
+	result := func(name, text string) string {
+		return `{"role":"tool","tool_call_id":"` + name + `","content":"` + text + `"}`
+	}
+	marked := func(body string) []int {
+		t.Helper()
+		out, _ := promptcache.MarkChat([]byte(body), parseChat(t, body), plan)
+		var b struct {
+			Messages []json.RawMessage `json:"messages"`
+		}
+		if err := json.Unmarshal(out, &b); err != nil {
+			t.Fatal(err)
+		}
+		var at []int
+		for i := range b.Messages {
+			if markedPart(t, content(t, out, i)) != "" {
+				at = append(at, i)
+			}
+		}
+		return at
+	}
+	for _, tt := range []struct {
+		name, body string
+		want       []int
+	}{
+		{"a first call", `{"model":"m","messages":[{"role":"user","content":"list the files"}]}`, []int{0}},
+		{"a loop just begun", `{"model":"m","messages":[{"role":"user","content":"list the files"},` + call("c1") + `,` +
+			result("c1", "a.go") + `]}`, []int{0, 2}},
+		{"parallel results", `{"model":"m","messages":[{"role":"user","content":"list the files"},` + call("c1") + `,` +
+			result("c1", "a.go") + `,` + call("c2") + `,` + result("c2", "b.go") + `,` + result("c2", "c.go") + `]}`, []int{2, 5}},
+		{"a new question after a loop", `{"model":"m","messages":[{"role":"user","content":"list the files"},` + call("c1") + `,` +
+			result("c1", "a.go") + `,{"role":"assistant","content":"a.go"},{"role":"user","content":"and tests?"}]}`, []int{2, 4}},
+	} {
+		if got := marked(tt.body); !slices.Equal(got, tt.want) {
+			t.Errorf("%s: marked %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }
 
