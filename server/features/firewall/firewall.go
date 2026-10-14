@@ -18,7 +18,6 @@ import (
 	"strings"
 
 	"cel.dev/cel-go/cel"
-	"cel.dev/cel-go/ext"
 
 	"github.com/hasan-muzak/keel-core/pkg/policy"
 	"github.com/hasan-muzak/keel-core/pkg/redact"
@@ -142,7 +141,7 @@ func invalid(format string, args ...any) error {
 
 // NewEnv is the environment policies are compiled in.
 func NewEnv() (*policy.Env, error) {
-	return policy.NewEnv(ext.NativeTypes(reflect.TypeFor[rules.Request](), ext.ParseStructTags(true)),
+	return policy.NewEnv(rules.Types(),
 		cel.Variable("request", cel.ObjectType(reflect.TypeFor[rules.Request]().String())),
 		cel.Variable("findings", cel.MapType(cel.StringType, cel.IntType)),
 		cel.Variable("classes", cel.MapType(cel.StringType, cel.IntType)),

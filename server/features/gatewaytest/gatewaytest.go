@@ -87,6 +87,7 @@ type World struct {
 	mu      sync.Mutex
 	records []gateway.Record
 	ahead   time.Duration // how far metering's clock runs ahead (Fresh)
+	opts    Options
 }
 
 // New starts a World.
@@ -114,7 +115,7 @@ func New(t *testing.T, opts Options) *World {
 	if opts.Payloads {
 		c.Blob = testkit.Blob(t, core.Product.Key)
 	}
-	w := &World{T: t, Ctx: ctx, C: c, App: core.NewApp(c), Stripe: stripe}
+	w := &World{T: t, Ctx: ctx, C: c, App: core.NewApp(c), Stripe: stripe, opts: opts}
 	u, err := c.Tenancy.SignIn(ctx, identity.Claims{UID: "fb-acme", Email: "acme@example.com", EmailVerified: true})
 	if err != nil {
 		t.Fatal(err)
@@ -178,6 +179,62 @@ func New(t *testing.T, opts Options) *World {
 	}))
 	t.Cleanup(w.Gateway.Close)
 	return w
+}
+
+// Replica starts another gateway replica of the project, on the same
+// databases and Valkey but with its own memory (snapshots, turns), as a
+// second gateway process behind a load balancer: calls sent to both
+// (CallOn) act as calls the balancer spreads. Its calls are logged by the
+// World's log.
+func (w *World) Replica() *httptest.Server {
+	w.T.Helper()
+	snaps := snapshot.NewStore(w.C.KV, w.App.Sources())
+	turns := conversation.New(w.C.KV, conversation.Options{})
+	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: true})
+	res := resolver.New(resolver.Config{
+		Keys: w.C.APIKeys, Snapshots: snaps, Quota: w.C.Metering, Spend: w.App.Spend,
+		Rates: counter.New(w.C.KV, "rpm", counter.Options{}), Prices: w.App.Prices, Scope: core.ScopeGateway,
+		Rules: w.App.RuleEnv, Sample: w.opts.Sample, Entitlements: w.C.Metering.Entitlements, Decider: decide.New(transport),
+		Turns: turns,
+	})
+	for _, l := range []interface {
+		Start(context.Context) error
+		Stop(context.Context) error
+	}{snaps, turns} {
+		if err := l.Start(w.Ctx); err != nil {
+			w.T.Fatal(err)
+		}
+		w.T.Cleanup(func() { _ = l.Stop(context.Background()) })
+	}
+	srv := httptest.NewServer(gateway.New(gateway.Config{
+		Resolver: res, Transport: transport, Cache: responsecache.New(w.C.KV),
+		Done: func(r *gateway.Record) {
+			w.Log.Record(r)
+			w.Eval.Offer(r)
+			w.mu.Lock()
+			defer w.mu.Unlock()
+			w.records = append(w.records, *r)
+		},
+	}))
+	w.T.Cleanup(srv.Close)
+	return srv
+}
+
+// CallOn makes a call through a replica's gateway (Replica, or Gateway).
+func (w *World) CallOn(srv *httptest.Server, path, body string, header ...string) (int, http.Header, string) {
+	w.T.Helper()
+	req, _ := http.NewRequestWithContext(w.Ctx, http.MethodPost, srv.URL+path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+w.Raw)
+	for i := 0; i+1 < len(header); i += 2 {
+		req.Header.Set(header[i], header[i+1])
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		w.T.Fatal(err)
+	}
+	out, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	return res.StatusCode, res.Header, string(out)
 }
 
 // Scoped is the test's context in the organization's tenant scope.

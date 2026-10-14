@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 
 	"github.com/hasan-muzak/promptdam/server/catalog"
+	"github.com/hasan-muzak/promptdam/server/features/conversation"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
@@ -159,5 +161,89 @@ func TestPlansGateActiveRouters(t *testing.T) {
 	}
 	if rt.Status != tiers.Active {
 		t.Fatal("the snapshot's router changed")
+	}
+}
+
+// countingDecider answers tier, counting the questions.
+type countingDecider struct {
+	tier  string
+	asked int
+}
+
+func (d *countingDecider) Decide(context.Context, Question) (string, wire.Usage, error) {
+	d.asked++
+	return d.tier, wire.Usage{}, nil
+}
+
+// A turn keeps its tier: the calls of an agent's tool loop are placed as
+// the call that started the turn was, even where the rule that placed it
+// no longer holds; what a call needs still moves it up; an edited router
+// places the turn anew; and the decision model is never asked mid-turn.
+func TestTurnsKeepTheirTier(t *testing.T) {
+	r, snap, rt := placing(t, tiers.Active)
+	r.cfg.Turns = conversation.New(nil, conversation.Options{})
+	ctx := context.Background()
+	scope := conversation.Scope{Project: uuid.New(), Router: rt.Name}
+	meta := func(c *gateway.Call) *Meta {
+		m := &Meta{Project: scope.Project}
+		m.Turn, m.InTurn = conversation.KeysOf(scope, "", c.Request.Turn)
+		return m
+	}
+	start := call(t, `{"model":"auto","messages":[{"role":"user","content":"hi"}]}`)
+	m := meta(start)
+	if _, _, err := r.place(ctx, snap, rt, "", true, start, m); err != nil || m.Tier != "fast" || m.TierSource != tiers.SourceRule {
+		t.Fatalf("the turn's start: %+v %v", m, err)
+	}
+	loop := func(result string) *gateway.Call {
+		return call(t, `{"model":"auto","messages":[{"role":"user","content":"hi"},
+			{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"f","arguments":"{}"}}]},
+			{"role":"tool","tool_call_id":"c1","content":"`+result+`"}]}`)
+	}
+	next := loop("ok")
+	m = meta(next)
+	if _, _, err := r.place(ctx, snap, rt, "", true, next, m); err != nil || m.Tier != "fast" || m.TierSource != tiers.SourceRule ||
+		m.Sampled {
+		t.Fatalf("the tool loop left its turn's tier: %+v %v", m, err)
+	}
+	// A tool result past the fast model's context: the call moves up.
+	big := loop(strings.Repeat("row ", 2_000))
+	m = meta(big)
+	if _, _, err := r.place(ctx, snap, rt, "", true, big, m); err != nil || m.Tier != "mid" {
+		t.Fatalf("a call its tier can't take: %+v %v", m, err)
+	}
+
+	// The router changed: the turn is placed anew (the rule no longer
+	// holds, so the default tier), and without asking the decision model
+	// mid-turn.
+	edited := *rt
+	edited.Updated = edited.Updated.Add(time.Second)
+	edited.DecisionModel = "gpt-5-nano"
+	d := &countingDecider{tier: "mid"}
+	r.cfg.Decider = d
+	m = meta(next)
+	if _, _, err := r.place(ctx, snap, &edited, "", true, next, m); err != nil || m.Tier != "top" || m.TierSource != tiers.SourceDefault ||
+		d.asked != 0 {
+		t.Fatalf("an edited router mid-turn: %+v %v, decision model asked %d times", m, err, d.asked)
+	}
+	// A new turn's start asks it.
+	other := call(t, `{"model":"auto","messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi"},
+		{"role":"user","content":"is this contract fair?"}]}`)
+	m = meta(other)
+	if _, _, err := r.place(ctx, snap, &edited, "", true, other, m); err != nil || m.Tier != "mid" || d.asked != 1 {
+		t.Fatalf("a new turn: %+v %v, asked %d", m, err, d.asked)
+	}
+}
+
+// Within a tier, the target that served the turn's latest call goes first:
+// its prompt cache is warm there.
+func TestTurnsPreferTheirProvider(t *testing.T) {
+	ts := []gateway.Target{{Provider: "a", Model: "m"}, {Provider: "b", Model: "m"}, {Provider: "c", Model: "m"}}
+	preferFirst(ts, "c", "m")
+	if ts[0].Provider != "c" || ts[1].Provider != "a" || ts[2].Provider != "b" {
+		t.Fatalf("%+v", ts)
+	}
+	preferFirst(ts, "z", "m")
+	if ts[0].Provider != "c" {
+		t.Fatalf("an unknown provider moved %+v", ts)
 	}
 }

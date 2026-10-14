@@ -14,6 +14,12 @@
 //	request.family       string  the prompt family
 //	request.tags         list    the key's and the call's tags
 //	request.user, request.developer, request.route  string
+//	request.turn.messages, request.turn.input_tokens  int  the call's turn
+//	                     (its human message and the conversation up to it):
+//	                     the same for every call of an agent's tool loop
+//	request.turn.human_turns   int   the conversation's human messages
+//	request.turn.continuation  bool  the call continues its turn (a tool
+//	                     loop's), rather than answering the human message
 //
 // e.g. `request.input_tokens < 1500 && !request.has_tools`. Rules start as
 // drafts, which a dry-run tries on the request log; active rules route.
@@ -69,8 +75,13 @@ func (e *InvalidError) Error() string { return "rules: " + e.Reason }
 // a misspelt field or a comparison of the wrong types is refused when the
 // rule is saved, not skipped on every call.
 func NewEnv() (*policy.Env, error) {
-	return policy.NewEnv(ext.NativeTypes(reflect.TypeFor[Request](), ext.ParseStructTags(true)),
-		cel.Variable("request", cel.ObjectType(reflect.TypeFor[Request]().String())))
+	return policy.NewEnv(Types(), cel.Variable("request", cel.ObjectType(reflect.TypeFor[Request]().String())))
+}
+
+// Types declares request's types, for environments that read it (the
+// firewall's policies too).
+func Types() cel.EnvOption {
+	return ext.NativeTypes(reflect.TypeFor[Request](), reflect.TypeFor[Turn](), ext.ParseStructTags(true))
 }
 
 // Request is a call as rules see it.
@@ -88,6 +99,16 @@ type Request struct {
 	JSON        bool     `cel:"json"`
 	Stream      bool     `cel:"stream"`
 	Tags        []string `cel:"tags"`
+	Turn        Turn     `cel:"turn"`
+}
+
+// Turn is a call's turn as rules see it: its human message and the
+// conversation up to it.
+type Turn struct {
+	Messages     int  `cel:"messages"`
+	InputTokens  int  `cel:"input_tokens"`
+	HumanTurns   int  `cel:"human_turns"`
+	Continuation bool `cel:"continuation"`
 }
 
 // Vars are the request's variables.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -364,5 +365,51 @@ func TestHeaderTags(t *testing.T) {
 	recs := w.Records()
 	if tags := recs[len(recs)-1].Meta.(*resolver.Meta).Tags; len(tags) != 2 || tags[0] != "team:search" || tags[1] != "ok=1" {
 		t.Fatalf("tags %v", tags)
+	}
+}
+
+// An agent's tool loop keeps its turn's tier whichever replica serves each
+// call: the turn's placement goes through Valkey.
+func TestTurnsAcrossReplicas(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{})
+	w.Grant(catalog.Routers)
+	w.Serves("main", "gpt-5-nano", "gpt-5-mini")
+	w.Provider("claude", providers.FormatAnthropic, []string{"claude-opus-5-5"})
+	if _, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Active,
+		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-nano"}, {Name: "smart", Model: "claude-opus-5-5"}},
+			Rules: []tiers.Rule{{When: "request.messages == 1", Tier: "fast"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	other := w.Replica()
+	start := `{"model":"auto","messages":[{"role":"user","content":"list the files"}]}`
+	w.Eventually(func() bool {
+		_, h, _ := w.Call("/v1/chat/completions", start)
+		return h.Get(brand.HeaderRouter) == "auto"
+	})
+	if _, h, _ := w.Call("/v1/chat/completions", start); h.Get(brand.HeaderTier) != "fast" {
+		t.Fatalf("the turn's start: %s", h.Get(brand.HeaderTier))
+	}
+	// The tool loop: three calls the rule no longer holds for, on the
+	// other replica, then on this one.
+	loop := `{"model":"auto","messages":[{"role":"user","content":"list the files"},
+		{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"ls","arguments":"{}"}}]},
+		{"role":"tool","tool_call_id":"c1","content":"a.go b.go"}]}`
+	w.Eventually(func() bool { // the placement reached Valkey
+		_, h, _ := w.CallOn(other, "/v1/chat/completions", loop)
+		return h.Get(brand.HeaderTier) == "fast"
+	})
+	for _, srv := range []*httptest.Server{other, w.Gateway, other} {
+		if status, h, out := w.CallOn(srv, "/v1/chat/completions", loop); status != 200 || h.Get(brand.HeaderTier) != "fast" ||
+			h.Get(brand.HeaderTierSource) != "rule" {
+			t.Fatalf("%d %s: tier %s (%s)", status, out, h.Get(brand.HeaderTier), h.Get(brand.HeaderTierSource))
+		}
+	}
+	// The next human message starts a turn of its own.
+	next := `{"model":"auto","messages":[{"role":"user","content":"list the files"},
+		{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"ls","arguments":"{}"}}]},
+		{"role":"tool","tool_call_id":"c1","content":"a.go b.go"},{"role":"assistant","content":"a.go and b.go"},
+		{"role":"user","content":"is b.go safe to delete?"}]}`
+	if _, h, _ := w.CallOn(other, "/v1/chat/completions", next); h.Get(brand.HeaderTier) != "smart" {
+		t.Fatalf("the next turn: %s", h.Get(brand.HeaderTier))
 	}
 }

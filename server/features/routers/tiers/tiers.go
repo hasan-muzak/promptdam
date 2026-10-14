@@ -204,6 +204,11 @@ type Call struct {
 	// Demoted reports a tier the canary demoted: the router places no
 	// call on it, but a client may name it.
 	Demoted func(i int) bool
+	// Inherit is the placement of the call's turn, for a call that
+	// continues it (an agent's tool loop): the call keeps it, the
+	// classifier and the decision model aren't asked, and a rule that
+	// holds may only move it to a stronger tier.
+	Inherit *Choice
 }
 
 // Choice is the tier the cascade picked and why.
@@ -222,6 +227,8 @@ type Choice struct {
 	// Unsure reports a call the classifier was unsure of and no decision
 	// model placed: it got the default tier.
 	Unsure bool
+	// Inherited reports a call that kept its turn's placement.
+	Inherited bool
 }
 
 // Choose runs the cascade: the client's tier, else the first rule that
@@ -239,10 +246,17 @@ func (s *Spec) Choose(c Call) (Choice, error) {
 		}
 		ch, placed = Choice{Tier: i, Source: SourceExplicit, Rule: -1, Confidence: 1}, true
 	}
-	if !placed && c.Holds != nil {
+	if !placed && c.Inherit != nil && c.Inherit.Tier >= 0 && c.Inherit.Tier < len(s.Tiers) {
+		ch, placed = *c.Inherit, true
+		ch.Inherited, ch.Moved, ch.Unsure, ch.Rule = true, false, false, -1
+	}
+	if (!placed || ch.Inherited) && c.Holds != nil {
 		for k, r := range s.Rules {
 			if c.Holds(r.When) {
-				ch, placed = Choice{Tier: s.Index(r.Tier), Source: SourceRule, Rule: k, Confidence: 1}, true
+				// Within a turn, a rule only ever moves the call up.
+				if i := s.Index(r.Tier); !placed || i > ch.Tier {
+					ch, placed = Choice{Tier: i, Source: SourceRule, Rule: k, Confidence: 1}, true
+				}
 				break
 			}
 		}

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -97,6 +98,18 @@ type Router struct {
 	Classifier *classifier.Model `json:"classifier,omitempty"`
 	// Demoted are the tiers the canary demoted.
 	Demoted []tiers.Demotion `json:"demoted,omitempty"`
+	// Updated is when the router last changed.
+	Updated time.Time `json:"updated_at"`
+}
+
+// Version names the router as it places calls now: its configuration and
+// its classifier's. A turn placed by another version is placed anew.
+func (r *Router) Version() string {
+	v := r.ID.String()[:8] + "." + strconv.FormatInt(r.Updated.UnixMilli(), 36)
+	if r.Classifier != nil {
+		v += "." + strconv.Itoa(r.Classifier.Version)
+	}
+	return v
 }
 
 // IsDemoted reports whether the canary demoted the tier.
@@ -379,7 +392,7 @@ func Of(r *pdent.ModelRouter) Router {
 		ID: r.ID, Name: r.Name, Status: string(r.Status),
 		Spec:         tiers.Spec{Tiers: r.Tiers, Rules: r.Rules, Default: r.DefaultTier},
 		QualityFloor: r.QualityFloor, SampleRate: r.SampleRate, EvalBudgetMicros: r.EvalBudgetMicros, Judge: r.Judge,
-		DecisionModel: r.DecisionModel, DecisionTimeoutMS: r.DecisionTimeoutMs, Demoted: r.Demoted,
+		DecisionModel: r.DecisionModel, DecisionTimeoutMS: r.DecisionTimeoutMs, Demoted: r.Demoted, Updated: r.UpdatedAt,
 	}
 }
 
