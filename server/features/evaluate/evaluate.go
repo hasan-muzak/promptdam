@@ -60,15 +60,17 @@ const CheckJudgeError = "judge_error"
 // Row is one verdict: a sampled call's answer on one tier against the
 // default tier's.
 type Row struct {
-	ProjectID, OrgID                             uuid.UUID
-	TS                                           time.Time
-	Router, Trace, Family                        string
-	ServedTier, DecidedTier, TierSource          string
-	BaselineTier, BaselineModel                  string
-	CandidateTier, CandidateModel                string
-	CandidateRank                                int8
-	Verdict, Check, JudgeModel                   string
-	Consistent                                   bool
+	ProjectID, OrgID                    uuid.UUID
+	TS                                  time.Time
+	Router, Trace, Family               string
+	ServedTier, DecidedTier, TierSource string
+	BaselineTier, BaselineModel         string
+	CandidateTier, CandidateModel       string
+	CandidateRank                       int8
+	Verdict, Check, JudgeModel          string
+	// Consistent is false when the judge, asked in both orders
+	// (BothOrders), disagreed with itself (the verdict is then a tie).
+	Consistent, BothOrders                       bool
 	CandidateMicros, BaselineMicros, JudgeMicros int64
 	// CandidateOutput and BaselineOutput are the two answers' output
 	// tokens: what the ledger learns each tier writes against the default.
@@ -80,7 +82,7 @@ type Row struct {
 var columns = []string{
 	"project_id", "ts", "org_id", "router", "trace", "family_id", "served_tier", "decided_tier", "tier_source",
 	"baseline_tier", "baseline_model", "candidate_tier", "candidate_model", "candidate_rank", "verdict", "check",
-	"judge_model", "consistent", "candidate_micros", "baseline_micros", "judge_micros", "candidate_output_tokens",
+	"judge_model", "consistent", "both_orders", "candidate_micros", "baseline_micros", "judge_micros", "candidate_output_tokens",
 	"baseline_output_tokens", "features", "retention_days",
 }
 
@@ -88,7 +90,7 @@ func values(r Row) []any {
 	return []any{
 		r.ProjectID, r.TS, r.OrgID, r.Router, r.Trace, r.Family, r.ServedTier, r.DecidedTier, r.TierSource,
 		r.BaselineTier, r.BaselineModel, r.CandidateTier, r.CandidateModel, r.CandidateRank, r.Verdict, r.Check,
-		r.JudgeModel, r.Consistent, r.CandidateMicros, r.BaselineMicros, r.JudgeMicros, r.CandidateOutput, r.BaselineOutput,
+		r.JudgeModel, r.Consistent, r.BothOrders, r.CandidateMicros, r.BaselineMicros, r.JudgeMicros, r.CandidateOutput, r.BaselineOutput,
 		r.Features, r.RetentionDays,
 	}
 }
@@ -315,7 +317,9 @@ func (e *Evaluator) run(ctx context.Context, rec *gateway.Record) {
 			row.Check = CheckNoJudge
 		default:
 			row.Check, row.JudgeModel = CheckJudge, judgeModel
-			verdict, consistent, micros, err := e.judge(ctx, m, *judge, rec.Request.Prefix.System, ask, base.answer, run.answer)
+			verdict, consistent, twice, micros, err := e.judge(ctx, m, *judge, rec.Request.Prefix.System, ask, base.answer,
+				run.answer, e.bothRate(rt))
+			row.BothOrders = twice
 			row.JudgeMicros, total = micros, total+micros
 			if err != nil {
 				row.Check = CheckJudgeError
@@ -518,9 +522,19 @@ func (e *Evaluator) judgeTarget(snap *snapshot.Snapshot, rt *routers.Router) (*g
 // judge compares a candidate's answer with the default tier's: the answers
 // in random order, and a share of pairs again in the other order, a
 // disagreement making a tie. The verdict is the candidate's.
-func (e *Evaluator) judge(ctx context.Context, m *resolver.Meta, t gateway.Target, instructions, request string, base, cand Answer) (
-	verdict string, consistent bool, micros int64, err error,
-) {
+// bothRate is the share of a router's verdicts judged in both orders:
+// every one when its judge was found to flip too often (training), else
+// the evaluator's sample.
+func (e *Evaluator) bothRate(rt *routers.Router) float64 {
+	if rt.Classifier != nil && rt.Classifier.JudgeBoth {
+		return 1
+	}
+	return e.cfg.Both
+}
+
+func (e *Evaluator) judge(ctx context.Context, m *resolver.Meta, t gateway.Target, instructions, request string, base, cand Answer,
+	both float64,
+) (verdict string, consistent, twice bool, micros int64, err error) {
 	candFirst := e.cfg.Rand() < 0.5
 	ask := func(candFirst bool) (string, error) {
 		a, b := base, cand
@@ -541,15 +555,18 @@ func (e *Evaluator) judge(ctx context.Context, m *resolver.Meta, t gateway.Targe
 		return Loss, nil
 	}
 	if verdict, err = ask(candFirst); err != nil {
-		return "", false, micros, err
+		return "", false, false, micros, err
 	}
-	if e.cfg.Rand() < e.cfg.Both {
+	if both >= 1 || e.cfg.Rand() < both {
 		again, err := ask(!candFirst)
-		if err == nil && again != verdict {
-			return Tie, false, micros, nil
+		if err == nil {
+			if again != verdict {
+				return Tie, false, true, micros, nil
+			}
+			return verdict, true, true, micros, nil
 		}
 	}
-	return verdict, true, micros, nil
+	return verdict, true, false, micros, nil
 }
 
 // judgeOnce asks the judge which of two answers is better: "a", "b" or

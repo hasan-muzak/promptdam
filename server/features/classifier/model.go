@@ -16,6 +16,12 @@ type Model struct {
 	// model of another default tier says nothing of this one.
 	Default string      `json:"default"`
 	Tiers   []TierModel `json:"tiers"`
+	// JudgeBoth has every verdict judged in both orders: the router's judge
+	// disagreed with itself too often when asked both ways (FlipRate, over
+	// FlipSamples verdicts), a position bias that one order can't show.
+	JudgeBoth   bool    `json:"judge_both,omitempty"`
+	FlipRate    float64 `json:"flip_rate,omitempty"`
+	FlipSamples int     `json:"flip_samples,omitempty"`
 }
 
 // TierModel predicts, for one tier, the probability that a call is one the

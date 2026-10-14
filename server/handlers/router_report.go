@@ -49,6 +49,9 @@ type RouterReportTierOut struct {
 	MeetsFloor  bool               `json:"meets_floor" doc:"Cheaper tiers: the interval's low end meets the quality floor, on 50 judged calls or more"`
 	Demoted     bool               `json:"demoted" doc:"The canary demoted the tier: the router places no call on it until restored"`
 	Classifier  *ClassifierTierOut `json:"classifier"`
+	JudgeLeans  string             `json:"judge_leans" doc:"tier or default: the judge's vendor makes one of the two models, the other's another vendor's; models judged against their own vendor's tend to win. Pick a judge from a third vendor for this comparison"`
+	FlipRate    float64            `json:"flip_rate" doc:"How often the judge disagreed with itself when asked in both orders"`
+	JudgeBoth   bool               `json:"judge_both" doc:"Every verdict is judged in both orders: the judge flipped too often"`
 }
 
 // RouterReportFamilyOut is a family's judged calls on one tier.
@@ -147,7 +150,8 @@ func (h *Handlers) GetRouterReport(ctx *muzak.Context, in RouterReportIn) (Route
 		out.Tiers[i] = RouterReportTierOut{Name: t.Name, Model: rt.Spec.Tiers[i].Model, Rank: t.Rank, Served: t.Served,
 			Decided: t.Decided, CostMicros: t.CostMicros, Judged: t.Judged, Wins: t.Wins, Ties: t.Ties, Losses: t.Losses,
 			Unjudged: t.Unjudged, Quality: t.Quality, QualityLow: t.Low, QualityHigh: t.High, MeetsFloor: t.MeetsFloor,
-			Demoted: rt.IsDemoted(t.Name), Classifier: byTier[t.Name]}
+			Demoted: rt.IsDemoted(t.Name), Classifier: byTier[t.Name], JudgeLeans: t.JudgeLeans, FlipRate: t.FlipRate,
+			JudgeBoth: t.JudgeBoth}
 	}
 	for _, f := range rep.Families {
 		out.Families = append(out.Families, RouterReportFamilyOut{Family: f.Family, Tier: f.Tier, Judged: f.Judged,

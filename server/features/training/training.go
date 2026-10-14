@@ -32,6 +32,16 @@ const Window = 30 * 24 * time.Hour
 // maxPerTier bounds the judged calls a tier is trained on: the newest.
 const maxPerTier = 20_000
 
+// A router's judge is asked both ways on every verdict once it disagreed
+// with itself on more than FlipStart of the verdicts judged both ways over
+// FlipWindow (at least MinFlipSamples), until that falls under FlipStop.
+const (
+	FlipStart      = 0.10
+	FlipStop       = 0.05
+	MinFlipSamples = 30
+	FlipWindow     = 7 * 24 * time.Hour
+)
+
 // Config configures a Service.
 type Config struct {
 	Ent    *pdent.Client
@@ -128,6 +138,9 @@ func (s *Service) Train(ctx context.Context, r *pdent.ModelRouter) (*classifier.
 		m.Tiers = append(m.Tiers, tm)
 	}
 	prev, err := s.cfg.Ent.RouterClassifier.Query().Where(routerclassifier.RouterID(r.ID)).Only(ctx)
+	if err := s.flips(ctx, r, m, err == nil && prev.Model.JudgeBoth); err != nil {
+		return nil, err
+	}
 	switch {
 	case pdent.IsNotFound(err):
 		m.Version = 1
@@ -142,6 +155,35 @@ func (s *Service) Train(ctx context.Context, r *pdent.ModelRouter) (*classifier.
 	}
 	s.cfg.Changed(ctx, r.ProjectID)
 	return m, nil
+}
+
+// flips measures how often the router's judge disagreed with itself when
+// asked in both orders, and whether every verdict should be (was: whether
+// it was).
+func (s *Service) flips(ctx context.Context, r *pdent.ModelRouter, m *classifier.Model, was bool) error {
+	var rows []struct {
+		N     uint64 `ch:"n"`
+		Flips uint64 `ch:"flips"`
+	}
+	if err := s.cfg.Events.Select(ctx, &rows, events.Project(r.ProjectID), `SELECT countIf(both_orders) AS n,
+		countIf(both_orders AND NOT consistent) AS flips FROM router_evals WHERE {tenant} AND router = ?
+		AND ts >= fromUnixTimestamp64Milli(?)`, r.Name, s.cfg.Now().Add(-FlipWindow).UnixMilli()); err != nil {
+		return fmt.Errorf("training: reading the judge's flips: %w", err)
+	}
+	if len(rows) == 0 || rows[0].N == 0 {
+		m.JudgeBoth = was
+		return nil
+	}
+	m.FlipSamples, m.FlipRate = int(rows[0].N), float64(rows[0].Flips)/float64(rows[0].N)
+	switch {
+	case m.FlipSamples < MinFlipSamples:
+		m.JudgeBoth = was
+	case was:
+		m.JudgeBoth = m.FlipRate >= FlipStop
+	default:
+		m.JudgeBoth = m.FlipRate > FlipStart
+	}
+	return nil
 }
 
 func rankOf(r *pdent.ModelRouter, tier string, def int) int {

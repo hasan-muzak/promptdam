@@ -121,3 +121,39 @@ func TestTrainedRoutersPlaceCalls(t *testing.T) {
 		t.Fatalf("counterfactual %d, want %d (the default tier writing 3x)", rows[0].Counterfactual, want)
 	}
 }
+
+// A judge that disagrees with itself too often when asked both ways has
+// every verdict of its router judged both ways.
+func TestFlippingJudgesAreAskedTwice(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true})
+	ctx := context.Background()
+	if _, err := w.App.Routers.Create(w.Scoped(), w.Org, w.Project, routers.Input{Name: "auto", Status: tiers.Shadow,
+		Spec: tiers.Spec{Tiers: []tiers.Tier{{Name: "fast", Model: "gpt-5-mini"}, {Name: "smart", Model: "gpt-5"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	batch, err := w.C.Events.Unscoped().PrepareBatch(ctx, `INSERT INTO router_evals (project_id, ts, org_id, router,
+		baseline_tier, candidate_tier, candidate_rank, verdict, check, consistent, both_orders, retention_days)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 100 verdicts judged both ways, 20 of them inconsistent.
+	for i := range 100 {
+		if err := batch.Append(w.Project, time.Now(), w.Org, "auto", "smart", "fast", int8(-1), "tie", "judge", i >= 20, true,
+			uint16(7)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := batch.Send(); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.App.Training.TrainDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := w.App.Ent.RouterClassifier.Query().Only(w.Scoped())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := stored.Model; !m.JudgeBoth || m.FlipRate != 0.2 || m.FlipSamples != 100 {
+		t.Fatalf("classifier %+v", m)
+	}
+}

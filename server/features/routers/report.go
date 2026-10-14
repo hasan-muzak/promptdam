@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -62,6 +63,15 @@ type TierReport struct {
 	// MeetsFloor reports that Low is at least the router's floor, on at
 	// least MinJudged judged calls (cheaper tiers only).
 	MeetsFloor bool
+	// JudgeLeans names the side the judge may favor when the tier's model
+	// and the default tier's come from different vendors and the judge's
+	// from one of them: "tier" or "default" ("" otherwise). Models judged
+	// against their own vendor's tend to win.
+	JudgeLeans string
+	// FlipRate is how often the router's judge disagreed with itself when
+	// asked both ways; JudgeBoth that every verdict is judged both ways.
+	FlipRate  float64
+	JudgeBoth bool
 }
 
 // FamilyReport is one family's judged calls on one tier: right are, for
@@ -108,6 +118,47 @@ func writes(r Router, tier string) float64 {
 	return 1
 }
 
+// vendors are model families by their name's start.
+var vendors = []struct{ prefix, vendor string }{
+	{"claude", "anthropic"}, {"gpt", "openai"}, {"o1", "openai"}, {"o3", "openai"}, {"o4", "openai"}, {"chatgpt", "openai"},
+	{"gemini", "google"}, {"gemma", "google"}, {"mistral", "mistral"}, {"ministral", "mistral"}, {"magistral", "mistral"},
+	{"codestral", "mistral"}, {"deepseek", "deepseek"}, {"grok", "xai"}, {"llama", "meta"}, {"qwen", "alibaba"},
+}
+
+// vendorOf is the vendor of a model ("provider/model" or a model), "" when
+// unknown.
+func vendorOf(model string) string {
+	name := strings.ToLower(model)
+	if i := strings.LastIndexByte(name, '/'); i >= 0 {
+		name = name[i+1:]
+	}
+	for _, v := range vendors {
+		if strings.HasPrefix(name, v.prefix) {
+			return v.vendor
+		}
+	}
+	return ""
+}
+
+// defaultJudge is the judge evaluation uses when a router names none and
+// a provider of the project serves it.
+const defaultJudge = "claude-sonnet-5-5"
+
+// leans is the side a judge may favor between a tier's model and the
+// default's: the one from its vendor, when they differ.
+func leans(judge, tier, def string) string {
+	j, t, d := vendorOf(judge), vendorOf(tier), vendorOf(def)
+	switch {
+	case j == "" || t == "" || d == "" || t == d:
+		return ""
+	case j == t:
+		return "tier"
+	case j == d:
+		return "default"
+	}
+	return ""
+}
+
 // BuildReport reads a router's report for [from, to). Times of judged
 // calls are bound in milliseconds: ClickHouse compares a DateTime64 column
 // with a whole-second DateTime wrongly within that second.
@@ -116,8 +167,18 @@ func BuildReport(ctx context.Context, db *events.DB, project uuid.UUID, r Router
 	def := spec.Index(spec.Default)
 	rep := &Report{Sources: map[string]uint64{}, Tiers: make([]TierReport, len(spec.Tiers))}
 	index := make(map[string]int, len(spec.Tiers))
+	judge := r.Judge
+	if judge == "" {
+		judge = defaultJudge
+	}
 	for i, t := range spec.Tiers {
 		rep.Tiers[i] = TierReport{Name: t.Name, Rank: i - def}
+		if i != def {
+			rep.Tiers[i].JudgeLeans = leans(judge, t.Model, spec.Tiers[def].Model)
+		}
+		if r.Classifier != nil {
+			rep.Tiers[i].FlipRate, rep.Tiers[i].JudgeBoth = r.Classifier.FlipRate, r.Classifier.JudgeBoth
+		}
 		index[t.Name] = i
 	}
 
