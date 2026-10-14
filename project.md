@@ -216,7 +216,7 @@ Reselling tokens or unified billing (no credit risk, no float, no fraud surface)
 - **Fail behaviour:**
   - On an internal error, Promptdam fails open to direct upstream for routing and caching, but **never** for firewall decisions. A firewall-scanner error under a `block` policy fails closed for secrets and open for everything else, configurable per project (decided 2026-10-08).
   - A provider outage triggers the fallback chain, then a clear error with a `x-promptdam-trace` id.
-- **Headers returned:** `x-promptdam-trace`, `x-promptdam-served-model`, `x-promptdam-cache` (hit/miss/prompt), `x-promptdam-savings-micros`.
+- **Headers returned:** `x-promptdam-trace`, `x-promptdam-served-model`, `x-promptdam-cache` (hit/miss/prompt). Savings are known once the provider reports usage, at the end of a stream, after the headers: each call's are in the request log (by trace), with how they are known (`savings_basis`).
 
 ### 6.2 Model routers: tiers, the cascade, evaluation and learning (`features/routers`, `features/evaluate`, `features/classifier`, `features/translate`)
 

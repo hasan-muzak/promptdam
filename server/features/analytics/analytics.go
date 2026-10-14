@@ -83,8 +83,10 @@ type Request struct {
 	CacheWriteTokens uint32    `ch:"cache_write_tokens"`
 	ReasoningTokens  uint32    `ch:"reasoning_tokens"`
 	CostMicros       int64     `ch:"cost_micros"`
+	Priced           bool      `ch:"priced"`
 	Savings          int64     `ch:"savings_micros"`
 	SavingsReason    string    `ch:"savings_reason"`
+	SavingsBasis     string    `ch:"savings_basis"`
 	Cache            string    `ch:"cache"`
 	Family           string    `ch:"family_id"`
 }
@@ -92,8 +94,8 @@ type Request struct {
 const requestColumns = `ts, trace, key_id, developer, end_user, tags, route, router, tier, decided_tier, tier_source,
 	tier_confidence, shadow, firewall_action, firewall_kinds, payload_ref, api_format, provider, requested_model,
 	served_model, stream, translated, status, error_code, attempts, ttfb_ms, latency_ms, upstream_ms, usage_known, input_tokens,
-	output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_micros, savings_micros,
-	savings_reason, cache, family_id`
+	output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_micros, priced, savings_micros,
+	savings_reason, savings_basis, cache, family_id`
 
 // Filter narrows the request log.
 type Filter struct {
@@ -406,18 +408,20 @@ type SavingsPoint struct {
 type SavingsReport struct {
 	Total    SavingsSums
 	ByReason []SavingsSums
+	// ByBasis says how the savings are known: provider, cache, estimate.
+	ByBasis  []SavingsSums
 	Families []SavingsSums
 	Series   []SavingsPoint
 }
 
 // Savings sums a project's savings ledger over [from, to) from the hourly
-// rollup: in total, per reason, for the 20 families that saved most, and
-// per day.
+// rollup: in total, per reason, per basis, for the 20 families that saved
+// most, and per day.
 func (s *Service) Savings(ctx context.Context, project uuid.UUID, from, to time.Time) (SavingsReport, error) {
 	if err := checkRange(from, to, MaxRange); err != nil {
 		return SavingsReport{}, err
 	}
-	out := SavingsReport{ByReason: []SavingsSums{}, Families: []SavingsSums{}, Series: []SavingsPoint{}}
+	out := SavingsReport{ByReason: []SavingsSums{}, ByBasis: []SavingsSums{}, Families: []SavingsSums{}, Series: []SavingsPoint{}}
 	if s.db == nil {
 		return out, nil
 	}
@@ -435,6 +439,10 @@ func (s *Service) Savings(ctx context.Context, project uuid.UUID, from, to time.
 	if err := s.db.Select(ctx, &out.ByReason, events.Project(project), `SELECT savings_reason AS grp, `+sums+where+
 		` GROUP BY grp ORDER BY savings_micros DESC`, args...); err != nil {
 		return SavingsReport{}, fmt.Errorf("analytics: savings by reason: %w", err)
+	}
+	if err := s.db.Select(ctx, &out.ByBasis, events.Project(project), `SELECT savings_basis AS grp, `+sums+where+
+		` AND savings_basis != '' GROUP BY grp ORDER BY savings_micros DESC`, args...); err != nil {
+		return SavingsReport{}, fmt.Errorf("analytics: savings by basis: %w", err)
 	}
 	if err := s.db.Select(ctx, &out.Families, events.Project(project), `SELECT family_id AS grp, `+sums+where+
 		` AND family_id != '' GROUP BY grp ORDER BY savings_micros DESC LIMIT 20`, args...); err != nil {
@@ -474,7 +482,7 @@ func (s *Service) Unpriced(ctx context.Context, project uuid.UUID, from, to time
 	err := s.db.Select(ctx, &out, events.Project(project), `SELECT provider, kind, served_model, count() AS calls,
 		sum(input_tokens) AS input, sum(output_tokens) AS output, max(ts) AS last_seen
 		FROM requests WHERE {tenant} AND ts >= fromUnixTimestamp64Milli(?) AND ts < fromUnixTimestamp64Milli(?)
-		AND usage_known AND cost_micros = 0 AND cache != 'hit' AND input_tokens + output_tokens > 0 AND served_model != ''
+		AND usage_known AND NOT priced AND served_model != ''
 		GROUP BY provider, kind, served_model ORDER BY calls DESC LIMIT 200`, from.UnixMilli(), to.UnixMilli())
 	if err != nil {
 		return nil, fmt.Errorf("analytics: unpriced models: %w", err)

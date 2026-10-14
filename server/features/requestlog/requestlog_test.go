@@ -232,10 +232,11 @@ func TestSavingsLedger(t *testing.T) {
 		Counterfactual int64  `ch:"counterfactual_micros"`
 		Savings        int64  `ch:"savings_micros"`
 		Reason         string `ch:"savings_reason"`
+		Basis          string `ch:"savings_basis"`
 		Cache          string `ch:"cache"`
 	}
 	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT cost_micros, counterfactual_micros,
-		savings_micros, savings_reason, cache FROM requests WHERE {tenant} AND usage_known ORDER BY ts`); err != nil {
+		savings_micros, savings_reason, savings_basis, cache FROM requests WHERE {tenant} AND usage_known ORDER BY ts`); err != nil {
 		t.Fatal(err)
 	}
 	last := len(rows) - 1
@@ -248,13 +249,15 @@ func TestSavingsLedger(t *testing.T) {
 		}
 	}
 	if miss.Cost != 52 || miss.Counterfactual != 70 || miss.Savings != 18 || miss.Reason != "prompt_cache" ||
-		miss.Cache != "miss" {
+		miss.Basis != "provider" || miss.Cache != "miss" {
 		t.Fatalf("a miss %+v", miss)
 	}
-	if hit.Cost != 0 || hit.Counterfactual != 70 || hit.Savings != 70 || hit.Reason != "response_cache" || hit.Cache != "hit" {
+	if hit.Cost != 0 || hit.Counterfactual != 70 || hit.Savings != 70 || hit.Reason != "response_cache" ||
+		hit.Basis != "cache" || hit.Cache != "hit" {
 		t.Fatalf("a hit %+v", hit)
 	}
-	if fallback.Cost != 228 || fallback.Counterfactual != 70 || fallback.Savings != -158 || fallback.Reason != "fallback" {
+	if fallback.Cost != 228 || fallback.Counterfactual != 70 || fallback.Savings != -158 || fallback.Reason != "fallback" ||
+		fallback.Basis != "estimate" {
 		t.Fatalf("a fallback %+v", fallback)
 	}
 
@@ -268,6 +271,55 @@ func TestSavingsLedger(t *testing.T) {
 	}
 	if reasons["response_cache"] != 70 || reasons["fallback"] != -158 || report.Total.Requests != uint64(len(rows)) {
 		t.Fatalf("report %+v", report)
+	}
+	bases := map[string]int64{}
+	for _, r := range report.ByBasis {
+		bases[r.Key] = r.Savings
+	}
+	if bases["cache"] != 70 || bases["estimate"] != -158 || bases["provider"] <= 0 || bases[""] != 0 {
+		t.Fatalf("by basis %+v", report.ByBasis)
+	}
+}
+
+// A call a model without a price served has an unknown cost: it books no
+// savings, where a cost of 0 used to claim the whole counterfactual.
+func TestUnpricedCallsSaveNothing(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true})
+	ctx := context.Background()
+	w.Provider("local", providers.FormatOpenAI, []string{"llama-local"})
+	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{
+		Name: "default", Fallbacks: []string{"local/llama-local"}, Retries: 0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"model":"gpt-5-mini","messages":[{"role":"user","content":"hi"}]}`
+	w.Eventually(func() bool { // the route reached the gateway
+		w.Fake.Fail(503)
+		status, h, _ := w.Call("/v1/chat/completions", body)
+		return status == 200 && h.Get(brand.HeaderProvider) == "local"
+	})
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct {
+		Priced         bool   `ch:"priced"`
+		Cost           int64  `ch:"cost_micros"`
+		Counterfactual int64  `ch:"counterfactual_micros"`
+		Savings        int64  `ch:"savings_micros"`
+		Reason         string `ch:"savings_reason"`
+		Basis          string `ch:"savings_basis"`
+	}
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT priced, cost_micros, counterfactual_micros,
+		savings_micros, savings_reason, savings_basis FROM requests WHERE {tenant} AND served_model = 'llama-local'`); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) == 0 {
+		t.Fatal("no call served by the unpriced model")
+	}
+	for _, r := range rows {
+		if r.Priced || r.Cost != 0 || r.Counterfactual != 0 || r.Savings != 0 || r.Reason != "" || r.Basis != "" {
+			t.Fatalf("an unpriced call %+v", r)
+		}
 	}
 }
 

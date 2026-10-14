@@ -920,10 +920,10 @@ func TestOverview(t *testing.T) {
 		t.Helper()
 		err := e.c.Events.Unscoped().Exec(ctx, `INSERT INTO requests (project_id, ts, trace, org_id, provider, kind,
 			requested_model, served_model, status, usage_known, input_tokens, output_tokens, cache_read_tokens, cost_micros,
-			counterfactual_micros, savings_micros, savings_reason, latency_ms, retention_days)
+			priced, counterfactual_micros, savings_micros, savings_reason, latency_ms, retention_days)
 			SELECT ?, now64(3) - toIntervalSecond(number), concat(?, toString(number)), ?, 'main', ?, 'gpt-5', ?, 200, true,
-			1000, 100, 400, ?, ?, ?, ?, 900, 7 FROM numbers(?)`,
-			prjID, model, orgID, kind, model, cost, cost+saved, saved, reason, n)
+			1000, 100, 400, ?, ?, ?, ?, ?, 900, 7 FROM numbers(?)`,
+			prjID, model, orgID, kind, model, cost, cost > 0, cost+saved, saved, reason, n)
 		if err != nil {
 			t.Fatal(err)
 		}

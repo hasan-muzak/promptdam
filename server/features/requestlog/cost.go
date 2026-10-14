@@ -51,11 +51,25 @@ const (
 	ReasonPromptCache   = "prompt_cache"
 )
 
+// Savings bases: how the ledger knows a saving.
+const (
+	// BasisProvider: the provider's own cache counts, priced; the same
+	// model, the same tokens.
+	BasisProvider = "provider"
+	// BasisCache: an answer the response cache kept; no provider was
+	// called.
+	BasisCache = "cache"
+	// BasisEstimate: the model asked for, priced on the tokens of the model
+	// that served the call (which may think or write more, or less).
+	BasisEstimate = "estimate"
+)
+
 // Ledger is what a call would have cost on the model asked for at list
-// price without any cache, what it saved against that, and why.
+// price without any cache, what it saved against that, why, and how the
+// saving is known.
 type Ledger struct {
 	Counterfactual, Savings int64
-	Reason                  string
+	Reason, Basis           string
 }
 
 // counterfactual prices usage on model m with every input token fresh.

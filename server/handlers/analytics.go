@@ -78,8 +78,10 @@ type RequestOut struct {
 	CacheWriteTokens int       `json:"cache_write_tokens"`
 	ReasoningTokens  int       `json:"reasoning_tokens"`
 	CostMicros       int64     `json:"cost_micros" doc:"At list prices, in millionths of a dollar"`
+	Priced           bool      `json:"priced" doc:"False when the model that served the call has no price: its cost and savings are unknown"`
 	SavingsMicros    int64     `json:"savings_micros" doc:"Against the model asked for at list price without any cache"`
 	SavingsReason    string    `json:"savings_reason"`
+	SavingsBasis     string    `json:"savings_basis" doc:"How the saving is known: provider (the provider's own cache counts), cache (answered from the response cache), estimate (the model asked for priced on the served call's tokens)"`
 	Cache            string    `json:"cache" doc:"hit or miss on routes with the response cache"`
 	Family           string    `json:"family"`
 }
@@ -94,7 +96,8 @@ func requestOut(r analytics.Request) RequestOut {
 		TTFBms: int(r.TTFBms), LatencyMs: int(r.LatencyMs), UpstreamMs: int(r.UpstreamMs), UsageKnown: r.UsageKnown,
 		InputTokens: int(r.InputTokens), OutputTokens: int(r.OutputTokens), CacheReadTokens: int(r.CacheReadTokens),
 		CacheWriteTokens: int(r.CacheWriteTokens), ReasoningTokens: int(r.ReasoningTokens), CostMicros: r.CostMicros,
-		SavingsMicros: r.Savings, SavingsReason: r.SavingsReason, Cache: r.Cache, Family: r.Family,
+		Priced: r.Priced, SavingsMicros: r.Savings, SavingsReason: r.SavingsReason, SavingsBasis: r.SavingsBasis,
+		Cache: r.Cache, Family: r.Family,
 	}
 }
 
@@ -318,7 +321,7 @@ type SavingsIn struct {
 
 // SavingsSumsOut are calls' counterfactual cost, actual cost and savings.
 type SavingsSumsOut struct {
-	Key                  string `json:"key,omitempty" doc:"The reason or family"`
+	Key                  string `json:"key,omitempty" doc:"The reason, basis or family"`
 	Requests             uint64 `json:"requests"`
 	CounterfactualMicros int64  `json:"counterfactual_micros" doc:"On the model asked for at list price, without any cache"`
 	CostMicros           int64  `json:"cost_micros"`
@@ -338,6 +341,7 @@ type SavingsOut struct {
 	To       time.Time         `json:"to"`
 	Total    SavingsSumsOut    `json:"total"`
 	ByReason []SavingsSumsOut  `json:"by_reason" doc:"response_cache, routing, fallback, prompt_cache, or empty for calls nothing changed"`
+	ByBasis  []SavingsSumsOut  `json:"by_basis" doc:"How the savings are known: provider (the provider's own cache counts), cache (the response cache answered), estimate (the model asked for priced on the served calls' tokens)"`
 	Families []SavingsSumsOut  `json:"families" doc:"The 20 families that saved most"`
 	Series   []SavingsPointOut `json:"series" doc:"Per day"`
 }
@@ -359,9 +363,13 @@ func (h *Handlers) GetSavings(ctx *muzak.Context, in SavingsIn) (SavingsOut, err
 		return SavingsOut{}, analyticsFail(err)
 	}
 	out := SavingsOut{From: from, To: to, Total: savingsSums(r.Total), ByReason: make([]SavingsSumsOut, len(r.ByReason)),
-		Families: make([]SavingsSumsOut, len(r.Families)), Series: make([]SavingsPointOut, len(r.Series))}
+		ByBasis: make([]SavingsSumsOut, len(r.ByBasis)), Families: make([]SavingsSumsOut, len(r.Families)),
+		Series: make([]SavingsPointOut, len(r.Series))}
 	for i, s := range r.ByReason {
 		out.ByReason[i] = savingsSums(s)
+	}
+	for i, s := range r.ByBasis {
+		out.ByBasis[i] = savingsSums(s)
 	}
 	for i, s := range r.Families {
 		out.Families[i] = savingsSums(s)

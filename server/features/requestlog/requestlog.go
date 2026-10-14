@@ -61,8 +61,10 @@ type Row struct {
 	TTFBms, LatencyMs, UpstreamMs                           uint32
 	UsageKnown                                              bool
 	InputTokens, OutputTokens, CacheRead, CacheWrite, Think uint32
-	CostMicros, Counterfactual, Savings                     int64
-	SavingsReason, Cache                                    string
+	CostMicros                                              int64
+	Priced                                                  bool
+	Counterfactual, Savings                                 int64
+	SavingsReason, SavingsBasis, Cache                      string
 	RequestBytes                                            uint32
 	ResponseBytes                                           uint64
 	RetentionDays                                           uint16
@@ -75,8 +77,8 @@ var columns = []string{
 	"firewall_kinds", "payload_ref", "api_format", "provider",
 	"kind", "requested_model", "served_model", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
 	"upstream_ms", "usage_known", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
-	"reasoning_tokens", "cost_micros", "counterfactual_micros", "savings_micros", "savings_reason", "cache",
-	"request_bytes", "response_bytes", "retention_days",
+	"reasoning_tokens", "cost_micros", "priced", "counterfactual_micros", "savings_micros", "savings_reason",
+	"savings_basis", "cache", "request_bytes", "response_bytes", "retention_days",
 }
 
 func values(r Row) []any {
@@ -87,7 +89,8 @@ func values(r Row) []any {
 		r.FirewallKinds, r.PayloadRef, r.APIFormat, r.Provider,
 		r.Kind, r.RequestedModel, r.ServedModel, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
 		r.UpstreamMs, r.UsageKnown, r.InputTokens, r.OutputTokens, r.CacheRead, r.CacheWrite, r.Think, r.CostMicros,
-		r.Counterfactual, r.Savings, r.SavingsReason, r.Cache, r.RequestBytes, r.ResponseBytes, r.RetentionDays,
+		r.Priced, r.Counterfactual, r.Savings, r.SavingsReason, r.SavingsBasis, r.Cache, r.RequestBytes, r.ResponseBytes,
+		r.RetentionDays,
 	}
 }
 
@@ -167,14 +170,22 @@ func (l *Log) Record(r *gateway.Record) {
 	}
 	var cost int64
 	var led Ledger
+	// priced is false when a model without a price served the call: its
+	// cost is unknown, so it claims no savings either (a cost of 0 would
+	// claim the whole counterfactual).
+	priced := true
 	if r.UsageKnown {
 		if r.Cache != "hit" { // a cached answer cost nothing
 			if price, ok := l.price(m, r.Provider, r.Kind, r.ServedModel); ok {
 				cost = CostAt(price, r.Usage)
+			} else {
+				priced = false
 			}
 			l.cfg.Spend.Add(m.Who(), cost)
 		}
-		led = l.ledger(r, m, cost)
+		if priced {
+			led = l.ledger(r, m, cost)
+		}
 	}
 	// A router's decision model spent on the call, whatever became of it.
 	var routerMicros int64
@@ -201,8 +212,9 @@ func (l *Log) Record(r *gateway.Record) {
 		ErrorCode: r.ErrorCode, Attempts: uint8(min(r.Attempts, 255)), TTFBms: ms(r.TTFB), LatencyMs: ms(r.Latency),
 		UpstreamMs: ms(r.Upstream), UsageKnown: r.UsageKnown, InputTokens: u32(r.Usage.Input),
 		OutputTokens: u32(r.Usage.Output), CacheRead: u32(r.Usage.CacheRead), CacheWrite: u32(r.Usage.CacheWrite),
-		Think: u32(r.Usage.Reasoning), CostMicros: cost, Counterfactual: led.Counterfactual, Savings: led.Savings,
-		SavingsReason: led.Reason, Cache: r.Cache, RequestBytes: uint32(min(r.RequestBytes, 1<<31)),
+		Think: u32(r.Usage.Reasoning), CostMicros: cost, Priced: priced, Counterfactual: led.Counterfactual,
+		Savings: led.Savings, SavingsReason: led.Reason, SavingsBasis: led.Basis, Cache: r.Cache,
+		RequestBytes:  uint32(min(r.RequestBytes, 1<<31)),
 		ResponseBytes: uint64(max(r.ResponseBytes, 0)),
 	}
 	if row.Tags == nil {
@@ -284,13 +296,13 @@ func (l *Log) ledger(r *gateway.Record, m *resolver.Meta, cost int64) Ledger {
 	led.Savings = led.Counterfactual - cost
 	switch {
 	case r.Cache == "hit":
-		led.Reason = ReasonResponseCache
+		led.Reason, led.Basis = ReasonResponseCache, BasisCache
 	case rerouted && r.Fallback:
-		led.Reason = ReasonFallback
+		led.Reason, led.Basis = ReasonFallback, BasisEstimate
 	case rerouted:
-		led.Reason = ReasonRouting
+		led.Reason, led.Basis = ReasonRouting, BasisEstimate
 	case r.Usage.CacheRead > 0 || r.Usage.CacheWrite > 0:
-		led.Reason = ReasonPromptCache
+		led.Reason, led.Basis = ReasonPromptCache, BasisProvider
 	}
 	return led
 }
