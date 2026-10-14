@@ -166,6 +166,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !s.sleep(r, s.opts.TTFB) {
 		return
 	}
+	if r.Method == http.MethodGet && strings.HasSuffix(path, "/models") {
+		writeJSON(w, map[string]any{"object": "list", "data": []any{}})
+		return
+	}
 	if fail != 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(fail)
