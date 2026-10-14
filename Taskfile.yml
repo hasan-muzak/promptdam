@@ -100,6 +100,17 @@ tasks:
     cmds:
       - go test -race ./server/... ./bench/...
 
+  demo:customs:
+    desc: "A customs broker's long conversation through a Claude router on PROMPTDAM_TEST_ANTHROPIC_KEY (.env), then the gateway's ledger (about $0.15, stops past $0.50)"
+    dotenv: [".env"]
+    env:
+      KEEL_TEST_DATABASE_URL: postgres://keel:keel@localhost:25432/keel_test?sslmode=disable
+      KEEL_TEST_VALKEY_URL: redis://localhost:26379/15
+      KEEL_TEST_CLICKHOUSE_URL: clickhouse://keel:keel@localhost:29000/keel_test
+      KEEL_TEST_S3_ENDPOINT: http://localhost:29100
+    cmds:
+      - go test ./server/livecheck -run TestCustomsBroker -v -count=1 -timeout 20m
+
   bench:
     desc: "Measure the gateway's overhead against a fake provider (S0 exit: p99 within 40 ms), then its own cost per call"
     cmds:

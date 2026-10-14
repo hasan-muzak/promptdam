@@ -718,6 +718,12 @@ Model routers replace per-family savings experiments, and cross-format translati
     healed once.
   - **Answers** name the model asked for; the judge is asked both ways where it flips.
   - Not now: per-message effort marks, keep-alive pings, holding parallel calls back (measured first).
+  - **Found by a customer's conversation (2026-10-14, `server/livecheck`, `task demo:customs`):** the decision model
+    worked on no current Claude model (a temperature they refuse, thinking that ate its 64-token answer), the
+    judge's 1,024 tokens left thinking models little room, and a call moved to a model that refuses sampling
+    parameters failed. The catalog now says how each model thinks and whether it takes
+    sampling (`llm.Known` for models a price list doesn't have yet); a moved call loses the sampling its model
+    refuses, listed in `X-Promptdam-Dropped`.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
 - **Exit:** ≥ 5 design partners in production, ≥ 2 willing to pay for Team or Business. → **Beta Mon Apr 26**.
 
