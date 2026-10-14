@@ -1,5 +1,7 @@
 package providers
 
+import "strings"
+
 // Kind is a provider Promptdam knows: the API it speaks and where.
 type Kind struct {
 	Name  string `json:"name"`
@@ -46,6 +48,15 @@ var Kinds = []Kind{
 	{Name: "fireworks", Label: "Fireworks AI", Format: FormatOpenAI, BaseURL: "https://api.fireworks.ai/inference/v1", Catalog: "fireworks"},
 	{Name: "openrouter", Label: "OpenRouter", Format: FormatOpenAI, BaseURL: "https://openrouter.ai/api/v1", Catalog: "openrouter"},
 	{Name: Custom, Label: "Custom endpoint"},
+}
+
+// Public reports a provider on its kind's own public API (the kind's base
+// URL; never a custom endpoint): its calls are the same for every project,
+// so what they show of a model may be pooled (features/cacheprofile). A
+// base URL a project overrides may be a server of its own.
+func Public(kind, baseURL string) bool {
+	k, ok := LookupKind(kind)
+	return ok && kind != Custom && k.BaseURL != "" && strings.TrimRight(baseURL, "/") == strings.TrimRight(k.BaseURL, "/")
 }
 
 // LookupKind finds a kind by name.

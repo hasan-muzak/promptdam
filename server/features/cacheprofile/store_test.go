@@ -92,10 +92,11 @@ func TestRefused(t *testing.T) {
 	}
 }
 
-// The learner pools every project's calls of the week: Gemini on
-// OpenRouter is marked and kept off the backend that never cached it (its
-// slug read from OpenRouter's list of the model's backends, then kept a
-// day), and each model counts the projects it was learned from.
+// The learner pools every project's calls of the week to providers' public
+// APIs (never a project's own endpoint): Gemini on OpenRouter is marked
+// and kept off the backend that never cached it (its slug read from
+// OpenRouter's list of the model's backends, then kept a day), and each
+// model counts the projects it was learned from.
 func TestLearner(t *testing.T) {
 	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true})
 	ctx := context.Background()
@@ -114,14 +115,15 @@ func TestLearner(t *testing.T) {
 	t.Cleanup(endpoints.Close)
 
 	batch, err := w.C.Events.Unscoped().PrepareBatch(ctx, `INSERT INTO cache_health_hourly (project_id, hour, kind,
-		target_model, backend, cache_strategy, cache_trial, calls, expected_calls, hit_calls, expected_tokens,
+		target_model, backend, cache_strategy, cache_trial, pooled, calls, expected_calls, hit_calls, expected_tokens,
 		expected_read_tokens, input_tokens, input_micros, retention_days)`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	hour := time.Now().UTC().Truncate(time.Hour).Add(-2 * time.Hour)
+	pooled := true
 	add := func(project uuid.UUID, at time.Time, kind, model, backend, strategy string, expects, hits uint64) {
-		if err := batch.Append(project, at, kind, model, backend, strategy, false, expects+5, expects, hits, expects*2000,
+		if err := batch.Append(project, at, kind, model, backend, strategy, false, pooled, expects+5, expects, hits, expects*2000,
 			hits*2000, (expects+5)*2000, int64(expects*300), uint16(30)); err != nil {
 			t.Fatal(err)
 		}
@@ -133,6 +135,9 @@ func TestLearner(t *testing.T) {
 	}
 	add(w.Project, hour.Add(-8*24*time.Hour), "openrouter", "old/model", "X", "auto", 900, 0) // outside the week
 	add(w.Project, hour, "anthropic", "claude-opus-5-5", "", "markers", 10, 9)
+	// A project's own endpoint, claiming the backend that caches never does.
+	pooled = false
+	add(uuid.New(), hour, "openrouter", "google/gemini-3.8-flash", "Google AI Studio", "markers", 5000, 0)
 	if err := batch.Send(); err != nil {
 		t.Fatal(err)
 	}

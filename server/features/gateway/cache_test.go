@@ -183,10 +183,11 @@ func TestOpenRouterCaching(t *testing.T) {
 }
 
 // A provider that refuses the gateway's breakpoints gets the call again
-// unmarked and without the gateway's session; when that answers, markers
-// are switched off for the model where its kind may cache without them.
-// A retry refused too, or Anthropic's refusal of a call's own breakpoints,
-// switches nothing off.
+// unmarked and without the gateway's session, logged as no strategy; when
+// that answers on a provider's public API, markers are switched off for
+// the model where its kind may cache without them. A retry refused too, a
+// project's own endpoint, or Anthropic's refusal of a call's own
+// breakpoints, switches nothing off.
 func TestRefusedMarkersAreDropped(t *testing.T) {
 	system, _ := json.Marshal(strings.Repeat("Follow the house style. ", 120))
 	chat := `{"model":"google/gemini-3.8-flash","messages":[{"role":"system","content":` + string(system) + `},
@@ -217,13 +218,13 @@ func TestRefusedMarkersAreDropped(t *testing.T) {
 	}
 	type kill struct{ kind, model, strategy string }
 	var kills []kill
-	run := func(handler http.HandlerFunc, kind string) (int, gateway.Record) {
+	run := func(handler http.HandlerFunc, kind string, pooled bool) (int, gateway.Record) {
 		t.Helper()
 		calls, kills = nil, nil
 		up, _ := provider(t, handler)
 		e := setup(t, fakeupstream.Options{}, func(string) gateway.Resolver {
 			return routeResolver{gateway.Route{PromptCache: true, Session: "pd-conv", Targets: []gateway.Target{{Provider: kind,
-				Kind: kind, BaseURL: up.URL + "/v1", Model: "google/gemini-3.8-flash", MinCache: 512,
+				Kind: kind, BaseURL: up.URL + "/v1", Model: "google/gemini-3.8-flash", MinCache: 512, Pooled: pooled,
 				Cache: gateway.CachePlan{Strategy: "markers"}}}}}
 		}, func(c *gateway.Config) {
 			c.CacheRefused = func(kind, model, strategy string) { kills = append(kills, kill{kind, model, strategy}) }
@@ -232,23 +233,24 @@ func TestRefusedMarkersAreDropped(t *testing.T) {
 		return res.StatusCode, e.record(t)
 	}
 
-	status, rec := run(refuse(false), "openrouter")
+	status, rec := run(refuse(false), "openrouter", true)
 	if status != 200 || len(calls) != 2 || !calls[0].marked || calls[0].session != "pd-conv" || calls[1].marked ||
 		calls[1].session != "" {
 		t.Fatalf("%d, calls %+v", status, calls)
 	}
-	if rec.Healed != gateway.HealUnmarked || rec.PromptCached || len(kills) != 1 ||
+	if rec.Healed != gateway.HealUnmarked || rec.PromptCached || rec.CacheStrategy != "" || len(kills) != 1 ||
 		kills[0] != (kill{"openrouter", "google/gemini-3.8-flash", "markers"}) {
 		t.Fatalf("record %+v, kills %+v", rec, kills)
 	}
 
-	if status, _ := run(refuse(true), "openrouter"); status != 400 || len(calls) != 2 || len(kills) != 0 {
+	if status, _ := run(refuse(true), "openrouter", true); status != 400 || len(calls) != 2 || len(kills) != 0 {
 		t.Fatalf("refused again: %d, %d calls, kills %+v", status, len(calls), kills)
 	}
 
-	// A custom endpoint may cache on its own: it loses its markers too.
-	if status, _ := run(refuse(false), "custom"); status != 200 || len(kills) != 1 {
-		t.Fatalf("custom: %d, kills %+v", status, kills)
+	// A project's own endpoint is healed, and teaches no one else.
+	if status, rec := run(refuse(false), "openrouter", false); status != 200 || len(kills) != 0 ||
+		rec.Healed != gateway.HealUnmarked || rec.Pooled {
+		t.Fatalf("an endpoint of the project's own: %d, kills %+v", status, kills)
 	}
 
 	// Anthropic takes breakpoints: a refusal names a call's own.

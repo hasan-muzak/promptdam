@@ -142,6 +142,11 @@ type Target struct {
 	// MinCache is the shortest prefix the model's provider caches (0:
 	// unknown), below which prompt cache breakpoints aren't added.
 	MinCache int
+	// Pooled marks a provider on its kind's own public API
+	// (providers.Public): its calls teach every project's caching
+	// profiles, and its refusal of the gateway's breakpoints switches them
+	// off for everyone. Others are planned by their price list alone.
+	Pooled bool
 	// ThinkingOff is how a call stops the model thinking, for one that
 	// thinks unless told not to; AlwaysThinks marks one that can't be
 	// stopped (llm.Model's). NoSampling marks a model that refuses
@@ -204,7 +209,9 @@ type Record struct {
 	// CacheTrial whether it was a trial of it.
 	CacheStrategy string
 	CacheTrial    bool
-	Stream        bool
+	// Pooled is the target's (Target.Pooled).
+	Pooled bool
+	Stream bool
 	// Shape is the call's prompt family and how its prefix looks.
 	Shape families.Shape
 	// Request is what the gateway read of the request.

@@ -55,7 +55,9 @@ const (
 )
 
 // Row is a model's calls with one strategy to one backend, pooled over
-// the window (cache_health_hourly).
+// the window (cache_health_hourly): calls to providers' own public APIs
+// only (gateway.Target.Pooled), never a project's own endpoint, which
+// could teach every project what it likes.
 type Row struct {
 	Kind, Model, Backend, Strategy string
 	// Expects are the calls that expected a cache read, Hits those that
@@ -160,7 +162,7 @@ func learn(rows []Row, projects map[string]int, prev *Doc, def func(kind, model 
 		// cheaper is no longer tried. A strategy never seen gives way to
 		// one that caches well (a price list's default changed, or the
 		// profiles were lost).
-		judged := other != "" && u.Expects >= Evidence && o.Expects >= Evidence && u.Input > 0 && o.Input > 0
+		judged := other != "" && u.Expects >= Evidence && o.Expects >= Evidence && u.Priced > 0 && o.Priced > 0
 		unseen := other != "" && u.Input == 0 && o.Expects >= Evidence && o.readShare() >= Healthy
 		if judged && o.price() < Switch*u.price() || unseen {
 			use, other, u, o = other, use, o, u
@@ -308,7 +310,7 @@ func (l *Learner) pooled(ctx context.Context) ([]Row, map[string]int, error) {
 		sum(expected_calls) AS expects, sum(hit_calls) AS hits, sum(expected_tokens) AS expected,
 		sum(expected_read_tokens) AS was_read, sum(input_tokens) AS input, sum(input_micros) AS priced,
 		uniqExact(project_id) AS projects
-		FROM cache_health_hourly WHERE hour >= toStartOfHour(fromUnixTimestamp64Milli(?))
+		FROM cache_health_hourly WHERE pooled AND hour >= toStartOfHour(fromUnixTimestamp64Milli(?))
 		GROUP BY GROUPING SETS ((kind, target_model, backend, cache_strategy), (kind, target_model))`,
 		l.cfg.Now().Add(-Window).UnixMilli())
 	if err != nil {

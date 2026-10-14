@@ -148,6 +148,10 @@ type Config struct {
 	// Caching plans a call's prompt caching by its model's learned profile
 	// (features/cacheprofile); nil plans by the price list alone.
 	Caching CachePlanner
+	// Pooled reports a provider whose calls are pooled into the profiles
+	// and planned by them (default providers.Public: a kind's own public
+	// API); tests let their fake providers stand in.
+	Pooled func(kind, baseURL string) bool
 }
 
 // CachePlanner plans how a call to a target uses its provider's prompt
@@ -221,6 +225,9 @@ type Resolver struct {
 func New(cfg Config) *Resolver {
 	if cfg.Sample == nil {
 		cfg.Sample = rand.Float64
+	}
+	if cfg.Pooled == nil {
+		cfg.Pooled = providers.Public
 	}
 	return &Resolver{cfg: cfg, keys: memcache.New[[32]byte, apikeys.Principal](KeyTTL, KeyTTL, 100_000)}
 }
@@ -512,6 +519,9 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 			conversation = m.Turn.Conversation.String()
 		}
 		for i, t := range out.Targets {
+			if !t.Pooled {
+				continue
+			}
 			f := t.Format
 			if f == 0 {
 				f = format
@@ -650,7 +660,10 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 	}
 	t.MinCache = int(m.MinCacheTokens)
 	t.ThinkingOff, t.AlwaysThinks, t.NoSampling = m.ThinkingOff, m.AlwaysThinks, m.NoSampling
-	t.Cache.Strategy = gateway.DefaultCacheStrategy(p.Kind, p.Format == providers.FormatAnthropic, m.CacheWritePriced)
+	// A project's own endpoint is marked only where its kind takes nothing
+	// else: what it does with breakpoints is its own.
+	t.Pooled = r.cfg.Pooled(p.Kind, p.BaseURL)
+	t.Cache.Strategy = gateway.DefaultCacheStrategy(p.Kind, p.Format == providers.FormatAnthropic, m.CacheWritePriced && t.Pooled)
 	if p.Format == apiFormat(f) {
 		return t, true
 	}

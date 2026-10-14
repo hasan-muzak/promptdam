@@ -79,8 +79,8 @@ type Diagnosis struct {
 	Model, Kind string
 	// Target is the model the gateway asked for (a router of providers
 	// names the one it served its own way, Model).
-	Target string
-	Requests    uint64
+	Target   string
+	Requests uint64
 	// Prefixes counts the different prefixes the calls sent.
 	Prefixes        uint64
 	InputTokens     uint64

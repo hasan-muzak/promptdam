@@ -524,3 +524,32 @@ func TestRefusedMarkersStayOff(t *testing.T) {
 		t.Fatalf("the next call: %d sent, record %+v", len(reqs)-before, recs[len(recs)-1])
 	}
 }
+
+// A project's own endpoint is planned by its price list alone: what every
+// project's calls taught the profiles doesn't reach it, nor its calls the
+// profiles.
+func TestOwnEndpointsAreNotPooled(t *testing.T) {
+	w := gatewaytest.New(t, gatewaytest.Options{OwnEndpoints: true})
+	ctx := context.Background()
+	w.Grant(catalog.PromptCaching)
+	if _, err := w.App.Routes.Create(w.Scoped(), w.Org, w.Project, routes.Input{Name: "default", PromptCache: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.App.CacheProfiles.Save(ctx, &cacheprofile.Doc{Models: map[string]cacheprofile.Profile{
+		cacheprofile.Key("custom", "llama-cached"): {Use: promptcache.Markers},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	system, _ := json.Marshal(strings.Repeat("Answer as the house style says. ", 200))
+	body := `{"model":"llama-cached","messages":[{"role":"system","content":` + string(system) + `},{"role":"user","content":"hi"}]}`
+	w.Eventually(func() bool { // the caching route reached the gateway
+		_, _, _ = w.Call("/v1/chat/completions", body)
+		recs := w.Records()
+		return len(recs) > 0 && recs[len(recs)-1].CacheStrategy != ""
+	})
+	reqs, recs := w.Fake.Requests(), w.Records()
+	if rec := recs[len(recs)-1]; strings.Contains(string(reqs[len(reqs)-1].Body), "cache_control") ||
+		rec.CacheStrategy != promptcache.Auto || rec.Pooled {
+		t.Fatalf("an endpoint of the project's own: %+v", rec)
+	}
+}

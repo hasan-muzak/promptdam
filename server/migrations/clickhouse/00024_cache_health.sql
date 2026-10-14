@@ -10,8 +10,13 @@
 --                        reads and writes included: what a strategy is
 --                        scored by.
 -- cost_reported          cost_micros is the provider's own figure.
+-- pooled                 the call went to a provider's own public API (its
+--                        kind's base URL, never a custom endpoint): only
+--                        such calls teach the caching profiles every
+--                        project is planned by, since a project's own
+--                        endpoint could answer anything.
 --
--- cache_health_hourly: per kind, target model, backend, strategy and trial,
+-- cache_health_hourly: per kind, target model, backend, strategy, trial and pool,
 -- the calls, those that expected a cache read and those that got one, the
 -- tokens expected and read, and the costs. The learner pools it across
 -- projects (cacheprofile); project_id stays so a project's rows go when it
@@ -20,6 +25,7 @@
 -- +goose Up
 -- +goose StatementBegin
 ALTER TABLE requests
+  ADD COLUMN pooled                 Bool AFTER cache_trial,
   ADD COLUMN cost_reported          Bool AFTER computed_micros,
   ADD COLUMN cache_expected_tokens  UInt32 AFTER cache_write_tokens,
   ADD COLUMN input_micros           Int64 AFTER cost_reported;
@@ -34,6 +40,7 @@ CREATE TABLE cache_health_hourly (
   backend                LowCardinality(String),
   cache_strategy         LowCardinality(String),
   cache_trial            Bool,
+  pooled                 Bool,
   calls                  UInt64,
   expected_calls         UInt64,
   hit_calls              UInt64,
@@ -53,7 +60,7 @@ CREATE TABLE cache_health_hourly (
   write_tokens, input_tokens, input_micros, cost_micros, computed_micros, reported_calls, reported_cost_micros,
   reported_computed))
 PARTITION BY (retention_days, toMonday(hour))
-ORDER BY (project_id, hour, kind, target_model, backend, cache_strategy, cache_trial)
+ORDER BY (project_id, hour, kind, target_model, backend, cache_strategy, cache_trial, pooled)
 TTL hour + INTERVAL 1 DAY TO VOLUME 'r2',
     hour + toIntervalDay(retention_days)
 SETTINGS storage_policy = 'tiered', ttl_only_drop_parts = 1, index_granularity = 256;
@@ -61,7 +68,7 @@ SETTINGS storage_policy = 'tiered', ttl_only_drop_parts = 1, index_granularity =
 
 -- +goose StatementBegin
 CREATE MATERIALIZED VIEW cache_health_hourly_mv TO cache_health_hourly AS
-SELECT project_id, toStartOfHour(ts) AS hour, kind, target_model, backend, cache_strategy, cache_trial,
+SELECT project_id, toStartOfHour(ts) AS hour, kind, target_model, backend, cache_strategy, cache_trial, pooled,
        count() AS calls,
        countIf(cache_expected_tokens > 0) AS expected_calls,
        countIf(cache_expected_tokens > 0 AND cache_read_tokens > 0) AS hit_calls,
@@ -80,7 +87,7 @@ SELECT project_id, toStartOfHour(ts) AS hour, kind, target_model, backend, cache
        retention_days
 FROM requests
 WHERE usage_known AND cache_strategy != '' AND target_model != ''
-GROUP BY project_id, hour, kind, target_model, backend, cache_strategy, cache_trial, retention_days;
+GROUP BY project_id, hour, kind, target_model, backend, cache_strategy, cache_trial, pooled, retention_days;
 -- +goose StatementEnd
 
 -- +goose Down
@@ -91,5 +98,5 @@ DROP VIEW cache_health_hourly_mv;
 DROP TABLE cache_health_hourly;
 -- +goose StatementEnd
 -- +goose StatementBegin
-ALTER TABLE requests DROP COLUMN input_micros, DROP COLUMN cache_expected_tokens, DROP COLUMN cost_reported;
+ALTER TABLE requests DROP COLUMN input_micros, DROP COLUMN cache_expected_tokens, DROP COLUMN cost_reported, DROP COLUMN pooled;
 -- +goose StatementEnd

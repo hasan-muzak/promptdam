@@ -359,7 +359,7 @@ func (r *Resolver) holdTier(p *placer, rt *routers.Router, ch tiers.Choice, turn
 		}
 		m, ok := r.model(ts[0].Kind, ts[0].Model)
 		s := switchSide{model: m, kind: ts[0].Kind, outputScale: writes(rt, i)}
-		if r.cfg.Caching != nil {
+		if r.cfg.Caching != nil && ts[0].Pooled {
 			s.misses = 1 - r.cfg.Caching.ReadShare(ts[0].Kind, ts[0].Model)
 		}
 		return s, ok

@@ -157,14 +157,22 @@ func TestProjectPricesWin(t *testing.T) {
 		t.Fatal(err)
 	}
 	var rows []struct {
-		Cost int64 `ch:"cost_micros"`
+		Cost  int64 `ch:"cost_micros"`
+		Input int64 `ch:"input_micros"`
 	}
 	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project),
-		`SELECT cost_micros FROM requests WHERE {tenant} AND trace = ?`, trace); err != nil {
+		`SELECT cost_micros, input_micros FROM requests WHERE {tenant} AND trace = ?`, trace); err != nil {
 		t.Fatal(err)
 	}
 	if len(rows) != 1 || rows[0].Cost != 104 {
 		t.Fatalf("cost %+v, want 104", rows)
+	}
+	// The input a caching strategy is scored by, pooled across projects,
+	// is at list price: a project's own prices skew no one's profiles.
+	list, _ := w.App.Prices.Current().Lookup("", "gpt-5-mini")
+	want := requestlog.CostAt(list, wire.Usage{Usage: llm.Usage{Input: fakeupstream.PromptTokens, CacheRead: fakeupstream.CachedTokens}})
+	if rows[0].Input != want || want == 100 {
+		t.Fatalf("input %d, want %d at list price", rows[0].Input, want)
 	}
 }
 
@@ -395,16 +403,17 @@ func TestCacheHealth(t *testing.T) {
 		Strategy string `ch:"cache_strategy"`
 		Expected uint32 `ch:"cache_expected_tokens"`
 		Read     uint32 `ch:"cache_read_tokens"`
+		Pooled   bool   `ch:"pooled"`
 	}
-	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT cache_strategy, cache_expected_tokens, cache_read_tokens
-		FROM requests WHERE {tenant} AND conversation != '' ORDER BY ts`); err != nil {
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project), `SELECT cache_strategy, cache_expected_tokens, cache_read_tokens,
+		pooled FROM requests WHERE {tenant} AND conversation != '' ORDER BY ts`); err != nil {
 		t.Fatal(err)
 	}
 	if len(rows) < 3 {
 		t.Fatalf("%d rows", len(rows))
 	}
 	conv := rows[len(rows)-3:]
-	if conv[0].Expected != 0 || conv[1].Expected != 2000 || conv[2].Expected != 2000 || conv[1].Strategy != "auto" {
+	if conv[0].Expected != 0 || conv[1].Expected != 2000 || conv[2].Expected != 2000 || conv[1].Strategy != "auto" || !conv[1].Pooled {
 		t.Fatalf("the conversation's calls %+v", conv)
 	}
 	var health []struct {

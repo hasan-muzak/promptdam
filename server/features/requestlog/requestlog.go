@@ -65,7 +65,7 @@ type Row struct {
 	Tags                                                    []string
 	APIFormat, Provider, Kind, RequestedModel, ServedModel  string
 	Backend, TargetModel, CacheStrategy                     string
-	CacheTrial, CostReported                                bool
+	CacheTrial, Pooled, CostReported                        bool
 	CacheExpected                                           uint32
 	InputMicros                                             int64
 	ComputedMicros                                          int64
@@ -92,7 +92,7 @@ var columns = []string{
 	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "effort", "healed", "router_micros", "decision", "decision_ms",
 	"firewall_action", "firewall_kinds", "payload_ref", "api_format", "provider",
 	"kind", "requested_model", "served_model", "backend", "target_model", "computed_micros", "cache_strategy", "cache_trial",
-	"cost_reported", "cache_expected_tokens", "input_micros", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
+	"pooled", "cost_reported", "cache_expected_tokens", "input_micros", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
 	"upstream_ms", "usage_known", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
 	"reasoning_tokens", "cost_micros", "priced", "counterfactual_micros", "savings_micros", "savings_reason",
 	"savings_basis", "cache", "request_bytes", "response_bytes", "retention_days",
@@ -106,7 +106,7 @@ func values(r Row) []any {
 		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.Effort, r.Healed, r.RouterMicros, r.Decision, r.DecisionMs,
 		r.FirewallAction, r.FirewallKinds, r.PayloadRef, r.APIFormat, r.Provider,
 		r.Kind, r.RequestedModel, r.ServedModel, r.Backend, r.TargetModel, r.ComputedMicros, r.CacheStrategy, r.CacheTrial,
-		r.CostReported, r.CacheExpected, r.InputMicros, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
+		r.Pooled, r.CostReported, r.CacheExpected, r.InputMicros, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
 		r.UpstreamMs, r.UsageKnown, r.InputTokens, r.OutputTokens, r.CacheRead, r.CacheWrite, r.Think, r.CostMicros,
 		r.Priced, r.Counterfactual, r.Savings, r.SavingsReason, r.SavingsBasis, r.Cache, r.RequestBytes, r.ResponseBytes,
 		r.RetentionDays,
@@ -200,17 +200,25 @@ func (l *Log) Record(r *gateway.Record) {
 	priced := true
 	if r.UsageKnown {
 		if r.Cache != "hit" { // a cached answer cost nothing
+			// A router of providers may name the model it served its own
+			// way (a reordered, dated name): the model asked for prices it.
 			price, known := l.price(m, r.Provider, r.Kind, r.ServedModel)
+			if !known && r.TargetModel != "" {
+				price, known = l.price(m, r.Provider, r.Kind, r.TargetModel)
+			}
 			if known {
 				computed = CostAt(price, r.Usage)
-				// The input's part, cache reads and writes included: what
-				// a prompt-cache strategy is scored by.
-				in := r.Usage
-				in.Output, in.Reasoning = 0, 0
-				input = CostAt(price, in)
 				if price.MinCacheTokens > 0 {
 					minCache = int64(price.MinCacheTokens)
 				}
+			}
+			// The input's part at list price, cache reads and writes
+			// included: what a prompt-cache strategy is scored by, pooled
+			// across projects, so never a project's own prices.
+			if list, ok := l.listPrice(r); ok {
+				in := r.Usage
+				in.Output, in.Reasoning = 0, 0
+				input = CostAt(list, in)
 			}
 			switch {
 			case r.Usage.CostReported:
@@ -250,7 +258,7 @@ func (l *Log) Record(r *gateway.Record) {
 		TierConfidence: float32(m.TierConfidence), Shadow: m.Shadow, Effort: r.Effort, Healed: r.Healed, RouterMicros: routerMicros, Decision: m.Decision.Outcome,
 		DecisionMs: ms(m.Decision.Took), APIFormat: r.Format.String(),
 		Provider: r.Provider, Kind: r.Kind, Backend: r.Backend, TargetModel: r.TargetModel, ComputedMicros: computed,
-		CacheStrategy: r.CacheStrategy, CacheTrial: r.CacheTrial, CostReported: r.Usage.CostReported && r.Cache != "hit",
+		CacheStrategy: r.CacheStrategy, CacheTrial: r.CacheTrial, Pooled: r.Pooled, CostReported: r.Usage.CostReported && r.Cache != "hit",
 		InputMicros:    input,
 		RequestedModel: r.RequestedModel, ServedModel: r.ServedModel, Stream: r.Stream, Translated: r.Translated, Status: uint16(min(r.Status, 65535)),
 		ErrorCode: r.ErrorCode, Attempts: uint8(min(r.Attempts, 255)), TTFBms: ms(r.TTFB), LatencyMs: ms(r.Latency),
@@ -373,6 +381,23 @@ func kinds(hits ...[]firewall.Hit) []string {
 // then for any), else the price list's.
 func (l *Log) price(m *resolver.Meta, provider, kind, model string) (llm.Model, bool) {
 	return Price(l.cfg.Prices, m.Prices, provider, kind, model)
+}
+
+// listPrice is the price list's price of the model that served a call
+// (else of the model asked for), whatever the project's own prices.
+func (l *Log) listPrice(r *gateway.Record) (llm.Model, bool) {
+	catalogName := ""
+	if k, ok := providers.LookupKind(r.Kind); ok {
+		catalogName = k.Catalog
+	}
+	list := l.cfg.Prices.Current()
+	if p, ok := list.Lookup(catalogName, r.ServedModel); ok {
+		return p, true
+	}
+	if r.TargetModel == "" {
+		return llm.Model{}, false
+	}
+	return list.Lookup(catalogName, r.TargetModel)
 }
 
 // Price is a model's price for a project: its own (for that provider, then

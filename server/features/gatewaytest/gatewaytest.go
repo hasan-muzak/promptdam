@@ -57,6 +57,16 @@ type Options struct {
 	// Stripe bills through a fake Stripe (World.Stripe): plans are bought
 	// with World.Subscribe, usage reports read with Stripe.Billed.
 	Stripe bool
+	// OwnEndpoints treats the fake provider as what it is, an endpoint of
+	// the project's own (providers.Public). By default it stands in for
+	// providers' public APIs: its calls are pooled into the caching
+	// profiles and planned by them.
+	OwnEndpoints bool
+}
+
+// pooled is the resolver's Pooled for the World's options.
+func (o Options) pooled(kind, baseURL string) bool {
+	return !o.OwnEndpoints || providers.Public(kind, baseURL)
 }
 
 // World is the gateway serving one project, with one provider ("main", a
@@ -152,7 +162,7 @@ func New(t *testing.T, opts Options) *World {
 	res := resolver.New(resolver.Config{
 		Keys: c.APIKeys, Snapshots: snaps, Quota: c.Metering, Spend: w.App.Spend, Rates: rates, Prices: w.App.Prices,
 		Scope: core.ScopeGateway, Rules: w.App.RuleEnv, Sample: opts.Sample, Entitlements: c.Metering.Entitlements,
-		Decider: decide.New(transport), Turns: w.Turns, Caching: w.App.CacheProfiles,
+		Decider: decide.New(transport), Turns: w.Turns, Caching: w.App.CacheProfiles, Pooled: opts.pooled,
 	})
 	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})
 	w.Eval = evaluate.New(evaluate.Config{Resolver: res, Transport: transport, Events: c.Events, Prices: w.App.Prices,
@@ -195,7 +205,7 @@ func (w *World) Replica() *httptest.Server {
 		Keys: w.C.APIKeys, Snapshots: snaps, Quota: w.C.Metering, Spend: w.App.Spend,
 		Rates: counter.New(w.C.KV, "rpm", counter.Options{}), Prices: w.App.Prices, Scope: core.ScopeGateway,
 		Rules: w.App.RuleEnv, Sample: w.opts.Sample, Entitlements: w.C.Metering.Entitlements, Decider: decide.New(transport),
-		Turns: turns, Caching: w.App.CacheProfiles,
+		Turns: turns, Caching: w.App.CacheProfiles, Pooled: w.opts.pooled,
 	})
 	for _, l := range []interface {
 		Start(context.Context) error

@@ -63,7 +63,8 @@ func TestTargetsKnowThinking(t *testing.T) {
 
 // A target's cache strategy before anything is learned: breakpoints for
 // Anthropic and for OpenRouter models whose price list charges for cache
-// writes; the provider's own caching for the others.
+// writes, on OpenRouter's own API; the provider's own caching for the
+// others, and for an OpenRouter-kind endpoint of the project's own.
 func TestTargetsDefaultCacheStrategy(t *testing.T) {
 	cat := &llm.Catalog{Models: []llm.Model{
 		{ID: "google/gemini-3.8-flash", Provider: "openrouter", Input: 0.75, CachedInput: 0.075, CacheWrite: 0.042, CacheWritePriced: true},
@@ -72,7 +73,10 @@ func TestTargetsDefaultCacheStrategy(t *testing.T) {
 		{ID: "gpt-5", Provider: "openai", Input: 1.25, CachedInput: 0.125},
 	}}
 	r := New(Config{Prices: prices.Static{Catalog: cat}})
-	or := snapshot.Opened{Provider: snapshot.Provider{Name: "or", Kind: "openrouter", Format: providers.FormatOpenAI}}
+	or := snapshot.Opened{Provider: snapshot.Provider{Name: "or", Kind: "openrouter", Format: providers.FormatOpenAI,
+		BaseURL: "https://openrouter.ai/api/v1"}}
+	proxy := or
+	proxy.BaseURL = "https://llm-proxy.example.com/api/v1"
 	for _, tt := range []struct {
 		p     snapshot.Opened
 		model string
@@ -80,6 +84,7 @@ func TestTargetsDefaultCacheStrategy(t *testing.T) {
 	}{
 		{or, "google/gemini-3.8-flash", "markers"},
 		{or, "deepseek/deepseek-v4.1-flash", "auto"},
+		{proxy, "google/gemini-3.8-flash", "auto"},
 		{snapshot.Opened{Provider: snapshot.Provider{Name: "a", Kind: "anthropic", Format: providers.FormatAnthropic}}, "claude-haiku-5-5", "markers"},
 		{snapshot.Opened{Provider: snapshot.Provider{Name: "o", Kind: "openai", Format: providers.FormatOpenAI}}, "gpt-5", "auto"},
 		{snapshot.Opened{Provider: snapshot.Provider{Name: "c", Kind: "custom", Format: providers.FormatAnthropic}}, "claude-x", "markers"},

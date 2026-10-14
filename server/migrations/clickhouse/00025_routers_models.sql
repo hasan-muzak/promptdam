@@ -15,11 +15,7 @@ ALTER TABLE routers_hourly
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-DROP VIEW routers_hourly_mv;
--- +goose StatementEnd
-
--- +goose StatementBegin
-CREATE MATERIALIZED VIEW routers_hourly_mv TO routers_hourly AS
+ALTER TABLE routers_hourly_mv MODIFY QUERY
 SELECT project_id, toStartOfHour(ts) AS hour, router, tier, decided_tier, tier_source, shadow, provider, target_model,
        count() AS calls, countIf(error_code != '') AS errors, countIf(usage_known) AS priced,
        sum(cost_micros) AS cost_micros, sum(savings_micros) AS savings_micros,
@@ -32,11 +28,7 @@ GROUP BY project_id, hour, router, tier, decided_tier, tier_source, shadow, prov
 
 -- +goose Down
 -- +goose StatementBegin
-DROP VIEW routers_hourly_mv;
--- +goose StatementEnd
-
--- +goose StatementBegin
-CREATE MATERIALIZED VIEW routers_hourly_mv TO routers_hourly AS
+ALTER TABLE routers_hourly_mv MODIFY QUERY
 SELECT project_id, toStartOfHour(ts) AS hour, router, tier, decided_tier, tier_source, shadow,
        count() AS calls, countIf(error_code != '') AS errors, countIf(usage_known) AS priced,
        sum(cost_micros) AS cost_micros, sum(savings_micros) AS savings_micros,

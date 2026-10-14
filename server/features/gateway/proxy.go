@@ -360,7 +360,7 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 		body, gone = translate.StripSampling(body)
 		dropped = append(dropped, gone...)
 	}
-	c.rec.CacheStrategy, c.rec.CacheTrial = "", false
+	c.rec.CacheStrategy, c.rec.CacheTrial, c.rec.Pooled = "", false, t.Pooled
 	if t.Kind == "openrouter" && format == wire.OpenAIChat {
 		body = withUsageAccounting(body)
 	}
@@ -437,8 +437,10 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 		}
 		if refused := refusedCaching(raw); marked && res.StatusCode == http.StatusBadRequest && refused != refusedNothing {
 			kill = refused == refusedMarkers && c.rec.PromptCached && c.rec.CacheStrategy == promptcache.Markers &&
-				killsMarkers(t.Kind, format == wire.AnthropicMessages)
+				t.Pooled && killsMarkers(t.Kind, format == wire.AnthropicMessages)
+			// Sent as no strategy: what it reads teaches no profile.
 			body, unmarking, session, c.rec.PromptCached = plain, false, false, false
+			c.rec.CacheStrategy, c.rec.CacheTrial = "", false
 			c.rec.Healed = heals(c.rec.Healed, HealUnmarked)
 			continue
 		}

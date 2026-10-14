@@ -38,6 +38,9 @@ func TestLearn(t *testing.T) {
 		{"cheaper by more than a tenth: switched", []Row{
 			row(or, gemini, "Google AI Studio", auto, 400, 0, 1000), row(or, gemini, "Google AI Studio", markers, 400, 380, 850)},
 			prevUsing(auto), markers, "", nil},
+		{"unpriced: never judged, still tried", []Row{
+			row(or, gemini, "Google AI Studio", auto, 400, 0, 0), row(or, gemini, "Google AI Studio", markers, 400, 380, 0)},
+			prevUsing(auto), auto, markers, nil},
 		{"cheaper by less: kept, and no longer tried", []Row{
 			row(or, gemini, "Google AI Studio", auto, 400, 0, 1000), row(or, gemini, "Google AI Studio", markers, 400, 380, 950)},
 			prevUsing(auto), auto, "", nil},
