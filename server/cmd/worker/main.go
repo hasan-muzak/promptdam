@@ -15,6 +15,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/alerts"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/cachepolicy"
+	"github.com/hasan-muzak/promptdam/server/features/cacheprofile"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/prices"
@@ -47,6 +48,7 @@ func run() error {
 	prices.RegisterWorkers(c.Jobs, app.Prices)
 	training.RegisterWorkers(c.Jobs, app.Training)
 	cachepolicy.RegisterWorkers(c.Jobs, app.CachePolicy)
+	cacheprofile.RegisterWorkers(c.Jobs, app.CacheLearner)
 	routers.RegisterWorkers(c.Jobs, app.Watcher)
 	firewall.RegisterWorkers(c.Jobs, app.FirewallWatch)
 	alerts.RegisterWorkers(c.Jobs, app.AlertsEval)

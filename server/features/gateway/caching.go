@@ -47,11 +47,13 @@ const (
 )
 
 // CacheDialect is what a provider kind's prompt cache takes: the
-// strategies a model of it may use, and how a conversation stays on the
-// machines that cached it. Kinds aren't models: the table is small and
-// fixed, and what each model needs is learned (cacheprofile).
+// strategies a model of it may use, whether its calls can be kept off some
+// of its backends (Avoids: a router of providers), and how a conversation
+// stays on the machines that cached it. Kinds aren't models: the table is
+// small and fixed, and what each model needs is learned (cacheprofile).
 type CacheDialect struct {
 	Strategies []string
+	Avoids     bool
 	affinity   int
 }
 
@@ -70,7 +72,7 @@ func CacheDialectOf(kind string, anthropic bool) CacheDialect {
 	case kind == "openai":
 		return CacheDialect{Strategies: autoOnly, affinity: affinityKey}
 	case kind == "openrouter":
-		return CacheDialect{Strategies: autoOrMarkers, affinity: affinitySession}
+		return CacheDialect{Strategies: autoOrMarkers, Avoids: true, affinity: affinitySession}
 	case kind == "custom":
 		return CacheDialect{Strategies: autoOrMarkers}
 	}

@@ -58,8 +58,10 @@ type App struct {
 	// and conversations.
 	CachePolicy *cachepolicy.Service
 	// CacheProfiles are how every model uses its prompt cache, learned
-	// from all projects' calls: each call's caching is planned by them.
+	// from all projects' calls (CacheLearner, in the worker): each call's
+	// caching is planned by them.
 	CacheProfiles *cacheprofile.Store
+	CacheLearner  *cacheprofile.Learner
 	// Payloads keeps whether projects keep their calls' payloads;
 	// PayloadStore keeps the payloads, in object storage (nil without it).
 	Payloads     *payloads.Service
@@ -133,6 +135,7 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	}
 	a.Prices = prices.New(prices.Config{Ent: a.Ent, KV: c.KV, Fallback: a.fallback})
 	a.CacheProfiles = cacheprofile.New(cacheprofile.Config{Ent: a.Ent, KV: c.KV})
+	a.CacheLearner = cacheprofile.NewLearner(cacheprofile.LearnerConfig{Store: a.CacheProfiles, Events: c.Events, Prices: a.Prices})
 	a.PriceOverrides = prices.NewOverrides(a.Ent, a.configChanged)
 	env, err := rules.NewEnv()
 	if err != nil {

@@ -36,11 +36,9 @@ type Doc struct {
 // Profile is how a model of a provider kind uses its prompt cache.
 type Profile struct {
 	// Use is the strategy its calls are sent with; Trial the one a share
-	// of its conversations tries ("" for none); Off the strategies its
-	// provider refused.
-	Use   string   `json:"use"`
-	Trial string   `json:"trial,omitempty"`
-	Off   []string `json:"off,omitempty"`
+	// of its conversations tries ("" for none).
+	Use   string `json:"use"`
+	Trial string `json:"trial,omitempty"`
 	// Avoid are backends of a router of providers (their slugs) that never
 	// cached the model while another did.
 	Avoid []string `json:"avoid,omitempty"`
@@ -65,9 +63,8 @@ func Key(kind, model string) string { return kind + "/" + model }
 // model's profile uses, else def (the target's default, from its price
 // list); the trial strategy for TrialShare of the model's conversations
 // (decided by the conversation, so a conversation keeps its arm on every
-// replica); never one the provider refused (off, or the profile's Off);
-// and the backends to keep it off. Strategies its kind doesn't take are
-// ignored.
+// replica); never one the provider refused (off: Store.Refused); and the
+// backends to keep it off. Strategies its kind doesn't take are ignored.
 func (d *Doc) Plan(kind string, anthropic bool, model, def, conversation string, inTurn bool, off []string) gateway.CachePlan {
 	strategies := gateway.CacheDialectOf(kind, anthropic).Strategies
 	plan := gateway.CachePlan{Strategy: def}
@@ -75,7 +72,7 @@ func (d *Doc) Plan(kind string, anthropic bool, model, def, conversation string,
 	if d != nil {
 		p = d.Models[Key(kind, model)]
 	}
-	refused := func(s string) bool { return slices.Contains(p.Off, s) || slices.Contains(off, s) }
+	refused := func(s string) bool { return slices.Contains(off, s) }
 	if p.Use != "" && slices.Contains(strategies, p.Use) {
 		plan.Strategy = p.Use
 	}

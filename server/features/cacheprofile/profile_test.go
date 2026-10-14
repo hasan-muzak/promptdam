@@ -15,27 +15,26 @@ func TestPlan(t *testing.T) {
 	d := &cacheprofile.Doc{Models: map[string]cacheprofile.Profile{
 		cacheprofile.Key("openrouter", "google/gemini-3.8-flash"): {Use: promptcache.Markers, Avoid: []string{"google-vertex"}},
 		cacheprofile.Key("openai", "gpt-5"):                       {Use: promptcache.Markers},
-		cacheprofile.Key("custom", "llama"):                       {Use: promptcache.Markers, Off: []string{promptcache.Markers}},
+		cacheprofile.Key("custom", "llama"):                       {Use: promptcache.Markers},
 	}}
+	markers := []string{promptcache.Markers}
 	tests := []struct {
 		name, kind, model, def string
+		off                    []string
 		want                   string
 		avoid                  int
 	}{
-		{"learned", "openrouter", "google/gemini-3.8-flash", promptcache.Auto, promptcache.Markers, 1},
-		{"not learned yet: the price list's", "openrouter", "deepseek/deepseek-v4.1-flash", promptcache.Auto, promptcache.Auto, 0},
-		{"a strategy its kind doesn't take", "openai", "gpt-5", promptcache.Auto, promptcache.Auto, 0},
-		{"refused by its provider", "custom", "llama", promptcache.Markers, promptcache.Auto, 0},
+		{"learned", "openrouter", "google/gemini-3.8-flash", promptcache.Auto, nil, promptcache.Markers, 1},
+		{"not learned yet: the price list's", "openrouter", "deepseek/deepseek-v4.1-flash", promptcache.Auto, nil, promptcache.Auto, 0},
+		{"a strategy its kind doesn't take", "openai", "gpt-5", promptcache.Auto, nil, promptcache.Auto, 0},
+		{"refused by its provider", "custom", "llama", promptcache.Markers, markers, promptcache.Auto, 0},
+		{"refused, its backends still avoided", "openrouter", "google/gemini-3.8-flash", promptcache.Auto, markers, promptcache.Auto, 1},
 	}
 	for _, tt := range tests {
-		p := d.Plan(tt.kind, false, tt.model, tt.def, "conv", true, nil)
+		p := d.Plan(tt.kind, false, tt.model, tt.def, "conv", true, tt.off)
 		if p.Strategy != tt.want || len(p.Avoid) != tt.avoid || p.Trial {
 			t.Errorf("%s: %+v", tt.name, p)
 		}
-	}
-	// Refused at run time (the gateway's kill), before the learner knows.
-	if p := d.Plan("openrouter", false, "google/gemini-3.8-flash", promptcache.Auto, "conv", true, []string{promptcache.Markers}); p.Strategy != promptcache.Auto {
-		t.Fatalf("refused at run time: %+v", p)
 	}
 	var nilDoc *cacheprofile.Doc
 	if p := nilDoc.Plan("openrouter", false, "m", promptcache.Markers, "", false, nil); p.Strategy != promptcache.Markers {
