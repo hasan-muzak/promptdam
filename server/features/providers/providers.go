@@ -5,6 +5,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -86,13 +87,39 @@ type Input struct {
 	// Format is the API a custom provider speaks; known kinds have theirs.
 	Format string
 	// BaseURL overrides a known kind's (a regional endpoint); custom
-	// providers need one.
+	// providers need one. A cloud's is built from Cloud (in development and
+	// tests, with loopback allowed, one given wins: a fake cloud).
 	BaseURL string
-	// APIKey is the provider key; nil keeps the stored one on update.
-	APIKey   *string
-	Models   []string
-	Priority int
-	Enabled  bool
+	// Cloud is where a cloud kind's models are.
+	Cloud Cloud
+	// APIKey is the provider key; nil keeps the stored one on update. A
+	// cloud that takes a key (Bedrock, Azure) may take it here too.
+	APIKey *string
+	// Credential is how a cloud kind signs in; nil keeps the stored one on
+	// update.
+	Credential *Credential
+	Models     []string
+	Priority   int
+	Enabled    bool
+}
+
+// secret is the input's secret as it is sealed, its hint, and whether one
+// was given (nil and empty keep or need the stored one).
+func (in *Input) secret() (secret []byte, hint string, err error) {
+	if IsCloud(in.Kind) {
+		if in.Credential == nil {
+			return nil, "", nil
+		}
+		hint, err := in.Credential.check(in.Kind)
+		if err != nil {
+			return nil, "", err
+		}
+		return in.Credential.sealable(), hint, nil
+	}
+	if in.APIKey == nil || *in.APIKey == "" {
+		return nil, "", nil
+	}
+	return []byte(*in.APIKey), lastChars(*in.APIKey), nil
 }
 
 var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,99}$`)
@@ -107,14 +134,37 @@ func (s *Service) normalize(ctx context.Context, in *Input) error {
 	if !ok {
 		return invalid("unknown kind %q", in.Kind)
 	}
-	if kind.Name == Custom {
+	switch {
+	case kind.Name == Custom:
 		if in.Format != FormatOpenAI && in.Format != FormatAnthropic {
 			return invalid("a custom provider speaks the openai or the anthropic API")
 		}
 		if in.BaseURL == "" {
 			return invalid("a custom provider needs its base URL")
 		}
-	} else {
+	case kind.Cloud:
+		in.Format = kind.Format
+		if in.APIKey != nil && *in.APIKey != "" && in.Credential == nil {
+			in.Credential = &Credential{APIKey: strings.TrimSpace(*in.APIKey)}
+		}
+		in.APIKey = nil
+		if in.Credential != nil && len(in.Credential.ServiceAccount) <= maxServiceAccount {
+			// A Vertex project defaults to the service account's.
+			var sa struct {
+				ProjectID string `json:"project_id"`
+			}
+			if in.Cloud.Project == "" && json.Unmarshal([]byte(in.Credential.ServiceAccount), &sa) == nil {
+				in.Cloud.Project = sa.ProjectID
+			}
+		}
+		if in.BaseURL == "" || !s.cfg.AllowLoopback {
+			base, err := CloudBaseURL(kind.Name, in.Cloud)
+			if err != nil {
+				return err
+			}
+			in.BaseURL = base
+		}
+	default:
 		in.Format = kind.Format
 		if in.BaseURL == "" {
 			in.BaseURL = kind.BaseURL
@@ -147,6 +197,9 @@ func (s *Service) normalize(ctx context.Context, in *Input) error {
 			return invalid("the API key is too long")
 		}
 		in.APIKey = &key
+	}
+	if in.Credential != nil && !kind.Cloud {
+		return invalid("only a cloud provider takes a credential; this kind takes an API key")
 	}
 	return nil
 }
@@ -190,7 +243,11 @@ func (s *Service) Create(ctx context.Context, org, project uuid.UUID, in Input) 
 	if err := s.normalize(ctx, &in); err != nil {
 		return nil, err
 	}
-	if (in.APIKey == nil || *in.APIKey == "") && in.Kind != Custom {
+	secret, hint, err := in.secret()
+	if err != nil {
+		return nil, err
+	}
+	if secret == nil && in.Kind != Custom {
 		return nil, ErrKeyRequired
 	}
 	n, err := s.cfg.Ent.Provider.Query().Where(provider.ProjectID(project)).Count(ctx)
@@ -200,7 +257,7 @@ func (s *Service) Create(ctx context.Context, org, project uuid.UUID, in Input) 
 	if n >= MaxPerProject {
 		return nil, ErrLimit
 	}
-	sealed, hint, err := s.seal(org, in.APIKey)
+	sealed, err := s.seal(org, secret)
 	if err != nil {
 		return nil, err
 	}
@@ -234,12 +291,16 @@ func (s *Service) Update(ctx context.Context, org, project, id uuid.UUID, in Inp
 	u := s.cfg.Ent.Provider.UpdateOne(cur).
 		SetName(in.Name).SetKind(in.Kind).SetAPIFormat(provider.APIFormat(in.Format)).SetBaseURL(in.BaseURL).
 		SetModels(in.Models).SetPriority(in.Priority).SetEnabled(in.Enabled)
+	secret, hint, err := in.secret()
+	if err != nil {
+		return nil, err
+	}
 	switch {
-	case in.APIKey != nil:
-		if *in.APIKey == "" && in.Kind != Custom {
+	case in.APIKey != nil || in.Credential != nil:
+		if secret == nil && in.Kind != Custom {
 			return nil, ErrKeyRequired
 		}
-		sealed, hint, err := s.seal(org, in.APIKey)
+		sealed, err := s.seal(org, secret)
 		if err != nil {
 			return nil, err
 		}
@@ -271,19 +332,16 @@ func (s *Service) Delete(ctx context.Context, project, id uuid.UUID) error {
 	return nil
 }
 
-// seal seals a key and makes its hint: "" for no key.
-func (s *Service) seal(org uuid.UUID, key *string) (sealed, hint string, err error) {
-	if key == nil || *key == "" {
-		return "", "", nil
+// seal seals a secret: "" for none.
+func (s *Service) seal(org uuid.UUID, secret []byte) (string, error) {
+	if len(secret) == 0 {
+		return "", nil
 	}
-	if sealed, err = s.cfg.Vault.Seal(org, purpose, []byte(*key)); err != nil {
-		return "", "", fmt.Errorf("providers: sealing the key: %w", err)
+	sealed, err := s.cfg.Vault.Seal(org, purpose, secret)
+	if err != nil {
+		return "", fmt.Errorf("providers: sealing the key: %w", err)
 	}
-	k := *key
-	if len(k) >= 12 {
-		hint = "…" + k[len(k)-4:]
-	}
-	return sealed, hint, nil
+	return sealed, nil
 }
 
 // Header returns the headers that carry a provider's key.

@@ -16,6 +16,10 @@ type Kind struct {
 	// Prefixes start the names of its own models, so a model too new for
 	// the catalog still finds its provider.
 	Prefixes []string `json:"-"`
+	// Cloud marks a cloud account (Bedrock, Vertex, Azure): where its models
+	// are (Cloud) and how it signs in (Credential) replace a base URL and a
+	// key, and its models' prices are their vendors'.
+	Cloud bool `json:"cloud"`
 }
 
 // API formats.
@@ -47,14 +51,27 @@ var Kinds = []Kind{
 		Prefixes: []string{"grok-"}},
 	{Name: "fireworks", Label: "Fireworks AI", Format: FormatOpenAI, BaseURL: "https://api.fireworks.ai/inference/v1", Catalog: "fireworks"},
 	{Name: "openrouter", Label: "OpenRouter", Format: FormatOpenAI, BaseURL: "https://openrouter.ai/api/v1", Catalog: "openrouter"},
+	{Name: Bedrock, Label: "AWS Bedrock", Format: FormatAnthropic, Cloud: true,
+		Prefixes: []string{"claude-", "anthropic.", "openai.", "gpt-oss"}},
+	{Name: Vertex, Label: "Google Vertex AI", Format: FormatAnthropic, Cloud: true,
+		Prefixes: []string{"claude-", "gemini-", "google/"}},
+	{Name: Azure, Label: "Azure AI Foundry", Format: FormatOpenAI, Cloud: true,
+		Prefixes: []string{"gpt-", "o1", "o3", "o4", "claude-", "text-embedding-"}},
 	{Name: Custom, Label: "Custom endpoint"},
 }
 
 // Public reports a provider on its kind's own public API (the kind's base
 // URL; never a custom endpoint): its calls are the same for every project,
 // so what they show of a model may be pooled (features/cacheprofile). A
-// base URL a project overrides may be a server of its own.
+// base URL a project overrides may be a server of its own. Bedrock's and
+// Vertex's accounts are public (their models are named the same for
+// everyone); Azure's aren't: a model there is a deployment the project
+// named.
 func Public(kind, baseURL string) bool {
+	if kind == Bedrock || kind == Vertex {
+		built, err := CloudBaseURL(kind, CloudOf(kind, baseURL))
+		return err == nil && built == strings.TrimRight(baseURL, "/")
+	}
 	k, ok := LookupKind(kind)
 	return ok && kind != Custom && k.BaseURL != "" && strings.TrimRight(baseURL, "/") == strings.TrimRight(k.BaseURL, "/")
 }
