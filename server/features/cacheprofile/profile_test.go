@@ -40,6 +40,17 @@ func TestPlan(t *testing.T) {
 	if p := nilDoc.Plan("openrouter", false, "m", promptcache.Markers, "", false, nil); p.Strategy != promptcache.Markers {
 		t.Fatalf("no profiles: %+v", p)
 	}
+	// A conversation is kept on one backend only where several serve the
+	// model.
+	several := &cacheprofile.Doc{Models: map[string]cacheprofile.Profile{
+		cacheprofile.Key("openrouter", "a"): {Use: promptcache.Auto, Backends: 3},
+		cacheprofile.Key("openrouter", "b"): {Use: promptcache.Auto, Backends: 1},
+	}}
+	if !several.Plan("openrouter", false, "a", promptcache.Auto, "conv", true, nil).Session ||
+		several.Plan("openrouter", false, "b", promptcache.Auto, "conv", true, nil).Session ||
+		several.Plan("openrouter", false, "unknown", promptcache.Auto, "conv", true, nil).Session {
+		t.Fatal("sessions")
+	}
 }
 
 // A share of a model's conversations tries the trial strategy: at most

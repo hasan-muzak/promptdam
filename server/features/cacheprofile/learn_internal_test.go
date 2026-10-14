@@ -76,3 +76,32 @@ func TestLearn(t *testing.T) {
 		t.Errorf("custom endpoints' backends: %v", c.avoid)
 	}
 }
+
+// A model is kept on one backend per conversation only when several serve
+// it: backends avoided, or answering a sliver of its calls, don't count.
+func TestServing(t *testing.T) {
+	const or, ds = "openrouter", "deepseek/deepseek-v4.1-flash"
+	call := func(backend string, calls int64) Row {
+		return Row{Kind: or, Model: ds, Backend: backend, Strategy: promptcache.Auto, Calls: calls}
+	}
+	def := func(string, string) string { return promptcache.Auto }
+	for _, tt := range []struct {
+		name string
+		rows []Row
+		want int
+	}{
+		{"one backend", []Row{call("OpenAI", 500)}, 1},
+		{"several", []Row{call("CoreWeave", 300), call("Modal", 200), call("Relace", 40)}, 3},
+		{"a sliver doesn't count", []Row{call("CoreWeave", 500), call("Modal", 2)}, 1},
+	} {
+		if got := learn(tt.rows, nil, nil, def)[Key(or, ds)].Backends; got != tt.want {
+			t.Errorf("%s: %d backends, want %d", tt.name, got, tt.want)
+		}
+	}
+	// Avoided backends serve no conversation.
+	gemini := []Row{row(or, "g", "Google AI Studio", promptcache.Markers, 400, 390, 300), row(or, "g", "Google", promptcache.Markers, 150, 0, 900)}
+	gemini[0].Calls, gemini[1].Calls = 450, 160
+	if l := learn(gemini, nil, nil, func(string, string) string { return promptcache.Markers })[Key(or, "g")]; l.Backends != 1 || len(l.avoid) != 1 {
+		t.Errorf("gemini: %d backends, avoid %v", l.Backends, l.avoid)
+	}
+}

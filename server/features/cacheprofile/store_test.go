@@ -150,7 +150,7 @@ func TestLearner(t *testing.T) {
 	d := w.App.CacheProfiles.Current()
 	g := d.Models[cacheprofile.Key("openrouter", "google/gemini-3.8-flash")]
 	if g.Use != promptcache.Markers || g.Trial != "" || !slices.Equal(g.Avoid, []string{"google-vertex"}) || g.Projects != 3 ||
-		g.Evidence != 570 {
+		g.Evidence != 570 || g.Backends != 1 {
 		t.Fatalf("gemini %+v", g)
 	}
 	if a := d.Models[cacheprofile.Key("anthropic", "claude-opus-5-5")]; a.Use != promptcache.Markers || a.Projects != 1 ||

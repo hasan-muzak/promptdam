@@ -48,6 +48,10 @@ const (
 	// MinProjects is how many projects a pooled figure needs before a
 	// project is shown it: never one other project's traffic.
 	MinProjects = 3
+	// A backend serves a model when it answered at least serves of its
+	// calls, and at least serveCalls of them.
+	serves     = 0.02
+	serveCalls = 3
 	// A run reads at most endpointFetches models' backend lists, each kept
 	// endpointsFor.
 	endpointFetches = 20
@@ -60,6 +64,8 @@ const (
 // could teach every project what it likes.
 type Row struct {
 	Kind, Model, Backend, Strategy string
+	// Calls are all its calls.
+	Calls int64
 	// Expects are the calls that expected a cache read, Hits those that
 	// read; Expected the tokens they should have read, Read those read.
 	Expects, Hits, Expected, Read int64
@@ -72,6 +78,7 @@ type Row struct {
 func (r Row) price() float64 { return float64(r.Priced) / float64(r.Input) }
 
 func (r *Row) add(o Row) {
+	r.Calls += o.Calls
 	r.Expects += o.Expects
 	r.Hits += o.Hits
 	r.Expected += o.Expected
@@ -174,6 +181,7 @@ func learn(rows []Row, projects map[string]int, prev *Doc, def func(kind, model 
 		}
 		if d.Avoids {
 			l.avoid = avoid(m.backends[use])
+			l.Backends = serving(m.backends, l.avoid)
 		}
 		out[key] = l
 	}
@@ -201,6 +209,27 @@ func avoid(backends map[string]*Row) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// serving counts the backends that served a model (by strategy, then
+// name), those avoided left out: a conversation is worth keeping on one
+// only when there are several.
+func serving(byStrategy map[string]map[string]*Row, avoided []string) int {
+	calls := map[string]int64{}
+	var all int64
+	for _, backends := range byStrategy {
+		for name, b := range backends {
+			calls[name] += b.Calls
+			all += b.Calls
+		}
+	}
+	n := 0
+	for name, c := range calls {
+		if name != "" && !slices.Contains(avoided, name) && c >= serveCalls && float64(c) >= serves*float64(all) {
+			n++
+		}
+	}
+	return n
 }
 
 // LearnerConfig configures a Learner.
@@ -298,6 +327,7 @@ func (l *Learner) pooled(ctx context.Context) ([]Row, map[string]int, error) {
 		Model    string `ch:"target_model"`
 		Backend  string `ch:"backend"`
 		Strategy string `ch:"cache_strategy"`
+		Calls    uint64 `ch:"n"`
 		Expects  uint64 `ch:"expects"`
 		Hits     uint64 `ch:"hits"`
 		Expected uint64 `ch:"expected"`
@@ -307,7 +337,7 @@ func (l *Learner) pooled(ctx context.Context) ([]Row, map[string]int, error) {
 		Projects uint64 `ch:"projects"`
 	}
 	err := l.cfg.Events.Unscoped().Select(ctx, &got, `SELECT kind, target_model, backend, cache_strategy,
-		sum(expected_calls) AS expects, sum(hit_calls) AS hits, sum(expected_tokens) AS expected,
+		sum(calls) AS n, sum(expected_calls) AS expects, sum(hit_calls) AS hits, sum(expected_tokens) AS expected,
 		sum(expected_read_tokens) AS was_read, sum(input_tokens) AS input, sum(input_micros) AS priced,
 		uniqExact(project_id) AS projects
 		FROM cache_health_hourly WHERE pooled AND hour >= toStartOfHour(fromUnixTimestamp64Milli(?))
@@ -323,7 +353,7 @@ func (l *Learner) pooled(ctx context.Context) ([]Row, map[string]int, error) {
 			projects[Key(g.Kind, g.Model)] = int(g.Projects)
 			continue
 		}
-		rows = append(rows, Row{Kind: g.Kind, Model: g.Model, Backend: g.Backend, Strategy: g.Strategy,
+		rows = append(rows, Row{Kind: g.Kind, Model: g.Model, Backend: g.Backend, Strategy: g.Strategy, Calls: int64(g.Calls),
 			Expects: int64(g.Expects), Hits: int64(g.Hits), Expected: int64(g.Expected), Read: int64(g.Read),
 			Input: int64(g.Input), Priced: g.Priced})
 	}

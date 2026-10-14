@@ -16,11 +16,16 @@ import (
 // on its own); "" is the format's own default (breakpoints on Anthropic
 // Messages calls). Trial marks a conversation trying the strategy the
 // model's profile is learning about; Avoid are backends of a router of
-// providers the call shouldn't go to.
+// providers the call shouldn't go to. Session keeps the conversation on
+// one of them (OpenRouter's X-Session-Id), for a model several backends
+// serve, each caching apart: with one backend a session only splits its
+// cache by conversation (OpenAI's models, measured 2026-10-14: no
+// conversation read the instructions another had cached).
 type CachePlan struct {
 	Strategy string
 	Trial    bool
 	Avoid    []string
+	Session  bool
 }
 
 // strategy is the plan's strategy for a call in format f.
@@ -95,11 +100,13 @@ func DefaultCacheStrategy(kind string, anthropic, writePriced bool) string {
 	return promptcache.Auto
 }
 
-// sessionHeader sets OpenRouter's X-Session-Id on a call of a conversation
-// (session), so the conversation stays on one backend from its first call;
-// a session the client chose (its own header, or session_id in the body)
-// wins. It reports a session the gateway set itself.
-func sessionHeader(h http.Header, client http.Header, body []byte, kind, session string) bool {
+// sessionHeader passes on a session the client chose (its own header; one
+// in the body, session_id, stays there) and otherwise, where the plan
+// keeps conversations on one backend (ours), sets OpenRouter's
+// X-Session-Id on a call of a conversation (session), so the conversation
+// stays on one backend from its first call. It reports a session the
+// gateway set itself.
+func sessionHeader(h http.Header, client http.Header, body []byte, kind, session string, ours bool) bool {
 	if CacheDialectOf(kind, false).affinity != affinitySession {
 		return false
 	}
@@ -110,7 +117,7 @@ func sessionHeader(h http.Header, client http.Header, body []byte, kind, session
 		h.Set("X-Session-Id", own)
 		return false
 	}
-	if session == "" {
+	if !ours || session == "" {
 		return false
 	}
 	h.Set("X-Session-Id", session)

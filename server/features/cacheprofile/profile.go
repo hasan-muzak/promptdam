@@ -40,8 +40,10 @@ type Profile struct {
 	Use   string `json:"use"`
 	Trial string `json:"trial,omitempty"`
 	// Avoid are backends of a router of providers (their slugs) that never
-	// cached the model while another did.
-	Avoid []string `json:"avoid,omitempty"`
+	// cached the model while another did; Backends how many others served
+	// it (a conversation is kept on one when there are several).
+	Avoid    []string `json:"avoid,omitempty"`
+	Backends int      `json:"backends,omitempty"`
 	// ReadShare is the share of the tokens Use's calls should have read
 	// from the cache that they did; Evidence how many calls expected one;
 	// Projects how many projects' calls it was learned from.
@@ -94,8 +96,9 @@ func Key(kind, model string) string { return kind + "/" + model }
 // model's profile uses, else def (the target's default, from its price
 // list); the trial strategy for TrialShare of the model's conversations
 // (decided by the conversation, so a conversation keeps its arm on every
-// replica); never one the provider refused (off: Store.Refused); and the
-// backends to keep it off. Strategies its kind doesn't take are ignored.
+// replica); never one the provider refused (off: Store.Refused); the
+// backends to keep it off, and whether to keep its conversation on one
+// (several serve the model). Strategies its kind doesn't take are ignored.
 func (d *Doc) Plan(kind string, anthropic bool, model, def, conversation string, inTurn bool, off []string) gateway.CachePlan {
 	strategies := gateway.CacheDialectOf(kind, anthropic).Strategies
 	plan := gateway.CachePlan{Strategy: def}
@@ -120,7 +123,7 @@ func (d *Doc) Plan(kind string, anthropic bool, model, def, conversation string,
 			}
 		}
 	}
-	plan.Avoid = p.Avoid
+	plan.Avoid, plan.Session = p.Avoid, p.Backends > 1
 	return plan
 }
 

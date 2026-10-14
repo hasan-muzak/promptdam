@@ -405,7 +405,7 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 			return answered, false
 		}
 		upstreamHeader(up.Header, c.r.Header, format, t.Header)
-		sessioned := session && sessionHeader(up.Header, c.r.Header, body, t.Kind, c.session)
+		sessioned := sessionHeader(up.Header, c.r.Header, body, t.Kind, c.session, session && t.Cache.Session)
 		if beta != "" {
 			addBeta(up.Header, beta)
 		}

@@ -110,17 +110,18 @@ func TestThinkingIsHealedAfterARewrite(t *testing.T) {
 	}
 }
 
-// OpenRouter calls carry the conversation's session from its first call,
-// so OpenRouter keeps it on one backend; a model that caches what a
-// request marks gets breakpoints on its Chat content (calls translated to
-// it too), one that caches on its own gets none; a session the client
-// chose wins.
+// OpenRouter calls of a model several backends serve carry the
+// conversation's session from its first call, so OpenRouter keeps it on
+// one backend; others carry none; a model that caches what a request marks
+// gets breakpoints on its Chat content (calls translated to it too), one
+// that caches on its own gets none; a session the client chose wins, and
+// passes either way.
 func TestOpenRouterCaching(t *testing.T) {
 	route := func(strategy, session string) func(string) gateway.Resolver {
 		return func(base string) gateway.Resolver {
 			return routeResolver{gateway.Route{PromptCache: true, Session: session, Targets: []gateway.Target{{Provider: "openrouter",
 				Kind: "openrouter", BaseURL: base + "/v1", Model: "google/gemini-3.8-flash", MinCache: 512,
-				Cache: gateway.CachePlan{Strategy: strategy}}}}}
+				Cache: gateway.CachePlan{Strategy: strategy, Session: session != ""}}}}}
 		}
 	}
 	system, _ := json.Marshal(strings.Repeat("Follow the house style. ", 120)) // ~720 tokens
@@ -180,6 +181,20 @@ func TestOpenRouterCaching(t *testing.T) {
 	if _, h := sent(e); h.Get("X-Session-Id") != "" {
 		t.Fatalf("a body session_id got a header too: %q", h.Get("X-Session-Id"))
 	}
+
+	// One backend: no session of ours, the client's still passes.
+	e = setup(t, fakeupstream.Options{}, func(base string) gateway.Resolver {
+		return routeResolver{gateway.Route{PromptCache: true, Session: "pd-conv", Targets: []gateway.Target{{Provider: "openrouter",
+			Kind: "openrouter", BaseURL: base + "/v1", Model: "openai/gpt-6.1-sol", Cache: gateway.CachePlan{Strategy: "auto"}}}}}
+	})
+	_, _ = e.post(t, "/v1/chat/completions", chat)
+	if _, h := sent(e); h.Get("X-Session-Id") != "" {
+		t.Fatalf("one backend got a session: %q", h.Get("X-Session-Id"))
+	}
+	_, _ = e.post(t, "/v1/chat/completions", chat, "X-Session-Id", "theirs")
+	if _, h := sent(e); h.Get("X-Session-Id") != "theirs" {
+		t.Fatalf("the client's header, one backend: %q", h.Get("X-Session-Id"))
+	}
 }
 
 // A provider that refuses the gateway's breakpoints gets the call again
@@ -225,7 +240,7 @@ func TestRefusedMarkersAreDropped(t *testing.T) {
 		e := setup(t, fakeupstream.Options{}, func(string) gateway.Resolver {
 			return routeResolver{gateway.Route{PromptCache: true, Session: "pd-conv", Targets: []gateway.Target{{Provider: kind,
 				Kind: kind, BaseURL: up.URL + "/v1", Model: "google/gemini-3.8-flash", MinCache: 512, Pooled: pooled,
-				Cache: gateway.CachePlan{Strategy: "markers"}}}}}
+				Cache: gateway.CachePlan{Strategy: "markers", Session: true}}}}}
 		}, func(c *gateway.Config) {
 			c.CacheRefused = func(kind, model, strategy string) { kills = append(kills, kill{kind, model, strategy}) }
 		})
