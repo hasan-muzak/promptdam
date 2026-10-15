@@ -355,6 +355,9 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 	if c.door != nil {
 		body = c.door.fit(body, format, t)
 	}
+	if format == wire.OpenAIChat && signs(t) {
+		body = withSignatures(body)
+	}
 	var effortDropped bool
 	body, c.rec.Effort, effortDropped = ApplyEffort(body, format, t, t.Model != req.Model)
 	if effortDropped {
