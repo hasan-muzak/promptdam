@@ -94,6 +94,8 @@ Basic routing and logging are free elsewhere, so Promptdam's plans are priced on
   - OpenAI-compatible: `POST /v1/chat/completions`, `POST /v1/embeddings`, `GET /v1/models`.
   - `POST /v1/responses`: OpenAI Responses passthrough.
   - Anthropic-compatible: `POST /v1/messages` (+ `count_tokens` passthrough).
+  - Doors (ADR 0005): Gemini's own API at `/gemini/` and Bedrock's runtime API at `/bedrock/`, converted at the edge,
+    so Google's and AWS's SDKs work with the base URL and key changed.
 - **Providers at launch:**
   - OpenAI and Anthropic.
   - Google Gemini via its OpenAI-compatible endpoint.
@@ -778,6 +780,14 @@ Model routers replace per-family savings experiments, and cross-format translati
   gpt-oss and older Claude by profile id. Claude and Nova cache through Converse's checkpoints. Core prices
   Bedrock's and Vertex's names for open models. Vertex's open models are recognized by name; Mistral on Vertex has
   its own route. Tested against a fake Converse speaking AWS's real framing.
+- [x] Round H (2026-10-15, ADR 0005): doors for Google's and AWS's SDKs. `/gemini/` speaks Gemini's API
+  (generateContent, its stream as SSE or JSON array, countTokens, embeddings, the model list; the key from
+  `x-goog-api-key` or `?key=`), converted to Chat Completions (`features/gemini`); `/bedrock/` speaks Bedrock's
+  runtime API (Converse, InvokeModel for Claude, their streams in AWS's event stream, count-tokens; the Promptdam key
+  as a Bedrock API key), converted to Messages (`features/converse`). What can't cross is refused by name. Google
+  counts Gemini's tokens natively. Gemini 3's unsigned tool calls in the current turn get Google's skip value. The
+  log names the door. Tested with Google's and AWS's Go SDKs and the Python SDKs; `task demo:doors` on the owner's
+  keys: Gemini and Claude through both doors, tools, a router, counts, $0.009.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
 - **Exit:** ≥ 5 design partners in production, ≥ 2 willing to pay for Team or Business. → **Beta Mon Apr 26**.
 

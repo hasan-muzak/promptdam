@@ -125,6 +125,9 @@ within 7 days (project.md §9).
    - OpenAI SDK (Python, Node): `base_url`
    - Anthropic SDK: `base_url`
    - Vercel AI SDK, LangChain
+   - Google's SDK (google-genai): `GOOGLE_GEMINI_BASE_URL` (the gateway's `/gemini`) and `GEMINI_API_KEY`
+   - AWS's SDKs and AnthropicBedrock: the endpoint `/bedrock`, the key as a Bedrock API key (bearer token), set on
+     the client (the `AWS_BEARER_TOKEN_BEDROCK` variable reaches every Bedrock client in the process)
    - Claude Code: `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`
    - curl.
 4. **Send a request**: waits for the first call (poll the request log), then shows it: model, tokens, cost, latency.

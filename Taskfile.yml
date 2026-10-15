@@ -122,6 +122,17 @@ tasks:
     cmds:
       - go test ./server/livecheck -run TestClouds -v -count=1 -timeout 10m
 
+  demo:doors:
+    desc: "Google's genai and AWS's bedrockruntime SDKs through the Gemini and Bedrock doors, on PROMPTDAM_TEST_ANTHROPIC_KEY and PROMPTDAM_TEST_OPENROUTER_KEY (.env): Gemini and Claude, streamed, tools, a router, counts (a cent or two, stops past $0.10)"
+    dotenv: [".env"]
+    env:
+      KEEL_TEST_DATABASE_URL: postgres://keel:keel@localhost:25432/keel_test?sslmode=disable
+      KEEL_TEST_VALKEY_URL: redis://localhost:26379/15
+      KEEL_TEST_CLICKHOUSE_URL: clickhouse://keel:keel@localhost:29000/keel_test
+      KEEL_TEST_S3_ENDPOINT: http://localhost:29100
+    cmds:
+      - go test ./server/livecheck -run TestDoors -v -count=1 -timeout 10m
+
   demo:traffic:
     desc: "Ten users chatting with the customs assistant at once, paced like people (breaks past the 5-minute cache), on PROMPTDAM_TEST_ANTHROPIC_KEY (.env), then the ledger (about $1 and 30 minutes, stops past $3)"
     dotenv: [".env"]
