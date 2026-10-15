@@ -81,6 +81,9 @@ type call struct {
 	// Model: served).
 	answerModel    string
 	servedInAnswer bool
+	// door is the door the call came through (nil for the gateway's own
+	// APIs).
+	door *door
 }
 
 // outcome is what an attempt leaves the call to do.
@@ -348,6 +351,9 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 			return answered, false
 		}
 		body = swapped
+	}
+	if c.door != nil {
+		body = c.door.fit(body, format, t)
 	}
 	var effortDropped bool
 	body, c.rec.Effort, effortDropped = ApplyEffort(body, format, t, t.Model != req.Model)

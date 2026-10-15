@@ -129,9 +129,19 @@ func run() error {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// The doors' SDKs may send paths the mux would redirect (a doubled
+	// slash, an escaped model id): they reach the gateway as they are.
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if gateway.IsDoor(r.URL.Path) {
+			h.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+
 	srv := &http.Server{
 		Addr:              cfg.GatewayAddr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		// Request bodies (long prompts, images) arrive within a minute.
 		ReadTimeout: 60 * time.Second,

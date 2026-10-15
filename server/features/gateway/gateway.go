@@ -133,8 +133,8 @@ type Target struct {
 	// Reasoning reports that the target's model reasons (takes a reasoning
 	// effort): translation passes an effort on rather than drops it.
 	Reasoning bool
-	// MaxTokens caps a translated Messages call that set no limit (0: the
-	// translation's default).
+	// MaxTokens caps a Messages call that set no limit, translated from
+	// Chat or through Bedrock's door (0: translate.DefaultMaxTokens).
 	MaxTokens int
 	// Effort is the reasoning effort the call is sent with (a router
 	// tier's, fitted to the model), "" to leave the client's;
@@ -195,8 +195,12 @@ var paths = map[wire.Format]string{wire.OpenAIChat: "/chat/completions", wire.An
 
 // Record is what happened to one call, for the request log and the ledger.
 type Record struct {
-	Trace  string
+	Trace string
+	// Format is the API the gateway served the call in; Door the API the
+	// client spoke, when a door converted it (DoorGemini, DoorConverse,
+	// DoorInvoke), "" for the gateway's own.
 	Format wire.Format
+	Door   string
 	// Meta is the Route's Meta (nil when the call wasn't resolved).
 	Meta           any
 	Provider       string
@@ -335,6 +339,10 @@ func New(cfg Config) *Handler {
 
 // ServeHTTP serves one call.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if IsDoor(r.URL.Path) {
+		h.serveDoor(w, r)
+		return
+	}
 	if r.URL.Path == "/v1/models" {
 		h.models(w, r)
 		return
@@ -358,7 +366,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := &call{h: h, w: w, r: r, ep: ep, rec: Record{Trace: h.cfg.NewTrace(), Format: ep.format, Start: time.Now()}}
+	h.run(c)
+}
+
+// run serves a call and logs it.
+func (h *Handler) run(c *call) {
 	c.serve()
+	if c.door != nil {
+		c.w.(*doorWriter).finish(c.abort)
+		c.rec.RequestBytes = c.door.bytes
+	}
 	c.rec.Latency = time.Since(c.rec.Start)
 	h.cfg.Done(&c.rec)
 	if c.rec.ErrorCode != "" {

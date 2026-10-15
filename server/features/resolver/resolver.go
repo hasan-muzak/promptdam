@@ -671,6 +671,11 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 	t.Pooled = r.cfg.Pooled(p.Kind, p.BaseURL)
 	t.Cache.Strategy = gateway.DefaultCacheStrategy(p.Kind, markable(p.Kind, format == providers.FormatAnthropic, t.Model),
 		m.CacheWritePriced && t.Pooled)
+	// A Messages call that set no limit (translated from Chat, or through
+	// Bedrock's door) runs as long as the model writes.
+	if known {
+		t.MaxTokens = int(min(m.MaxOutput, maxTranslatedTokens))
+	}
 	if format == apiFormat(f) {
 		return t, true
 	}
@@ -679,11 +684,7 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 		return t, false
 	}
 	// Translation passes a reasoning effort on to models that take one
-	// (Reasoning), and lets Messages answers run as long as the model
-	// writes.
-	if known {
-		t.MaxTokens = int(min(m.MaxOutput, maxTranslatedTokens))
-	}
+	// (Reasoning).
 	return t, true
 }
 
