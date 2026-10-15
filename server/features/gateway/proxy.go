@@ -166,6 +166,9 @@ func (c *call) serve() {
 	if c.filter != nil {
 		defer c.filter.End()
 	}
+	if c.door != nil && c.door.count {
+		route.CacheTTL, route.Sample = 0, false // a count is no answer to keep or judge
+	}
 	if route.Sample || route.Capture {
 		// The request as the provider gets it (the firewall's, when it
 		// masked it); buf goes back to its pool.
@@ -226,7 +229,13 @@ func (c *call) serve() {
 			// A call no provider answered is logged with the one it tried
 			// last: provider outages show in the log.
 			c.rec.Provider, c.rec.Kind, c.rec.TargetModel, c.rec.ServedModel = t.Provider, t.Kind, t.Model, t.Model
-			next, failed := c.attempt(t, req, body, dropUsage, lastTarget, try == retries)
+			var next outcome
+			var failed bool
+			if c.door != nil && c.door.count && c.ep.format == wire.OpenAIChat {
+				next, failed = c.attemptCount(t, body, lastTarget, try == retries)
+			} else {
+				next, failed = c.attempt(t, req, body, dropUsage, lastTarget, try == retries)
+			}
 			c.h.breakers.record(t.ID, !failed, time.Now())
 			if next == answered {
 				return

@@ -373,3 +373,23 @@ func TestClientError(t *testing.T) {
 		}
 	}
 }
+
+// count-tokens carries a Converse request or an InvokeModel body (base64):
+// both become Messages.
+func TestCountRequest(t *testing.T) {
+	c, err := converse.CountRequest([]byte(`{"input":{"converse":{"messages":[{"role":"user","content":[{"text":"hi"}]}]}}}`),
+		"claude-haiku-4-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameJSON(t, c.Body, `{"model":"claude-haiku-4-5","messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`)
+	body := base64.StdEncoding.EncodeToString([]byte(`{"anthropic_version":"bedrock-2023-05-31","max_tokens":5,
+		"messages":[{"role":"user","content":"hi"}]}`))
+	if c, err = converse.CountRequest([]byte(`{"input":{"invokeModel":{"body":"`+body+`"}}}`), "claude-haiku-4-5"); err != nil {
+		t.Fatal(err)
+	}
+	sameJSON(t, c.Body, `{"max_tokens":5,"messages":[{"role":"user","content":"hi"}],"model":"claude-haiku-4-5"}`)
+	if _, err := converse.CountRequest([]byte(`{"input":{}}`), "m"); err == nil {
+		t.Fatal("an empty input counted")
+	}
+}

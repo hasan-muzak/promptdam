@@ -582,3 +582,86 @@ func TestBedrockDoorRaw(t *testing.T) {
 		t.Fatalf("%d %s", res.StatusCode, body)
 	}
 }
+
+// Tokens are counted through both doors: Google counts a Gemini model's
+// (the request as the client sent it, with the provider's key), Anthropic
+// a Claude model's (translated); a model nobody counts for is refused.
+func TestDoorCounts(t *testing.T) {
+	var mu sync.Mutex
+	var google http.Header
+	var googleBody string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if r.URL.Path != "/v1beta/models/gemini-3.5-flash:countTokens" {
+			http.NotFound(w, r)
+			return
+		}
+		mu.Lock()
+		google, googleBody = r.Header.Clone(), string(body)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"totalTokens":42,"promptTokensDetails":[{"modality":"TEXT","tokenCount":42}]}`)
+	}))
+	t.Cleanup(up.Close)
+	e := setup(t, fakeupstream.Options{}, func(base string) gateway.Resolver {
+		return byModel{
+			"gemini-3.5-flash": {Provider: "gemini", Kind: "gemini", BaseURL: up.URL + "/v1beta/openai",
+				Header: http.Header{"Authorization": {"Bearer provider-key"}}},
+			"claude-haiku-4-5": anthropicTarget(base),
+			"gpt-5-mini":       openAITarget(base),
+		}
+	})
+	client := geminiClient(t, e.gateway.URL)
+	ctx := context.Background()
+	n, err := client.Models.CountTokens(ctx, "gemini-3.5-flash", genai.Text("How many tokens?"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	if n.TotalTokens != 42 || google.Get("X-Goog-Api-Key") != "provider-key" || google.Get("Authorization") != "" ||
+		!strings.Contains(googleBody, "How many tokens?") {
+		t.Fatalf("google: %+v %v %s", n, google, googleBody)
+	}
+	mu.Unlock()
+	if n, err = client.Models.CountTokens(ctx, "claude-haiku-4-5", genai.Text("How many tokens?"), nil); err != nil ||
+		n.TotalTokens != fakeupstream.PromptTokens {
+		t.Fatalf("claude: %+v %v", n, err)
+	}
+	reqs := e.fake.Requests()
+	if last := reqs[len(reqs)-1]; last.Path != "/messages/count_tokens" || strings.Contains(string(last.Body), "max_tokens") {
+		t.Fatalf("sent %s %s", last.Path, last.Body)
+	}
+	_, err = client.Models.CountTokens(ctx, "gpt-5-mini", genai.Text("hi"), nil)
+	var apiErr genai.APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != 400 || !strings.Contains(apiErr.Message, "counting tokens isn't available") {
+		t.Fatalf("gpt: %v", err)
+	}
+
+	_, bedrock := bedrockGateway(t, e)
+	out, err := bedrock.CountTokens(ctx, &bedrockruntime.CountTokensInput{ModelId: aws.String("claude-haiku-4-5"),
+		Input: &types.CountTokensInputMemberConverse{Value: types.ConverseTokensRequest{Messages: userText("hi")}}})
+	if err != nil || aws.ToInt32(out.InputTokens) != fakeupstream.PromptTokens {
+		t.Fatalf("bedrock: %+v %v", out, err)
+	}
+	if rec := e.record(t); rec.Door != gateway.DoorConverse || rec.Format != wire.AnthropicCountTokens {
+		t.Fatalf("record %+v", rec)
+	}
+}
+
+// byModel routes each model to its own target, as the resolver does: a
+// target speaks the call's API, or another, translated.
+type byModel map[string]gateway.Target
+
+func (b byModel) Resolve(_ context.Context, c *gateway.Call) (*gateway.Route, error) {
+	t, ok := b[c.Request.Model]
+	if !ok {
+		return nil, &gateway.Error{Status: http.StatusNotFound, Code: "no_provider", Message: "no provider for " + c.Request.Model}
+	}
+	if t.Model == "" {
+		t.Model = c.Request.Model
+	}
+	if t.Format != 0 && t.Format.Anthropic() == c.Format.Anthropic() {
+		t.Format = 0 // the call's own API, as the resolver sets it
+	}
+	return &gateway.Route{Targets: []gateway.Target{t}}, nil
+}

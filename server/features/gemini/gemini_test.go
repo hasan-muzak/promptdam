@@ -344,3 +344,18 @@ func TestModels(t *testing.T) {
 		"baseModelId":"gemini-3.5-flash","version":"001","displayName":"gemini-3.5-flash",
 		"supportedGenerationMethods":["generateContent","streamGenerateContent","countTokens","embedContent"]}]}`)
 }
+
+// countTokens' request is generateContent's, or wraps one.
+func TestCountRequest(t *testing.T) {
+	wrapped := `{"generateContentRequest":{"model":"models/m","contents":[{"parts":[{"text":"hi"}]}]}}`
+	out, err := gemini.CountRequest([]byte(wrapped))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameJSON(t, out, `{"model":"models/m","contents":[{"parts":[{"text":"hi"}]}]}`)
+	plain := `{"contents":[{"parts":[{"text":"hi"}]}]}`
+	if out, err = gemini.CountRequest([]byte(plain)); err != nil || string(out) != plain {
+		t.Fatalf("%s %v", out, err)
+	}
+	sameJSON(t, gemini.CountResponse(42), `{"totalTokens":42}`)
+}

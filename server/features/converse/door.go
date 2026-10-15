@@ -632,3 +632,31 @@ func jsonOf(v any) ([]byte, error) {
 	}
 	return bytes.TrimRight(b.Bytes(), "\n"), nil
 }
+
+// CountRequest turns Bedrock's count-tokens request (a Converse request in
+// input.converse, or an InvokeModel body, base64, in
+// input.invokeModel.body) into a Messages one.
+func CountRequest(body []byte, model string) (Converted, error) {
+	var in struct {
+		Input struct {
+			Converse    json.RawMessage `json:"converse"`
+			InvokeModel *struct {
+				Body string `json:"body"`
+			} `json:"invokeModel"`
+		} `json:"input"`
+	}
+	if err := json.Unmarshal(body, &in); err != nil {
+		return Converted{}, refuse("the request body isn't a count-tokens request")
+	}
+	switch {
+	case len(in.Input.Converse) > 0 && string(in.Input.Converse) != "null":
+		return FromConverse(in.Input.Converse, model, false)
+	case in.Input.InvokeModel != nil:
+		raw, err := base64.StdEncoding.DecodeString(in.Input.InvokeModel.Body)
+		if err != nil {
+			return Converted{}, refuse("input.invokeModel.body isn't base64")
+		}
+		return FromInvoke(raw, model, false)
+	}
+	return Converted{}, refuse("count-tokens takes input.converse or input.invokeModel")
+}

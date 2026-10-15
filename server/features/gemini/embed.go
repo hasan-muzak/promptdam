@@ -134,3 +134,22 @@ func Model(id string) []byte {
 	out, _ := marshal(modelOf(id))
 	return out
 }
+
+// CountRequest is countTokens' request as generateContent's: the
+// generateContentRequest it wraps, or its own contents.
+func CountRequest(body []byte) ([]byte, error) {
+	top, ok := readObj(body)
+	if !ok || top == nil {
+		return nil, refuse("the request body isn't a JSON object")
+	}
+	if gen := top.get("generateContentRequest"); !null(gen) {
+		return gen, nil
+	}
+	return body, nil
+}
+
+// CountResponse is countTokens' answer for a count of the input tokens.
+func CountResponse(total int64) []byte {
+	out, _ := marshal(map[string]int64{"totalTokens": total})
+	return out
+}

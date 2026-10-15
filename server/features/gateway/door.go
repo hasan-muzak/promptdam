@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -58,8 +59,12 @@ type door struct {
 	fillMax bool
 	// betas are the Anthropic betas an InvokeModel body asked for.
 	betas []string
-	start time.Time
-	bytes int // the request's size, as the client sent it
+	// count is a count of a request's tokens; native is a Gemini one as the
+	// client sent it, for Google to count.
+	count  bool
+	native []byte
+	start  time.Time
+	bytes  int // the request's size, as the client sent it
 }
 
 // aws reports Bedrock's door (its path known or not).
@@ -169,7 +174,13 @@ func (d *door) convert(body []byte, model string) (path string, out []byte, err 
 		out, d.dropped, err = gemini.EmbedRequest(body, model, d.gemini == gemini.OpBatchEmbed)
 		return "/v1/embeddings", out, err
 	case gemini.OpCount:
-		return "", nil, errors.New("countTokens isn't served yet")
+		gen, err := gemini.CountRequest(body)
+		if err != nil {
+			return "", nil, err
+		}
+		d.count, d.native = true, body
+		out, d.dropped, err = gemini.Request(gen, model, false)
+		return "/v1/chat/completions", out, err
 	}
 	var c converse.Converted
 	switch d.bedrock {
@@ -178,7 +189,9 @@ func (d *door) convert(body []byte, model string) (path string, out []byte, err 
 	case converse.OpInvoke, converse.OpInvokeStream:
 		c, err = converse.FromInvoke(body, model, d.bedrock.Stream())
 	default:
-		return "", nil, errors.New("count-tokens isn't served yet")
+		c, err = converse.CountRequest(body, model)
+		d.count, d.betas = true, c.Betas
+		return "/v1/messages/count_tokens", countBody(c.Body), err
 	}
 	d.dropped, d.fillMax, d.betas = c.Dropped, c.NoMaxTokens, c.Betas
 	return "/v1/messages", c.Body, err
@@ -394,6 +407,19 @@ func (dw *doorWriter) whole(status int, h http.Header) ([]byte, error) {
 		return dw.errorBody(status, h, dw.buf), nil
 	}
 	d := dw.d
+	if d.count {
+		n, anthropic, err := countOf(dw.buf)
+		switch {
+		case err != nil:
+			return nil, err
+		case d.aws():
+			h.Set("X-Amzn-Requestid", h.Get(brand.HeaderTrace))
+			return json.Marshal(map[string]int64{"inputTokens": n})
+		case anthropic:
+			return gemini.CountResponse(n), nil
+		}
+		return dw.buf, nil // Google's own count
+	}
 	switch d.gemini {
 	case gemini.OpGenerate, gemini.OpStream:
 		return gemini.Response(dw.buf)
