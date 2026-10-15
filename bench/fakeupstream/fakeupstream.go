@@ -112,6 +112,9 @@ func cloudPath(raw string) (path, model string, stream bool) {
 		}
 		return "/messages", model, method == "streamRawPredict"
 	}
+	if strings.Contains(raw, "/publishers/mistralai/models/") {
+		return "/chat/completions", "", false // Mistral on Vertex: its chat body, model in it
+	}
 	for _, root := range []string{"/anthropic/v1", "/openai/v1", "/endpoints/openapi"} {
 		if i := strings.Index(raw, root+"/"); i >= 0 {
 			return raw[i+len(root):], "", false

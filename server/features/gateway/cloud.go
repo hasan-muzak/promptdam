@@ -29,8 +29,9 @@ const vertexVersion = `"vertex-2023-10-16"`
 //   - bedrock: Claude in its current form through Bedrock's Anthropic API
 //     (bedrock-mantle), every other model through Converse
 //     (bedrock-runtime);
-//   - vertex: Claude through rawPredict, the model in the URL, others
-//     through the OpenAI-compatible endpoint;
+//   - vertex: Claude through rawPredict, the model in the URL; Mistral
+//     through its own rawPredict; Gemini and the open models (publisher/
+//     …-maas) through the OpenAI-compatible endpoint;
 //   - azure: Claude through Foundry's Anthropic API, others through Azure
 //     OpenAI's v1 API.
 func UpstreamURL(t Target, f wire.Format, path string, stream bool) string {
@@ -51,7 +52,14 @@ func UpstreamURL(t Target, f wire.Format, path string, stream bool) string {
 		}
 		return bedrockRuntime(base) + "/openai/v1" + path
 	case "vertex":
-		if !f.Anthropic() {
+		switch {
+		case !f.Anthropic() && vertexMistral(t.Model):
+			method := ":rawPredict"
+			if stream {
+				method = ":streamRawPredict"
+			}
+			return base + "/publishers/mistralai/models/" + url.PathEscape(t.Model) + method
+		case !f.Anthropic():
 			return base + "/endpoints/openapi" + path
 		}
 		if path == "/messages/count_tokens" {
@@ -69,6 +77,15 @@ func UpstreamURL(t Target, f wire.Format, path string, stream bool) string {
 		return base + "/openai/v1" + path
 	}
 	return base + path
+}
+
+// vertexMistral reports a Mistral model on Vertex, which takes Mistral's
+// chat format at its own rawPredict, not the OpenAI-compatible endpoint the
+// other open models (Llama, DeepSeek, Qwen, …: publisher/…-maas) share.
+func vertexMistral(model string) bool {
+	m := strings.ToLower(model)
+	return !strings.Contains(m, "/") && (strings.HasPrefix(m, "mistral-") || strings.HasPrefix(m, "codestral-") ||
+		strings.HasPrefix(m, "ministral-"))
 }
 
 // bedrockRuntime is the OpenAI-compatible API's host of a Bedrock account

@@ -147,6 +147,8 @@ func TestCloudTargets(t *testing.T) {
 		{bedrock, "claude-haiku-5-5", true}, {bedrock, "gpt-6", false}, {bedrock, "gemini-3.8-flash", false},
 		{bedrock, "us.amazon.nova-lite-v1:0", true}, {bedrock, "meta.llama3-3-70b-instruct-v1:0", true},
 		{bedrock, "qwen.qwen3-32b-v1:0", true},
+		{vertex, "meta/llama-3.3-70b-instruct-maas", true}, {vertex, "deepseek-ai/deepseek-v3.2-maas", true},
+		{vertex, "mistral-medium-3", true}, {vertex, "meta.llama3-3-70b-instruct-v1:0", false},
 		{vertex, "gemini-3.8-flash", true}, {vertex, "claude-opus-9", true}, {vertex, "gpt-6", false},
 		{azure, "gpt-6", true}, {azure, "claude-haiku-5-5", true}, {azure, "gemini-3.8-flash", false},
 	} {
