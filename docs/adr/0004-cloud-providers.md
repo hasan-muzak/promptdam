@@ -82,3 +82,24 @@ Options considered:
   deployment called "prod-chat") needs the provider's model list, and is priced only if its name is the model's.
 - Verified against fake clouds that check paths, bodies and signatures; live checks (`task demo:clouds`) run when
   the owner's test accounts are in `.env`.
+
+## Addendum (2026-10-15, round F): all of Bedrock, and Vertex's open models
+
+- **Converse is how Bedrock's other models are called.** Bedrock's Anthropic API serves only current Claude; Amazon
+  Nova, Meta Llama, Mistral, Cohere, DeepSeek, Qwen, MiniMax, gpt-oss and older Claude (Sonnet 4.5/4.6, Opus 4.5/4.6)
+  are reachable through Converse, which streams in AWS's binary event stream. Every Bedrock model but current Claude
+  now goes through Converse, named by its Bedrock id (older Claude by its region profile id).
+- **Converse is a dialect of Anthropic's format** (`features/converse`). A request is translated as it is sent;
+  the answer becomes Messages right after the round trip: JSON, the event stream as server-sent events (decoded by
+  AWS's own decoder), AWS errors with Anthropic's types. Everything after it reads Messages, so Chat clients reach
+  Llama through the existing translation, and the relay, meter, heals and fallbacks are unchanged. What Converse
+  can't express (an image by URL, a server tool, counting tokens) passes the call to the next target.
+- **Caching through Converse:** Claude and Nova take checkpoints (Nova in the system prompt and messages, five
+  minutes); the other families aren't marked. Converse's `inputTokens` excludes cache reads and writes, as Anthropic's
+  `input_tokens` does, so usage maps one-to-one.
+- **Prices:** the core's lookup reads Bedrock's and Vertex's names for open models (version suffixes, `-maas`,
+  Llama's `llama3-3` spelling). Prices are the price list's, so Bedrock's own regional prices for Llama and DeepSeek
+  are approximated.
+- **Vertex's open models** (publisher/…-maas) go through its OpenAI-compatible endpoint and are recognized by name;
+  Mistral takes its own rawPredict.
+- **Not now:** Bedrock's legacy InvokeModel (Converse covers its models), video and audio blocks, guardrails.

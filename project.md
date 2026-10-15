@@ -772,6 +772,12 @@ Model routers replace per-family savings experiments, and cross-format translati
   SigV4 with IAM keys, Google tokens minted from the key and kept an hour across snapshots); Claude's conversations
   cached with message breakpoints; the provider check answers one token. Tested against fake clouds; `task
   demo:clouds` runs on the owner's test accounts when `.env` has them. Core: `wire.DeleteField`.
+- [x] Round F (2026-10-15, ADR 0004 addendum): all of Bedrock through its Converse API, spoken as a dialect of
+  Anthropic's Messages (`features/converse`: request translation, answers and AWS's binary event stream turned into
+  Messages and its events, AWS errors into Anthropic's): Nova, Llama, Mistral, Cohere, DeepSeek, Qwen, MiniMax,
+  gpt-oss and older Claude by profile id. Claude and Nova cache through Converse's checkpoints. Core prices
+  Bedrock's and Vertex's names for open models. Vertex's open models are recognized by name; Mistral on Vertex has
+  its own route. Tested against a fake Converse speaking AWS's real framing.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
 - **Exit:** ≥ 5 design partners in production, ≥ 2 willing to pay for Team or Business. → **Beta Mon Apr 26**.
 

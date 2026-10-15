@@ -535,11 +535,19 @@ check (passed when, or the provider's error).
   family, each through the cloud's API for it:
   - **AWS Bedrock:** the region (eu-west-1). Sign-in is a Bedrock API key, or an IAM access key id and secret (and a
     session token for temporary keys). Help: "AWS calls long-term API keys exploration-only; an IAM user with
-    `bedrock:InvokeModel` on the models you use is the production choice." Claude models are called by their plain
-    names (claude-haiku-5-5); Promptdam adds Bedrock's `anthropic.` prefix.
+    `bedrock:InvokeModel` on the models you use is the production choice." Current Claude models are called by their
+    plain names (claude-haiku-5-5); Promptdam adds Bedrock's `anthropic.` prefix. Every other model is called by its
+    Bedrock id, as the model's page in the AWS console shows it: `amazon.nova-lite-v1:0`,
+    `us.meta.llama3-3-70b-instruct-v1:0`, `qwen.qwen3-32b-v1:0`, and older Claude by its region profile
+    (`eu.anthropic.claude-sonnet-4-5-20250929-v1:0`). Help: "Some models need a region profile id (us., eu., apac.,
+    global.): use the id the console lists for your region." Say which models cache: Claude and Nova do, through
+    Bedrock; Llama, Mistral, DeepSeek and the others don't, so Promptdam sends them no cache markers.
   - **Google Vertex AI:** the project (taken from the key file if left empty) and location: global (default), eu,
     us, or a region such as europe-west4. Sign-in: upload the service account's JSON key file; the hint shows its
     email. Help: "Give the service account the Vertex AI User role, and enable the Claude models in Model Garden."
+    Open models are called by their Vertex names (`meta/llama-3.3-70b-instruct-maas`,
+    `deepseek-ai/deepseek-v3.2-maas`), Mistral's by theirs (`mistral-medium-3`); some live only in certain
+    locations, so the help links Google's list.
   - **Azure AI Foundry:** the resource name ({resource}.services.ai.azure.com) and its API key. Models are the
     resource's deployment names: GPT deployments go to Azure OpenAI's API, deployments whose name contains "claude" to
     Foundry's Anthropic API. Help: "Keep the deployment names the models' own (gpt-…, claude-…) so routers and prices
