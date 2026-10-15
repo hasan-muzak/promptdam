@@ -395,12 +395,31 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 	// until none is left to serve the call.
 	avoiding := c.promptCache && CacheDialectOf(t.Kind, false).Avoids && format == wire.OpenAIChat
 	target := UpstreamURL(t, format, path, req.Stream)
+	cloudNoted := false
 	for {
 		send, avoided := body, false
 		if avoiding {
 			send, avoided = withAvoided(body, t.Cache.Avoid)
 		}
-		send = CloudBody(t, format, path, send)
+		// A cloud's own dialect (Bedrock's Converse): what it can't carry
+		// is listed, what it can't express at all is passed on to the next
+		// target, as a translation is.
+		send, gone, cerr := CloudBody(t, format, path, send)
+		if cerr != nil {
+			if canOnward {
+				return onward, false
+			}
+			msg := "the request can't be sent to " + t.Model
+			var te *translate.Error
+			if errors.As(cerr, &te) {
+				msg += ": " + te.Message
+			}
+			c.fail(&Error{Status: http.StatusBadRequest, Type: TypeInvalidRequest, Code: "untranslatable_request", Message: msg})
+			return answered, false
+		}
+		if !cloudNoted {
+			dropped, cloudNoted = append(dropped, gone...), true
+		}
 		up, rerr := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(send))
 		if rerr != nil {
 			c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_misconfigured", Message: "the provider's base URL is invalid"})
@@ -411,6 +430,7 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 		if beta != "" {
 			addBeta(up.Header, beta)
 		}
+		CloudHeader(t, format, up.Header, req.Stream)
 		if serr := Sign(ctx, t, up, send); serr != nil {
 			c.fail(&Error{Status: http.StatusBadGateway, Type: TypeAPI, Code: "provider_auth_failed",
 				Message: "the provider's credentials couldn't sign the call: " + serr.Error()})
@@ -419,6 +439,9 @@ func (c *call) attempt(t Target, req wire.Request, body []byte, dropUsage, lastT
 		sent := time.Now()
 		res, err = c.h.cfg.Transport.RoundTrip(up)
 		c.rec.Upstream += time.Since(sent)
+		if err == nil {
+			CloudResponse(t, format, res)
+		}
 		thinking := healing && c.rewrote && format == wire.AnthropicMessages
 		marked := unmarking && (c.rec.PromptCached || sessioned)
 		refusable := res != nil && (res.StatusCode == http.StatusBadRequest && (thinking || marked) ||

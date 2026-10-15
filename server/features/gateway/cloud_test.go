@@ -1,6 +1,7 @@
 package gateway_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -62,13 +63,17 @@ func TestUpstreamURL(t *testing.T) {
 func TestCloudBody(t *testing.T) {
 	vertex := gateway.Target{Kind: "vertex"}
 	body := `{"model":"claude-haiku-5-5","max_tokens":9,"system":[{"type":"text","text":"x","cache_control":{"type":"ephemeral"}}],"messages":[]}`
-	got := string(gateway.CloudBody(vertex, wire.AnthropicMessages, "/messages", []byte(body)))
+	cloudBody := func(t gateway.Target, f wire.Format, path string, body []byte) []byte {
+		out, _, _ := gateway.CloudBody(t, f, path, body)
+		return out
+	}
+	got := string(cloudBody(vertex, wire.AnthropicMessages, "/messages", []byte(body)))
 	want := `{"max_tokens":9,"system":[{"type":"text","text":"x","cache_control":{"type":"ephemeral"}}],"messages":[],"anthropic_version":"vertex-2023-10-16"}`
 	if got != want {
 		t.Fatalf("vertex: %s", got)
 	}
 	own := `{"model":"m","anthropic_version":"vertex-2099-01-01","messages":[]}`
-	if got := string(gateway.CloudBody(vertex, wire.AnthropicMessages, "/messages", []byte(own))); got != `{"anthropic_version":"vertex-2099-01-01","messages":[]}` {
+	if got := string(cloudBody(vertex, wire.AnthropicMessages, "/messages", []byte(own))); got != `{"anthropic_version":"vertex-2099-01-01","messages":[]}` {
 		t.Fatalf("the client's version: %s", got)
 	}
 	for _, tt := range []struct {
@@ -77,9 +82,9 @@ func TestCloudBody(t *testing.T) {
 		path string
 	}{
 		{vertex, wire.OpenAIChat, "/chat/completions"}, {vertex, wire.AnthropicCountTokens, "/messages/count_tokens"},
-		{gateway.Target{Kind: "bedrock"}, wire.AnthropicMessages, "/messages"},
+		{gateway.Target{Kind: "bedrock", Model: "anthropic.claude-haiku-5-5"}, wire.AnthropicMessages, "/messages"},
 	} {
-		if got := string(gateway.CloudBody(tt.t, tt.f, tt.path, []byte(body))); got != body {
+		if got := string(cloudBody(tt.t, tt.f, tt.path, []byte(body))); got != body {
 			t.Errorf("%s %s changed: %s", tt.t.Kind, tt.path, got)
 		}
 	}
@@ -215,5 +220,139 @@ func TestCloudCaching(t *testing.T) {
 	reqs = azure.fake.Requests()
 	if body := string(reqs[len(reqs)-1].Body); !strings.Contains(body, `"prompt_cache_key":"pd-conv"`) || strings.Contains(body, "cache_control") {
 		t.Fatalf("azure: %s", body)
+	}
+}
+
+// Bedrock's models other than the Claude its Anthropic API serves go
+// through Converse on bedrock-runtime, the id escaped as AWS's SDKs send
+// it; older Claude named by its profile id too.
+func TestConverseURL(t *testing.T) {
+	base := "https://bedrock-mantle.eu-west-1.api.aws"
+	for model, want := range map[string]string{
+		"us.amazon.nova-lite-v1:0":                     "https://bedrock-runtime.eu-west-1.amazonaws.com/model/us.amazon.nova-lite-v1%3A0/converse-stream",
+		"meta.llama3-3-70b-instruct-v1:0":              "https://bedrock-runtime.eu-west-1.amazonaws.com/model/meta.llama3-3-70b-instruct-v1%3A0/converse-stream",
+		"us.anthropic.claude-sonnet-4-5-20250929-v1:0": "https://bedrock-runtime.eu-west-1.amazonaws.com/model/us.anthropic.claude-sonnet-4-5-20250929-v1%3A0/converse-stream",
+		"anthropic.claude-haiku-5-5":                   base + "/anthropic/v1/messages",
+	} {
+		tg := gateway.Target{Kind: "bedrock", BaseURL: base, Model: model}
+		if got := gateway.UpstreamURL(tg, wire.AnthropicMessages, "/messages", true); got != want {
+			t.Errorf("%s: %s", model, got)
+		}
+	}
+	tg := gateway.Target{Kind: "bedrock", BaseURL: base, Model: "us.amazon.nova-lite-v1:0"}
+	if got := gateway.UpstreamURL(tg, wire.AnthropicMessages, "/messages", false); !strings.HasSuffix(got, "/converse") {
+		t.Errorf("not streamed: %s", got)
+	}
+}
+
+// Calls to Bedrock's other models are spoken in Converse and answered in
+// the client's own API: Messages and Chat clients, whole and streamed,
+// signed over the Converse bytes sent; AWS's throttling, before the answer
+// or in it, reads as the client's API says it; what Converse can't express
+// is refused.
+func TestConverseCalls(t *testing.T) {
+	type world struct {
+		e    *env
+		auth *recorder
+	}
+	bedrock := func(model string, format wire.Format, cache string) world {
+		auth := &recorder{}
+		e := setup(t, fakeupstream.Options{}, func(base string) gateway.Resolver {
+			return routeResolver{gateway.Route{PromptCache: cache != "", Targets: []gateway.Target{{Provider: "bedrock", Kind: "bedrock",
+				BaseURL: base, Model: model, Format: format, MinCache: 512, Auth: auth, Cache: gateway.CachePlan{Strategy: cache}}}}}
+		})
+		return world{e, auth}
+	}
+	messages := func(model, extra string) string {
+		return `{"model":"` + model + `","max_tokens":50` + extra + `,"messages":[{"role":"user","content":"hi"}]}`
+	}
+
+	w := bedrock("us.amazon.nova-lite-v1:0", 0, "")
+	res, out := w.e.post(t, "/v1/messages", messages("us.amazon.nova-lite-v1:0", ""))
+	if res.StatusCode != 200 || !strings.Contains(out, `"text":"tok0 tok1`) || !strings.Contains(out, `"stop_reason":"end_turn"`) {
+		t.Fatalf("messages: %d %s", res.StatusCode, out)
+	}
+	got := w.e.fake.Requests()[0]
+	if got.URLPath != "/model/us.amazon.nova-lite-v1:0/converse" || bytes.Contains(got.Body, []byte(`"model"`)) ||
+		string(w.auth.signed[0]) != string(got.Body) || got.Header.Get("Anthropic-Version") != "" {
+		t.Fatalf("sent %s %s %v", got.URLPath, got.Body, got.Header)
+	}
+	if rec := w.e.record(t); !rec.UsageKnown || rec.Usage.Input != fakeupstream.PromptTokens || rec.Usage.Output != 10 {
+		t.Fatalf("record %+v", rec.Usage)
+	}
+
+	res, out = w.e.post(t, "/v1/messages", messages("us.amazon.nova-lite-v1:0", `,"stream":true`))
+	if res.StatusCode != 200 || !strings.Contains(out, "event: message_start") || !strings.Contains(out, `"text_delta"`) ||
+		!strings.Contains(out, "event: message_stop") || res.Header.Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("messages streamed: %d %s", res.StatusCode, out)
+	}
+	if rec := w.e.record(t); rec.Usage.Output != 10 || rec.Usage.Input != fakeupstream.PromptTokens {
+		t.Fatalf("streamed record %+v", rec.Usage)
+	}
+
+	// A Chat client reaches Llama: Chat → Messages → Converse, and back.
+	llama := bedrock("meta.llama3-3-70b-instruct-v1:0", wire.AnthropicMessages, "")
+	chat := `{"model":"meta.llama3-3-70b-instruct-v1:0","messages":[{"role":"user","content":"hi"}]}`
+	res, out = llama.e.post(t, "/v1/chat/completions", chat)
+	if res.StatusCode != 200 || !strings.Contains(out, `"object":"chat.completion"`) || !strings.Contains(out, "tok0 tok1") {
+		t.Fatalf("chat: %d %s", res.StatusCode, out)
+	}
+	res, out = llama.e.post(t, "/v1/chat/completions", strings.Replace(chat, `"messages"`, `"stream":true,"messages"`, 1))
+	if res.StatusCode != 200 || !strings.Contains(out, `"chat.completion.chunk"`) || !strings.Contains(out, "data: [DONE]") {
+		t.Fatalf("chat streamed: %d %s", res.StatusCode, out)
+	}
+
+	// Throttled before the answer: Anthropic's rate-limit error.
+	w.e.fake.Fail(429, 429, 429)
+	res, out = w.e.post(t, "/v1/messages", messages("us.amazon.nova-lite-v1:0", ""))
+	if res.StatusCode != 429 || !strings.Contains(out, "rate_limit_error") || !strings.Contains(out, "ThrottlingException") {
+		t.Fatalf("throttled: %d %s", res.StatusCode, out)
+	}
+
+	// Throttled mid-way: an error event ends the stream.
+	mid := bedrock("us.amazon.nova-throttle-mid-stream-v1:0", 0, "")
+	res, out = mid.e.post(t, "/v1/messages", messages("us.amazon.nova-throttle-mid-stream-v1:0", `,"stream":true`))
+	if !strings.Contains(out, "event: error") || !strings.Contains(out, "overloaded_error") {
+		t.Fatalf("throttled mid-way: %d %s", res.StatusCode, out)
+	}
+
+	// An image by URL: Converse takes images themselves.
+	res, out = w.e.post(t, "/v1/messages", `{"model":"us.amazon.nova-lite-v1:0","max_tokens":9,"messages":[{"role":"user",`+
+		`"content":[{"type":"image","source":{"type":"url","url":"https://x/y.png"}}]}]}`)
+	if res.StatusCode != 400 || w.e.record(t).ErrorCode != "untranslatable_request" {
+		t.Fatalf("an image by URL: %d %s", res.StatusCode, out)
+	}
+}
+
+// Nova caches what a request marks: breakpoints become checkpoints and its
+// cache reads are metered; Llama doesn't, and is sent none.
+func TestConverseCaching(t *testing.T) {
+	system, _ := json.Marshal(strings.Repeat("Follow the house style and cite the clauses. ", 150))
+	conv := func(model string) string {
+		return `{"model":"` + model + `","max_tokens":9,"system":` + string(system) + `,"messages":[{"role":"user","content":"a"},` +
+			`{"role":"assistant","content":"b"},{"role":"user","content":"c"}]}`
+	}
+	for _, tt := range []struct {
+		model, strategy string
+		points          int
+	}{
+		{"us.amazon.nova-lite-v1:0", "markers", 3},
+		{"meta.llama3-3-70b-instruct-v1:0", "auto", 0},
+	} {
+		e := setup(t, fakeupstream.Options{}, func(base string) gateway.Resolver {
+			return routeResolver{gateway.Route{PromptCache: true, Targets: []gateway.Target{{Provider: "bedrock", Kind: "bedrock",
+				BaseURL: base, Model: tt.model, MinCache: 512, Auth: &recorder{}, Cache: gateway.CachePlan{Strategy: tt.strategy}}}}}
+		})
+		if res, out := e.post(t, "/v1/messages", conv(tt.model)); res.StatusCode != 200 {
+			t.Fatalf("%s: %d %s", tt.model, res.StatusCode, out)
+		}
+		sent := e.fake.Requests()[0].Body
+		rec := e.record(t)
+		if n := bytes.Count(sent, []byte(`"cachePoint"`)); n != tt.points || bytes.Contains(sent, []byte("cache_control")) {
+			t.Fatalf("%s: %d checkpoints: %s", tt.model, n, sent)
+		}
+		if tt.points > 0 && (rec.Usage.CacheRead != fakeupstream.CacheReadTokens || !rec.PromptCached) {
+			t.Fatalf("%s: usage %+v", tt.model, rec.Usage)
+		}
 	}
 }

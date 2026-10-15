@@ -129,6 +129,10 @@ func TestCloudTargets(t *testing.T) {
 		{"Claude on Vertex", vertex, wire.AnthropicMessages, "claude-haiku-5-5", "claude-haiku-5-5", 0},
 		{"GPT on Azure", azure, wire.OpenAIChat, "gpt-6", "gpt-6", 0},
 		{"Claude on Azure", azure, wire.AnthropicMessages, "claude-haiku-5-5", "claude-haiku-5-5", 0},
+		{"Llama on Bedrock, a Messages call", bedrock, wire.AnthropicMessages, "meta.llama3-3-70b-instruct-v1:0",
+			"meta.llama3-3-70b-instruct-v1:0", 0},
+		{"Nova on Bedrock, a Chat call", bedrock, wire.OpenAIChat, "us.amazon.nova-lite-v1:0", "us.amazon.nova-lite-v1:0",
+			wire.AnthropicMessages},
 	} {
 		tg, ok := r.target(tt.p, tt.f, tt.model)
 		if !ok || tg.Model != tt.want || tg.Format != tt.format {
@@ -141,6 +145,8 @@ func TestCloudTargets(t *testing.T) {
 		serves bool
 	}{
 		{bedrock, "claude-haiku-5-5", true}, {bedrock, "gpt-6", false}, {bedrock, "gemini-3.8-flash", false},
+		{bedrock, "us.amazon.nova-lite-v1:0", true}, {bedrock, "meta.llama3-3-70b-instruct-v1:0", true},
+		{bedrock, "qwen.qwen3-32b-v1:0", true},
 		{vertex, "gemini-3.8-flash", true}, {vertex, "claude-opus-9", true}, {vertex, "gpt-6", false},
 		{azure, "gpt-6", true}, {azure, "claude-haiku-5-5", true}, {azure, "gemini-3.8-flash", false},
 	} {
@@ -156,5 +162,23 @@ func TestCloudTargets(t *testing.T) {
 	}
 	if !slices.Equal(ids, []string{"claude-haiku-5-5", "gemini-3.8-flash"}) || len(open) != 0 {
 		t.Errorf("vertex lists %v (open %d)", ids, len(open))
+	}
+}
+
+// Bedrock's models are planned by how they cache through Converse: Claude
+// and Nova take breakpoints, the others none.
+func TestBedrockCaching(t *testing.T) {
+	r := New(Config{Prices: prices.Static{Catalog: &llm.Catalog{}}})
+	bedrock := snapshot.Opened{Provider: snapshot.Provider{Name: "b", Kind: providers.Bedrock, Format: providers.FormatAnthropic}}
+	for model, want := range map[string]string{
+		"claude-haiku-5-5": "markers",
+		"us.anthropic.claude-sonnet-4-5-20250929-v1:0": "markers",
+		"us.amazon.nova-lite-v1:0":                     "markers",
+		"meta.llama3-3-70b-instruct-v1:0":              "auto",
+		"mistral.mistral-large-2407-v1:0":              "auto",
+	} {
+		if tg, _ := r.target(bedrock, wire.AnthropicMessages, model); tg.Cache.Strategy != want {
+			t.Errorf("%s: %q, want %q", model, tg.Cache.Strategy, want)
+		}
 	}
 }

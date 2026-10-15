@@ -479,7 +479,10 @@ func (e *Evaluator) send(ctx context.Context, t gateway.Target, f wire.Format, p
 	if f.Anthropic() {
 		path = "/messages"
 	}
-	payload = gateway.CloudBody(t, f, path, payload)
+	payload, _, err := gateway.CloudBody(t, f, path, payload)
+	if err != nil {
+		return nil, 0, fmt.Errorf("evaluate: %s can't take the call: %w", t.Provider, err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, gateway.UpstreamURL(t, f, path, false), bytes.NewReader(payload))
 	if err != nil {
 		return nil, 0, err
@@ -492,6 +495,7 @@ func (e *Evaluator) send(ctx context.Context, t gateway.Target, f wire.Format, p
 	for k, v := range t.Header {
 		req.Header[k] = v
 	}
+	gateway.CloudHeader(t, f, req.Header, false)
 	if err := gateway.Sign(ctx, t, req, payload); err != nil {
 		return nil, 0, fmt.Errorf("evaluate: signing for %s: %w", t.Provider, err)
 	}
@@ -499,6 +503,7 @@ func (e *Evaluator) send(ctx context.Context, t gateway.Target, f wire.Format, p
 	if err != nil {
 		return nil, 0, fmt.Errorf("evaluate: calling %s: %w", t.Provider, err)
 	}
+	gateway.CloudResponse(t, f, res)
 	defer func() { _ = res.Body.Close() }()
 	resp, err := io.ReadAll(io.LimitReader(res.Body, maxAnswerBody))
 	if err != nil {

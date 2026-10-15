@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 )
 
 // Token counts every answer reports. Anthropic's input excludes the cached
@@ -168,6 +170,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && strings.HasSuffix(path, "/models") {
 		writeJSON(w, map[string]any{"object": "list", "data": []any{}})
+		return
+	}
+	if id, method, ok := converseCall(r.URL.Path); ok {
+		s.converse(w, r, id, method == "converse-stream", body, fail)
 		return
 	}
 	if fail != 0 {
@@ -448,4 +454,94 @@ func (s *Server) messagesStream(w http.ResponseWriter, r *http.Request, model st
 			return
 		}
 	}
+}
+
+// converseCall reads Bedrock's Converse path: /model/{id}/converse or
+// /converse-stream.
+func converseCall(path string) (id, method string, ok bool) {
+	rest, ok := strings.CutPrefix(path, "/model/")
+	if !ok {
+		return "", "", false
+	}
+	i := strings.LastIndexByte(rest, '/')
+	if i <= 0 {
+		return "", "", false
+	}
+	id, method = rest[:i], rest[i+1:]
+	return id, method, method == "converse" || method == "converse-stream"
+}
+
+// converse answers as Bedrock's Converse does: a whole answer, or an AWS
+// event stream (a model whose id says "throttle-mid-stream" is throttled
+// after its first words); a failure as AWS's error. The cache reads and
+// writes of Anthropic's answers show when the request has a checkpoint.
+func (s *Server) converse(w http.ResponseWriter, r *http.Request, id string, stream bool, body []byte, fail int) {
+	awsError := func(status int, kind, msg string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Amzn-Errortype", kind+":http://internal.amazon.com/coral/com.amazon.bedrock/")
+		w.WriteHeader(status)
+		_, _ = fmt.Fprintf(w, `{"message":%q}`, msg)
+	}
+	switch fail {
+	case 0:
+	case http.StatusTooManyRequests:
+		awsError(fail, "ThrottlingException", "Too many requests, please wait before trying again.")
+		return
+	default:
+		awsError(fail, "InternalServerException", "fake failure")
+		return
+	}
+	var req struct {
+		Messages []json.RawMessage `json:"messages"`
+		Model    json.RawMessage   `json:"model"`
+	}
+	if json.Unmarshal(body, &req) != nil || len(req.Messages) == 0 || len(req.Model) > 0 {
+		awsError(http.StatusBadRequest, "ValidationException", "Malformed input request, please reformat your input and try again.")
+		return
+	}
+	text := strings.Join(s.pieces(id, body), "")
+	if s.opts.Reply != nil && !stream {
+		text = s.opts.Reply(id, body)
+	}
+	usage := map[string]int{"inputTokens": PromptTokens, "outputTokens": s.opts.Chunks, "totalTokens": PromptTokens + s.opts.Chunks}
+	if bytes.Contains(body, []byte(`"cachePoint"`)) {
+		usage["cacheReadInputTokens"], usage["cacheWriteInputTokens"] = CacheReadTokens, CacheWriteTokens
+	}
+	w.Header().Set("X-Amzn-Requestid", "0f0e0d0c-aaaa-bbbb-cccc-123456789abc")
+	if !stream {
+		writeJSON(w, map[string]any{"output": map[string]any{"message": map[string]any{"role": "assistant",
+			"content": []any{map[string]string{"text": text}}}}, "stopReason": "end_turn", "usage": usage,
+			"metrics": map[string]int{"latencyMs": 1}})
+		return
+	}
+	w.Header().Set("Content-Type", "application/vnd.amazon.eventstream")
+	w.WriteHeader(http.StatusOK)
+	enc := eventstream.NewEncoder()
+	send := func(kind, name string, payload any) {
+		var h eventstream.Headers
+		h.Set(":message-type", eventstream.StringValue(kind))
+		if kind == "exception" {
+			h.Set(":exception-type", eventstream.StringValue(name))
+		} else {
+			h.Set(":event-type", eventstream.StringValue(name))
+		}
+		h.Set(":content-type", eventstream.StringValue("application/json"))
+		b, _ := json.Marshal(payload)
+		_ = enc.Encode(w, eventstream.Message{Headers: h, Payload: b})
+		w.(http.Flusher).Flush()
+	}
+	send("event", "messageStart", map[string]string{"role": "assistant", "p": "abcdefghijklmnop"})
+	for i, piece := range s.pieces(id, body) {
+		if !s.sleep(r, s.opts.ChunkDelay) {
+			return
+		}
+		send("event", "contentBlockDelta", map[string]any{"contentBlockIndex": 0, "delta": map[string]string{"text": piece}})
+		if i == 0 && strings.Contains(id, "throttle-mid-stream") {
+			send("exception", "throttlingException", map[string]string{"message": "Too many requests, please wait before trying again."})
+			return
+		}
+	}
+	send("event", "contentBlockStop", map[string]int{"contentBlockIndex": 0})
+	send("event", "messageStop", map[string]string{"stopReason": "end_turn"})
+	send("event", "metadata", map[string]any{"usage": usage, "metrics": map[string]int{"latencyMs": 1}})
 }

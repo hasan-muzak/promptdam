@@ -24,10 +24,14 @@ func IsCloud(kind string) bool { return kind == Bedrock || kind == Vertex || kin
 
 // FormatFor is the API a provider calls a model in: its own, or, on a
 // cloud account, Anthropic's for Claude and the OpenAI-compatible one for
-// the others.
+// the others; on Bedrock, Anthropic's for all (Claude's API, or Converse
+// as its dialect: gateway.Converse).
 func FormatFor(kind, format, model string) string {
 	if !IsCloud(kind) {
 		return format
+	}
+	if kind == Bedrock {
+		return FormatAnthropic // Claude's API, or Converse spoken as Messages
 	}
 	if strings.Contains(strings.ToLower(model), "claude") {
 		return FormatAnthropic

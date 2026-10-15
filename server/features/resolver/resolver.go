@@ -32,6 +32,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/conversation"
+	"github.com/hasan-muzak/promptdam/server/features/converse"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
@@ -526,7 +527,8 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 			if f == 0 {
 				f = format
 			}
-			out.Targets[i].Cache = r.cfg.Caching.Plan(t.Kind, f.Anthropic(), t.Model, t.Cache.Strategy, conversation, m.InTurn)
+			out.Targets[i].Cache = r.cfg.Caching.Plan(t.Kind, markable(t.Kind, f.Anthropic(), t.Model), t.Model, t.Cache.Strategy,
+				conversation, m.InTurn)
 		}
 	}
 	// The family's learned lifetimes: an hour where its calls' gaps pay for
@@ -667,7 +669,8 @@ func (r *Resolver) target(p snapshot.Opened, f wire.Format, model string) (gatew
 	// A project's own endpoint is marked only where its kind takes nothing
 	// else: what it does with breakpoints is its own.
 	t.Pooled = r.cfg.Pooled(p.Kind, p.BaseURL)
-	t.Cache.Strategy = gateway.DefaultCacheStrategy(p.Kind, format == providers.FormatAnthropic, m.CacheWritePriced && t.Pooled)
+	t.Cache.Strategy = gateway.DefaultCacheStrategy(p.Kind, markable(p.Kind, format == providers.FormatAnthropic, t.Model),
+		m.CacheWritePriced && t.Pooled)
 	if format == apiFormat(f) {
 		return t, true
 	}
@@ -872,4 +875,16 @@ func (r *Resolver) ServedModels(snap *snapshot.Snapshot, format string) (models 
 		}
 	}
 	return models, open
+}
+
+// markable reports a call in Anthropic's format whose model caches what a
+// request marks: every Anthropic-format target but Bedrock's models
+// through Converse that don't (Llama, Mistral, Cohere, …: only Claude and
+// Nova take Converse's checkpoints), which are planned as caching on their
+// own, unmarked.
+func markable(kind string, anthropic bool, model string) bool {
+	if !anthropic {
+		return false
+	}
+	return kind != providers.Bedrock || !converse.For(model) || converse.CachingOf(model) != converse.CachesNothing
 }

@@ -37,6 +37,15 @@ func TestCheckClouds(t *testing.T) {
 	if got := reqs[len(reqs)-1]; got.URLPath != "/anthropic/v1/messages" || !strings.Contains(string(got.Body), `"anthropic.claude-haiku-5-5"`) {
 		t.Fatalf("bedrock asked %s: %s", got.URLPath, got.Body)
 	}
+	// An account listing Nova first is checked through Converse.
+	if problem := add("bedrock-nova", providers.Bedrock, "", providers.Credential{APIKey: "ABSK-test-key-0000"},
+		"us.amazon.nova-lite-v1:0"); problem != "" {
+		t.Fatalf("bedrock nova: %s", problem)
+	}
+	reqs = w.Fake.Requests()
+	if got := reqs[len(reqs)-1]; got.URLPath != "/model/us.amazon.nova-lite-v1:0/converse" || strings.Contains(string(got.Body), `"model"`) {
+		t.Fatalf("bedrock nova asked %s: %s", got.URLPath, got.Body)
+	}
 	if problem := add("vertex", providers.Vertex, "/v1/projects/acme-prod/locations/global",
 		providers.Credential{ServiceAccount: sa.JSON}, "gemini-3.8-flash"); problem != "" {
 		t.Fatalf("vertex: %s", problem)

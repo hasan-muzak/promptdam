@@ -107,7 +107,10 @@ func (s *Service) callCloud(ctx context.Context, p *pdent.Provider) string {
 	case FormatFor(p.Kind, "", model) == FormatOpenAI:
 		f, path = wire.OpenAIChat, "/chat/completions"
 	}
-	body = gateway.CloudBody(t, f, path, body)
+	body, _, err = gateway.CloudBody(t, f, path, body)
+	if err != nil {
+		return "the check can't be sent to " + model
+	}
 	req, err := http.NewRequestWithContext(ctx, method, gateway.UpstreamURL(t, f, path, false), bytes.NewReader(body))
 	if err != nil {
 		return "the account's address is invalid"
@@ -121,6 +124,7 @@ func (s *Service) callCloud(ctx context.Context, p *pdent.Provider) string {
 	for k, v := range header {
 		req.Header[k] = v
 	}
+	gateway.CloudHeader(t, f, req.Header, false)
 	if err := gateway.Sign(ctx, t, req, body); err != nil {
 		var refused *cloudauth.TokenError
 		if errors.As(err, &refused) {
@@ -132,8 +136,9 @@ func (s *Service) callCloud(ctx context.Context, p *pdent.Provider) string {
 	if err != nil {
 		return "the cloud could not be reached"
 	}
+	defer func() { _ = res.Body.Close() }()
+	gateway.CloudResponse(t, f, res)
 	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 1<<20))
-	_ = res.Body.Close()
 	switch {
 	case res.StatusCode < 300:
 		return ""

@@ -171,7 +171,7 @@ func refusedAvoided(body []byte) bool {
 func refusedCaching(body []byte) int {
 	b := bytes.ToLower(body)
 	switch {
-	case bytes.Contains(b, []byte("cache_control")):
+	case bytes.Contains(b, []byte("cache_control")) || bytes.Contains(b, []byte("cachepoint")):
 		return refusedMarkers
 	case bytes.Contains(b, []byte("prompt_cache_key")) || bytes.Contains(b, []byte("session")):
 		return refusedOther

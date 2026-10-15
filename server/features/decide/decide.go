@@ -250,7 +250,11 @@ func (d *Decider) ask(ctx context.Context, q resolver.Question, timeout time.Dur
 	if f.Anthropic() {
 		path = "/messages"
 	}
-	body, err := d.post(ctx, t, gateway.UpstreamURL(t, f, path, false), gateway.CloudBody(t, f, path, payload), f.Anthropic())
+	payload, _, err = gateway.CloudBody(t, f, path, payload)
+	if err != nil {
+		return answer{}, err
+	}
+	body, err := d.post(ctx, t, f, gateway.UpstreamURL(t, f, path, false), payload)
 	if err != nil {
 		return answer{}, err
 	}
@@ -302,7 +306,7 @@ func (d *Decider) askDecisions(ctx context.Context, q resolver.Question) (answer
 	if err != nil {
 		return answer{}, err
 	}
-	body, err := d.post(ctx, t, decisionsURL(t.BaseURL), payload, false)
+	body, err := d.post(ctx, t, wire.OpenAIChat, decisionsURL(t.BaseURL), payload)
 	if err != nil {
 		return answer{}, err
 	}
@@ -374,19 +378,20 @@ func encode(v any) ([]byte, error) {
 }
 
 // post sends a question to a decision model at url and reads its answer.
-func (d *Decider) post(ctx context.Context, t gateway.Target, url string, payload []byte, anthropic bool) ([]byte, error) {
+func (d *Decider) post(ctx context.Context, t gateway.Target, f wire.Format, url string, payload []byte) ([]byte, error) {
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
 	hreq.Header.Set("Content-Type", "application/json")
 	hreq.Header.Set("Accept-Encoding", "identity")
-	if anthropic {
+	if f.Anthropic() {
 		hreq.Header.Set("Anthropic-Version", "2023-06-01")
 	}
 	for k, v := range t.Header {
 		hreq.Header[k] = v
 	}
+	gateway.CloudHeader(t, f, hreq.Header, false)
 	if err := gateway.Sign(ctx, t, hreq, payload); err != nil {
 		return nil, fmt.Errorf("decide: signing for %s: %w", t.Provider, err)
 	}
@@ -394,6 +399,7 @@ func (d *Decider) post(ctx context.Context, t gateway.Target, url string, payloa
 	if err != nil {
 		return nil, fmt.Errorf("decide: %w", err)
 	}
+	gateway.CloudResponse(t, f, res)
 	defer func() { _ = res.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {

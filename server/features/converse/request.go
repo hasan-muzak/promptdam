@@ -43,6 +43,28 @@ func CachingOf(model string) Caching {
 	return CachesNothing
 }
 
+// For reports a Bedrock model called through Converse: every one but
+// Claude in its current form (claude-…, anthropic.claude-… with no region
+// profile and no version), which Bedrock's Anthropic API serves. Older
+// Claude versions are named by their profile ids (us.anthropic.claude-
+// sonnet-4-5-20250929-v1:0), as Bedrock's runtime wants them.
+func For(model string) bool {
+	m := strings.ToLower(model)
+	if !strings.Contains(m, "claude") {
+		return true
+	}
+	if region, _, ok := strings.Cut(m, "."); ok && slices.Contains(profiles, region) {
+		return true
+	}
+	return versioned.MatchString(m) || strings.HasPrefix(m, "arn:")
+}
+
+// profiles are the region prefixes of Bedrock's cross-region profiles.
+var profiles = []string{"us", "eu", "apac", "jp", "au", "ca", "in", "global", "us-gov"}
+
+// versioned is a Bedrock id's version suffix (-v1, -v1:0).
+var versioned = regexp.MustCompile(`-v\d+(:\d+)?$`)
+
 // claude reports a Claude model, which takes Anthropic's own fields
 // (thinking, top_k, effort) through additionalModelRequestFields.
 func claude(model string) bool { return CachingOf(model) == CachesClaude }

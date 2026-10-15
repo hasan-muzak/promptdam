@@ -98,14 +98,16 @@ func TestCredentialCheck(t *testing.T) {
 }
 
 // A cloud calls Claude in Anthropic's API, the others in the
-// OpenAI-compatible one, each by the cloud's own name.
+// OpenAI-compatible one, each by the cloud's own name; Bedrock calls every
+// model in Anthropic's format (Converse is its dialect).
 func TestCloudModels(t *testing.T) {
 	for _, tt := range []struct {
 		kind, model, format, id string
 	}{
 		{Bedrock, "claude-haiku-5-5", FormatAnthropic, "anthropic.claude-haiku-5-5"},
 		{Bedrock, "anthropic.claude-haiku-5-5", FormatAnthropic, "anthropic.claude-haiku-5-5"},
-		{Bedrock, "openai.gpt-oss-120b", FormatOpenAI, "openai.gpt-oss-120b"},
+		{Bedrock, "openai.gpt-oss-120b-1:0", FormatAnthropic, "openai.gpt-oss-120b-1:0"}, // through Converse
+		{Bedrock, "us.meta.llama3-3-70b-instruct-v1:0", FormatAnthropic, "us.meta.llama3-3-70b-instruct-v1:0"},
 		{Vertex, "gemini-3.8-flash", FormatOpenAI, "google/gemini-3.8-flash"},
 		{Vertex, "claude-haiku-4-5@20251001", FormatAnthropic, "claude-haiku-4-5@20251001"},
 		{Azure, "my-gpt", FormatOpenAI, "my-gpt"},
