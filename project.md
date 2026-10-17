@@ -410,7 +410,7 @@ products/promptdam/
 │   └── app/pages: index (spend + savings), requests/, requests/[id], families/, families/[id], routers/,
 │                  routers/[id] (tiers, report), routes/, firewall/, budgets/, providers/, savings/ (ledger +
 │                  reports), settings/* (keel)
-├── bench/                         latency + throughput harness (vegeta/k6 scripts, fake upstream)
+├── bench/                         overhead gate, open-loop load generator (cmd/load, load.sh), fake upstream
 ├── deploy/                        compose.yaml (api, gateway, worker + shared fragments), Caddyfile, env.*.sops;
 │                                  later a second gateway VPS behind Cloudflare Load Balancing
 └── docs/{adr,interviews}/
@@ -436,7 +436,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
   - **Done 2026-10-07, Stripe (test mode):** `api stripe sync` created the portal, the `promptdam_requests` meter, and Pro, Team and Business with monthly and yearly prices plus request overage. The webhook events are those of `docs/billing-policy.md`; others are acknowledged and ignored.
   - **Needs you:** the landing page and design partners.
 - **Exit (met 2026-10-07):** proxy overhead p99 < 40 ms on the bench with streaming; OpenAI and Anthropic SDKs work unmodified with only `base_url` changed.
-  - Bench on a laptop running client, fake provider and gateway at once: p99 overhead +2.4 ms (chat), +13.7 ms (chat stream), +19.1 ms (Anthropic stream). To re-measure on the VPS in S4.4.
+  - Bench on a laptop running client, fake provider and gateway at once: p99 overhead +2.4 ms (chat), +13.7 ms (chat stream), +19.1 ms (Anthropic stream). Re-measured 2026-10-17 on the whole path (keys, firewall, counters, request log; `task bench`): +1.3 ms (chat), +5.4 ms (chat stream), +6.1 ms (Anthropic stream) at p99 ([docs/performance.md](docs/performance.md)).
   - `openai-go` (Chat stream and not, Responses stream and not, error codes) and `anthropic-sdk-go` (Messages stream and not, count_tokens) pass through the gateway in `features/gateway/sdk_test.go`.
 
 ### S1: Gateway core (Thu Mar 11 – Mon Mar 22)
@@ -678,6 +678,8 @@ Model routers replace per-family savings experiments, and cross-format translati
     - Calls the firewall tokenized aren't kept.
 - [ ] S4.3 Docs: concepts (families, rules, routers, ledger, firewall), provider setup, migration guides (from OpenRouter, LiteLLM, Portkey, Helicone), security and data handling page, API reference, `llms.txt`.
 - [ ] S4.4 Load test at 1k req/s with streaming on the Promptdam VPS (2 gateway replicas behind Caddy); uptime checks; status page; documented client-side fallback to the provider for when the gateway is unreachable.
+  - **Laptop rehearsal done 2026-10-17** ([docs/performance.md](docs/performance.md)): the open-loop load test (`task bench:load`, production builds, two replicas, `deploy/Caddyfile`, a Claude Code-like call mix), the gateway's loopback pprof and counters (`PROMPTDAM_GATEWAY_DEBUG_ADDR`), the whole-path overhead gate, and the client-side fallback ([docs/fallback.md](docs/fallback.md)). At 1k calls/s on one replica: every call 200, a request-log row per call, 0 dropped, heap under 280 MiB, overhead +0.6 to +1.7 ms p50 and +30 to +37 ms p99 on a busy laptop. Fixed on the way: `secret_assignment` 6.5× faster (a 600 KB agent call +113 ms → +18 ms at p50), pooled request buffers (heap 1.1 GB → 280 MiB), Caddy's health check on `/healthz` (a shared Valkey outage would have taken every replica out).
+  - **Left:** the 10-minute soak behind Caddy, the step to 4k calls/s and the Valkey/ClickHouse outage run (scenarios b, d, e) on a quiet machine or the VPS, which is S4.6's first job; uptime checks and the status page with production.
 - [x] S4.5 Security pass: vault for provider keys, payload-free default, tenant isolation, SSRF guard on custom provider URLs, dependency audit, signed container images.
   - **Done 2026-10-08:** an audit of the gateway, the API and what is stored, then a commit per fix.
   - Already sound:

@@ -287,8 +287,10 @@ Promptdam saved 61% to 67%. What the runs show:
   traffic, where most gateways route request by request.
 - **Quality is gated and monitored**: shadow mode, an activation gate, automatic demotion. Not a one-time benchmark.
 - **The ledger is checkable**: every request priced, every saving explained and labelled with how it is known.
-- **Low overhead.** The gateway adds about 3 to 7 ms at the 99th percentile in benchmarks. Most requests are decided
-  in microseconds; only an unsure classifier waits on a decision model.
+- **Low overhead.** The gateway adds about 1 ms at the median and up to 6 ms at the 99th percentile on its whole path
+  (keys, firewall, counters, request log), and 30 to 40 ms at the 99th percentile at 1,000 calls a second on a busy
+  laptop ([performance](performance.md)). Most requests are decided in microseconds; only an unsure classifier waits
+  on a decision model.
 
 ## Where it stands
 

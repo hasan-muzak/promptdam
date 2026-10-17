@@ -8,10 +8,10 @@ prompts.
 | Path | What |
 |---|---|
 | `server/` | API, gateway, worker and migrate (Go, module `github.com/hasan-muzak/promptdam`); every wire-visible name is in `server/brand` |
-| `bench/` | The gateway's overhead budget and a fake model provider |
+| `bench/` | The gateway's overhead budget, a load test and a fake model provider |
 | `examples/` | Calling the gateway from curl and Python |
 | `web/site/`, `web/app/`, `web/admin/` | The landing site, the client dashboard and the staff admin (to come) |
-| `deploy/` | The server image |
+| `deploy/` | The server image and the Caddyfile in front of the gateway's replicas |
 | `project.md` | The plan |
 
 ## Coding agents (Claude Code)
@@ -29,6 +29,13 @@ key on every later call:
 
 Give coding agents a project of their own with secrets on `redact`, and deny Claude Code reading `.env` files. The
 whole story, with the numbers: [docs/coding-agents.md](docs/coding-agents.md).
+
+## Performance
+
+The gateway adds about 1 ms at the median and 5 to 6 ms at p99 to an ordinary call with everything on (keys,
+firewall, counters, request log), and about 18 ms to a coding agent's 600 KB call; one replica served 1,000 calls a
+second without an error. Measured on a laptop so far: [docs/performance.md](docs/performance.md). For when the
+gateway can't be reached, and when an app should not go around it: [docs/fallback.md](docs/fallback.md).
 
 It lives in the keel workspace at `products/promptdam/promptdam` and builds on
 the core module (`github.com/hasan-muzak/keel-core`). The name is provisional:
