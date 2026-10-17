@@ -133,6 +133,17 @@ tasks:
     cmds:
       - go test ./server/livecheck -run TestDoors -v -count=1 -timeout 10m
 
+  demo:claudecode:
+    desc: "Claude Code (the claude CLI on PATH) fixes a small Go repository on PROMPTDAM_TEST_ANTHROPIC_KEY (.env), straight to Anthropic and through the gateway with the firewall off, at its defaults and redacting secrets; then the ledger beside what Claude Code says it spent (a dollar or two, stops past $3)"
+    dotenv: [".env"]
+    env:
+      KEEL_TEST_DATABASE_URL: postgres://keel:keel@localhost:25432/keel_test?sslmode=disable
+      KEEL_TEST_VALKEY_URL: redis://localhost:26379/15
+      KEEL_TEST_CLICKHOUSE_URL: clickhouse://keel:keel@localhost:29000/keel_test
+      KEEL_TEST_S3_ENDPOINT: http://localhost:29100
+    cmds:
+      - go test ./server/livecheck -run TestClaudeCode -v -count=1 -timeout 40m
+
   demo:traffic:
     desc: "Ten users chatting with the customs assistant at once, paced like people (breaks past the 5-minute cache), on PROMPTDAM_TEST_ANTHROPIC_KEY (.env), then the ledger (about $1 and 30 minutes, stops past $3)"
     dotenv: [".env"]
