@@ -52,6 +52,9 @@ type Options struct {
 	// RefuseMarkers refuses Chat Completions calls with cache breakpoints
 	// (cache_control), as a provider that doesn't take them.
 	RefuseMarkers bool
+	// Forget keeps no calls (Requests stays empty): a server under load
+	// would hold every body it was sent.
+	Forget bool
 }
 
 // routed adds Backend, Cost and Prompt to a Chat Completions answer or
@@ -161,7 +164,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	path, urlModel, urlStream := cloudPath(r.URL.Path)
 	s.mu.Lock()
-	s.requests = append(s.requests, Request{Path: path, URLPath: r.URL.Path, Header: r.Header.Clone(), Body: body})
+	if !s.opts.Forget {
+		s.requests = append(s.requests, Request{Path: path, URLPath: r.URL.Path, Header: r.Header.Clone(), Body: body})
+	}
 	fail := 0
 	if len(s.failures) > 0 {
 		fail, s.failures = s.failures[0], s.failures[1:]
@@ -287,11 +292,17 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) *events {
 	return &events{s: s, w: w, r: r}
 }
 
-// send writes one event (name may be empty); false when the client left.
+// send writes one event (name may be empty) after the chunk delay; false
+// when the client left.
 func (e *events) send(name string, data any) bool {
 	if !e.s.sleep(e.r, e.s.opts.ChunkDelay) {
 		return false
 	}
+	return e.write(name, data)
+}
+
+// write writes one event at once.
+func (e *events) write(name string, data any) bool {
 	payload, ok := data.(string)
 	if !ok {
 		b, _ := json.Marshal(data)
@@ -355,12 +366,12 @@ func (s *Server) chatStream(w http.ResponseWriter, r *http.Request, model string
 	if !e.send("", chunk(map[string]any{}, "stop")) {
 		return
 	}
-	if usage {
+	if usage { // right after the last choice, as OpenAI sends it
 		last := s.routed(map[string]any{
 			"id": "chatcmpl-fake", "object": "chat.completion.chunk", "created": 1790000000, "model": model,
 			"choices": []any{}, "usage": openAIUsage(s.opts.Chunks),
 		})
-		if !e.send("", last) {
+		if !e.write("", last) {
 			return
 		}
 	}

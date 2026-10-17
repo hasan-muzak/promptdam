@@ -156,7 +156,17 @@ tasks:
       - go test ./server/livecheck -run TestCustomsTraffic -v -count=1 -timeout 90m
 
   bench:
-    desc: "Measure the gateway's overhead against a fake provider (S0 exit: p99 within 40 ms), then its own cost per call"
+    desc: "Measure the gateway's overhead against a fake provider, alone and on its whole path (keys, firewall, counters, request log): p99 within 40 ms; then its own cost per call. Needs the stack up"
+    env:
+      KEEL_TEST_DATABASE_URL: postgres://keel:keel@localhost:25432/keel_test?sslmode=disable
+      KEEL_TEST_VALKEY_URL: redis://localhost:26379/15
+      KEEL_TEST_CLICKHOUSE_URL: clickhouse://keel:keel@localhost:29000/keel_test
+      KEEL_TEST_S3_ENDPOINT: http://localhost:29100
     cmds:
       - PROMPTDAM_BENCH=1 go test ./bench/ -run TestOverheadBudget -v -count=1
-      - go test ./bench/ ./server/features/gateway/ -run '^$' -bench . -benchmem
+      - go test ./bench/ -run '^$' -bench . -benchmem
+
+  bench:load:
+    desc: "Load-test release builds of the gateway behind Caddy at a fake provider (docs/performance.md): task bench:load -- a|b|c|d|e, or -- run -rate 200. Heavy: needs a quiet machine, the stack up and migrated, and caddy"
+    cmds:
+      - bench/load.sh {{.CLI_ARGS}}

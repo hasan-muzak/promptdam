@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/keel"
 
 	"github.com/hasan-muzak/promptdam/server/brand"
+	"github.com/hasan-muzak/promptdam/server/catalog"
 	"github.com/hasan-muzak/promptdam/server/core"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 )
@@ -48,8 +50,12 @@ func devCommands(c *keel.Core, app *core.App) []cli.Command {
 			name := fs.String("name", "Dev", "the organization's name")
 			openaiKey := fs.String("openai-key", "", "an OpenAI API key: add the real OpenAI provider instead of the fake ones")
 			anthropicKey := fs.String("anthropic-key", "", "an Anthropic API key: add the real Anthropic provider instead of the fake ones")
+			plan := fs.String("plan", "", "a plan to grant the organization, as staff would (team: load tests past Free's 50k requests)")
 			if err := fs.Parse(args); err != nil {
 				return err
+			}
+			if _, ok := catalog.Catalog.Plan(*plan); *plan != "" && !ok {
+				return fmt.Errorf("no plan %q", *plan)
 			}
 			var real []realProvider
 			if *openaiKey != "" {
@@ -58,7 +64,7 @@ func devCommands(c *keel.Core, app *core.App) []cli.Command {
 			if *anthropicKey != "" {
 				real = append(real, realProvider{kind: "anthropic", key: *anthropicKey})
 			}
-			return seed(ctx, c, app, out, *name, *upstream, *providerKey, real)
+			return seed(ctx, c, app, out, *name, *upstream, *providerKey, *plan, real)
 		},
 	}}
 }
@@ -66,7 +72,7 @@ func devCommands(c *keel.Core, app *core.App) []cli.Command {
 // realProvider is a provider of a known kind, at its own API.
 type realProvider struct{ kind, key string }
 
-func seed(ctx context.Context, c *keel.Core, app *core.App, out io.Writer, name, upstream, providerKey string, real []realProvider) error {
+func seed(ctx context.Context, c *keel.Core, app *core.App, out io.Writer, name, upstream, providerKey, plan string, real []realProvider) error {
 	u, err := c.Tenancy.SignIn(ctx, identity.Claims{UID: "dev-seed", Email: "dev@" + brand.Key + ".test", EmailVerified: true, Name: "Dev"})
 	if err != nil {
 		return err
@@ -78,6 +84,12 @@ func seed(ctx context.Context, c *keel.Core, app *core.App, out io.Writer, name,
 	prj, err := c.Tenancy.CreateProject(ctx, org.ID, "Dev", "")
 	if err != nil {
 		return err
+	}
+	if plan != "" { // the staff override billing reads before any subscription
+		v, _ := json.Marshal(plan)
+		if err := c.DB.Ent.OrgFlag.Create().SetOrgID(org.ID).SetKey("plan").SetValue(v).Exec(entx.SkipTenant(ctx)); err != nil {
+			return err
+		}
 	}
 	_, key, err := c.APIKeys.Issue(ctx, apikeys.IssueInput{
 		Org: org.ID, Project: &prj.ID, Name: "dev", Kind: apikeys.Secret, Scopes: []string{core.ScopeGateway}, CreatedBy: &u.ID,

@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           fakeupstream.New(fakeupstream.Options{TTFB: *ttfb, ChunkDelay: *delay, Chunks: *chunks}),
+		Handler:           fakeupstream.New(fakeupstream.Options{TTFB: *ttfb, ChunkDelay: *delay, Chunks: *chunks, Forget: true}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	slog.Info("fake provider listening", "addr", *addr, "base_url", "http://localhost"+*addr+"/v1")
