@@ -150,6 +150,14 @@ func run() error {
 		IdleTimeout:    120 * time.Second,
 		MaxHeaderBytes: 64 << 10,
 	}
+	if cfg.GatewayDebugAddr != "" {
+		dbg, err := debugServer(cfg.GatewayDebugAddr, log)
+		if err != nil {
+			return err
+		}
+		go func() { _ = dbg.ListenAndServe() }()
+		defer func() { _ = dbg.Close() }()
+	}
 	errc := make(chan error, 1)
 	go func() {
 		slog.Info("promptdam gateway listening", "addr", cfg.GatewayAddr)

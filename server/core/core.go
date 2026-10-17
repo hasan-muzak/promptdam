@@ -30,6 +30,9 @@ type Config struct {
 	// GatewayURL is where clients reach the gateway from outside (their
 	// base URL is GatewayURL + "/v1"), for setup instructions.
 	GatewayURL string `env:"PROMPTDAM_GATEWAY_URL" default:"http://localhost:8282"`
+	// GatewayDebugAddr serves the gateway's pprof and expvar on a loopback
+	// address (127.0.0.1:port); empty, nowhere.
+	GatewayDebugAddr string `env:"PROMPTDAM_GATEWAY_DEBUG_ADDR"`
 	// ModelPrices is a JSON model price catalog (pkg/llm's shape). Empty:
 	// the embedded one.
 	ModelPrices string `env:"PROMPTDAM_MODEL_PRICES"`

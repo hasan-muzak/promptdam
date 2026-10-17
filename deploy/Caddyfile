@@ -1,0 +1,32 @@
+# Caddy in front of the gateway's replicas: one address for clients, calls
+# shared round robin, a replica that stops answering /healthz taken out
+# until it does again. Not /readyz: it fails when Valkey does, and the
+# replicas share one Valkey, so it would take them all out at once while
+# the gateway serves on without it (fail-open, project.md §6.1). Answers
+# stream through as they are written (no buffering), and request bodies up
+# to the gateway's own limit pass.
+#
+# The load test (bench/load.sh) runs it on :8280 in front of two local
+# replicas; production (S4.6) sets the site to the gateway's domain, which
+# turns on HTTPS, and the replicas to their addresses.
+{
+	admin off
+}
+
+{$PROMPTDAM_GATEWAY_SITE::8280} {
+	request_body {
+		max_size 32MB
+	}
+	reverse_proxy {$PROMPTDAM_GATEWAY_REPLICAS:localhost:8282 localhost:8283} {
+		lb_policy round_robin
+		lb_retries 1
+		health_uri /healthz
+		health_interval 5s
+		health_timeout 2s
+		flush_interval -1
+		transport http {
+			keepalive 90s
+			keepalive_idle_conns_per_host 1024
+		}
+	}
+}
