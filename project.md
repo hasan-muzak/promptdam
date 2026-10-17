@@ -82,7 +82,7 @@ Basic routing and logging are free elsewhere, so Promptdam's plans are priced on
 4. **A firewall built in, not an enterprise add-on.**
    - Secrets are blocked by default on every plan.
    - PII redaction with reversible tokenisation, CEL policies, per-developer budgets.
-   - Works for **coding agents**: point Claude Code (`ANTHROPIC_BASE_URL`) or other OpenAI/Anthropic-compatible tools at Promptdam.
+   - Works for **coding agents**: point Claude Code (`ANTHROPIC_BASE_URL`) or other OpenAI/Anthropic-compatible tools at Promptdam. Measured with the real Claude Code on 2026-10-17 (`task demo:claudecode`, [docs/coding-agents.md](docs/coding-agents.md)): the same cost and tokens as calling Anthropic directly, about 0 ms added before the first byte. Secrets can be kept from the provider (redact), but an agent can't then edit the lines that hold them.
 5. **Hosted, minimal-dependency Go gateway.** Low overhead, signed builds, no customer-run Python proxy to patch.
 
 ---
@@ -145,7 +145,7 @@ Basic routing and logging are free elsewhere, so Promptdam's plans are priced on
 - **Coding-agent pack:**
   - per-developer keys with SSO-issued tokens
   - setup guides for Claude Code, Cursor and other base-URL-configurable tools
-  - secrets-blocking defaults tuned for source code.
+  - secrets-blocking defaults tuned for source code (code that reads a secret isn't one since 2026-10-17; tokenizing secrets for agents was decided against for now, §11).
 - **Employee chat:** guides for Open WebUI and LibreChat pointed at Promptdam (instant "AI firewall for employees" with no build).
 - SSO, SCIM, audit export.
 
@@ -323,7 +323,7 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
 
 ### 6.4 Firewall (`features/firewall`)
 - Every text of a request is scanned before anything is sent anywhere: messages, system, tools and tool results, in every API format. Identifiers (`model`, `role`, `id`…) and inline data (base64 images, files) are skipped. Detectors come from `pkg/redact`, grouped in Promptdam's presets (`GET /v1/firewall/presets`):
-  - **"source code"**, the secret class: `.env` assignments, private keys, cloud credentials, connection strings, API tokens
+  - **"source code"**, the secret class: `.env` assignments, private keys, cloud credentials, connection strings, API tokens. Code that reads a secret isn't one (`Token: req.Token`, `os.Getenv("KEY")`, `cfg[name]`: `firewall/code.go`), and Anthropic's `metadata.user_id`, an opaque id by contract, isn't scanned: Claude Code's session id there was blocked on every call (found 2026-10-17)
   - **"customer data"**, the pii class: email, phone, card, IBAN, national IDs (IPv4 only when chosen)
   - **custom**: a project's own named RE2 patterns.
 - **Actions, per class:**
@@ -497,7 +497,7 @@ Prerequisites: core milestones `core-v0.3.0` (policy, vault) and `pkg/llm` from 
 - [ ] S1.9 Quickstarts: OpenAI SDK (Py/TS), Anthropic SDK (Py/TS), Vercel AI SDK, LangChain, Claude Code (`ANTHROPIC_BASE_URL`), curl.
   - **Done 2026-10-07:**
     - `examples/`: curl and the official Python SDKs, run end to end on the local stack.
-    - Claude Code's settings are in its README.
+    - Claude Code's settings are in its README; run end to end with the real CLI on 2026-10-17 (`task demo:claudecode`, [docs/coding-agents.md](docs/coding-agents.md)).
     - The Go SDKs are covered by `sdk_test.go`.
     - `task promptdam:dev:fake` and `task promptdam:dev:seed` support local runs.
   - Still open: TypeScript, the Vercel AI SDK and LangChain examples, and the docs pages.
@@ -867,4 +867,5 @@ Model routers replace per-family savings experiments, and cross-format translati
 - [x] Routers per plan (decided 2026-10-08): shadow mode with evaluation on every plan, active routers on Pro, learned placement (classifier, decision model) on Team (§5).
 - [x] Images: **GHCR, signed with cosign keyless**, an SPDX SBOM attested with each (decided 2026-10-08). No signing key to keep; the VPS verifies the release workflow's identity.
 - [x] Payload-free mode: **built before launch** (decided 2026-10-08), the Business plan's guarantee that nothing a call says is kept. Turning it on deletes what was kept; a downgrade keeps it on.
+- [x] Secrets for coding agents: **not tokenized, for now** (decided with the owner, 2026-10-17). Tokenizing would let an agent edit lines that hold a secret without the provider seeing it, but a prompt injection can still lead the agent to write the restored value somewhere and send it out, so it would be a security promise with a known hole. Coding agents get a project of their own with secrets redacted, and the docs say what that costs ([docs/coding-agents.md](docs/coding-agents.md)). Revisit when a customer asks, with an injection scenario in the live check.
 - [x] Include OpenAI Responses API routing at MVP: **passthrough only** (auth, budgets, usage, cost, log; no model routing or caching), routing later (decided 2026-10-07).

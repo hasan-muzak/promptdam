@@ -10,7 +10,7 @@ for Claude, an Anthropic one for Gemini or a router, translated both ways.
 |---|---|---|
 | OpenAI (Python, Node, Go, …) | `https://gateway.promptdam.dev/v1` (`OPENAI_BASE_URL`) | `OPENAI_API_KEY=pd_sk_…` |
 | Anthropic (Python, Node, Go, …) | `https://gateway.promptdam.dev` (`ANTHROPIC_BASE_URL`) | `ANTHROPIC_API_KEY=pd_sk_…` |
-| Claude Code | `ANTHROPIC_BASE_URL=https://gateway.promptdam.dev` | `ANTHROPIC_AUTH_TOKEN=pd_sk_…` |
+| Claude Code ([setup and the firewall's limits](../docs/coding-agents.md)) | `ANTHROPIC_BASE_URL=https://gateway.promptdam.dev` | `ANTHROPIC_AUTH_TOKEN=pd_sk_…` (and unset `ANTHROPIC_API_KEY`) |
 | Google's (google-genai for Python, JS, Go, Java) | `https://gateway.promptdam.dev/gemini` (`GOOGLE_GEMINI_BASE_URL`) | `GEMINI_API_KEY=pd_sk_…` |
 | AWS's (boto3, JS v3, Go v2, Java v2, .NET) | `https://gateway.promptdam.dev/bedrock` (the client's endpoint) | a Bedrock API key: `pd_sk_…` |
 | Anthropic's `AnthropicBedrock` | `https://gateway.promptdam.dev/bedrock` (`base_url`) | `api_key=pd_sk_…` |
