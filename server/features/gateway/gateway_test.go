@@ -332,6 +332,53 @@ func TestGatewayErrorsTakeTheClientsAPIShape(t *testing.T) {
 	}
 }
 
+// Bodies of every size reach the provider whole: small ones and those
+// sent without a length in pooled buffers, large ones in a buffer of
+// their own, and one over the limit is refused either way.
+func TestBodiesArriveWhole(t *testing.T) {
+	const limit = 1 << 20
+	e := setup(t, fakeupstream.Options{}, nil, func(c *gateway.Config) { c.MaxBody = limit })
+	const head, tail = `{"model":"gpt-5","messages":[{"role":"user","content":"`, `"}]}`
+	content := func(size int) string { return strings.Repeat("a", size-len(head)-len(tail)) }
+	body := func(size int) string { return head + content(size) + tail }
+	send := func(b string, chunked bool) int {
+		var r io.Reader = strings.NewReader(b)
+		if chunked {
+			r = io.MultiReader(r) // no length: sent chunked
+		}
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, e.gateway.URL+"/v1/chat/completions", r)
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, res.Body)
+		_ = res.Body.Close()
+		return res.StatusCode
+	}
+	for _, c := range []struct {
+		size    int
+		chunked bool
+	}{{100, false}, {200 << 10, false}, {200 << 10, true}, {100, false}, {limit, false}, {limit, true}, {100, true}} {
+		if status := send(body(c.size), c.chunked); status != http.StatusOK {
+			t.Fatalf("%d bytes (chunked %v): %d", c.size, c.chunked, status)
+		}
+		reqs := e.fake.Requests()
+		var sent struct {
+			Messages []struct{ Content string } `json:"messages"`
+		}
+		if err := json.Unmarshal(reqs[len(reqs)-1].Body, &sent); err != nil || len(sent.Messages) != 1 ||
+			sent.Messages[0].Content != content(c.size) {
+			t.Fatalf("%d bytes (chunked %v): the provider got %d bytes", c.size, c.chunked, len(reqs[len(reqs)-1].Body))
+		}
+	}
+	for _, chunked := range []bool{false, true} {
+		if status := send(body(limit+1), chunked); status != http.StatusRequestEntityTooLarge {
+			t.Fatalf("over the limit (chunked %v): %d", chunked, status)
+		}
+	}
+}
+
 // A provider that goes quiet mid-answer is cut, and so is the client's
 // connection: the stream doesn't end as if complete.
 func TestQuietProvidersAreCut(t *testing.T) {

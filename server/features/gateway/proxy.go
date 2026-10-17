@@ -36,6 +36,12 @@ const maxMeteredBody = 16 << 20
 
 var bodies = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
+// maxPooledBody is the largest request buffer kept for the next call. A
+// pool of big ones hands a megabyte to every small call, which holds it for
+// its whole stream: at a thousand calls a second, 482 MB of a 542 MB heap
+// (2026-10-17). Larger bodies get a buffer of their Content-Length.
+const maxPooledBody = 64 << 10
+
 // call is one request in flight.
 type call struct {
 	h   *Handler
@@ -111,13 +117,18 @@ func (c *call) keep(p []byte) {
 }
 
 func (c *call) serve() {
-	buf := bodies.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer func() {
-		if buf.Cap() <= 4<<20 {
-			bodies.Put(buf)
-		}
-	}()
+	var buf *bytes.Buffer
+	if n := c.r.ContentLength; n > maxPooledBody && n <= c.h.cfg.MaxBody {
+		buf = bytes.NewBuffer(make([]byte, 0, n+bytes.MinRead)) // read once, never grown
+	} else {
+		buf = bodies.Get().(*bytes.Buffer)
+		buf.Reset()
+		defer func() {
+			if buf.Cap() <= maxPooledBody {
+				bodies.Put(buf)
+			}
+		}()
+	}
 	if _, err := buf.ReadFrom(http.MaxBytesReader(c.w, c.r.Body, c.h.cfg.MaxBody)); err != nil {
 		if errors.As(err, new(*http.MaxBytesError)) {
 			c.fail(&Error{Status: http.StatusRequestEntityTooLarge, Type: TypeTooLarge, Code: "request_too_large",
