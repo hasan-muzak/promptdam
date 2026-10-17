@@ -48,7 +48,7 @@ func (r *Response) Body(doc []byte) []byte {
 			return "", false
 		}
 		if r.scan {
-			r.found(r.e.r.Find(s))
+			r.found(r.e.find(s))
 		}
 		if r.tokens != nil && bytes.Contains([]byte(s), tokenMark) {
 			if restored := r.tokens.Restore(s); restored != s {

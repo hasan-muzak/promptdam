@@ -268,3 +268,31 @@ func TestExcerptsMaskEverything(t *testing.T) {
 		t.Fatalf("excerpt %q", ex)
 	}
 }
+
+// TestCodeIsNotASecret: a coding agent's call holds code that names
+// secrets (a struct field, an environment lookup) and Claude Code's session
+// id in metadata.user_id; none of it is a secret. A literal given to the
+// same names still is.
+func TestCodeIsNotASecret(t *testing.T) {
+	e := engine(t, nil)
+	code := "func NewCharge(req Request) Charge {\n\treturn Charge{Token: req.Token, Auth: s.cfg.APIKey}\n}\n" +
+		"var apiKey = os.Getenv(\"BILLING_API_KEY\")\nsecret_key = settings[name]"
+	body, _ := json.Marshal(map[string]any{"model": "claude-sonnet-5-5", "max_tokens": 100,
+		"metadata": map[string]any{"user_id": `{"device_id":"7f3a","account_uuid":"","session_id":"0b9c2be7-6e1d-4c55-9a1f-3c2be77c8e10"}`},
+		"messages": []map[string]any{{"role": "user", "content": []map[string]any{{"type": "tool_result", "tool_use_id": "t1", "content": code}}}}})
+	if o, err := e.Inspect(body); err != nil || o.Blocked || len(o.Hits) != 0 {
+		t.Fatalf("code read as secrets: %+v %v", o, err)
+	}
+	for _, literal := range []string{`password: "Summer.2024!"`, "token=abcabcabcabc", "session_id=0b9c2be7-6e1d-4c55",
+		"api_key=pk.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbb"} {
+		if o, _ := e.Inspect(chat(literal)); !o.Blocked || o.Hits[0].Detector != "secret_assignment" {
+			t.Errorf("%s: %+v", literal, o)
+		}
+	}
+	// Elsewhere a user_id is text like any other.
+	tool := []byte(`{"model":"claude-sonnet-5-5","messages":[{"role":"assistant","content":[{"type":"tool_use","id":"t1",` +
+		`"name":"login","input":{"user_id":"token=abcabcabcabc"}}]}]}`)
+	if o, _ := e.Inspect(tool); !o.Blocked {
+		t.Errorf("a user_id outside metadata hid a secret: %+v", o)
+	}
+}

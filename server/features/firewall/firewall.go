@@ -390,10 +390,10 @@ func (e *Engine) Inspect(body []byte) (*Outcome, error) {
 	hits := map[[2]string]*Hit{}
 	var order [][2]string
 	out, changed, err := rewrite(body, func(w *Walker, s string) (string, bool) {
-		if skipped[w.Key()] || blob(s) {
+		if skipped[w.Key()] || opaque(w) || blob(s) {
 			return "", false
 		}
-		fs := e.r.Find(s)
+		fs := e.find(s)
 		if len(fs) == 0 {
 			return "", false
 		}
