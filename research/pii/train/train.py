@@ -17,7 +17,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import Dataset
 from transformers import (AutoModelForTokenClassification, AutoTokenizer, DataCollatorForTokenClassification, Trainer,
-                          TrainingArguments)
+                          TrainerCallback, TrainingArguments)
 
 ROOT = Path(__file__).parent.parent
 BASE = ROOT / "models" / "bardsai-eu-pii"
@@ -99,6 +99,15 @@ class Windows(Dataset):
         return self.items[i]
 
 
+class ReleaseMPS(TrainerCallback):
+    """Hands the MPS allocator's cached blocks back every 50 steps: kept, they grew to 12 GB beside a Docker VM on
+    a 16 GB Mac, and swapping made steps 40x slower."""
+
+    def on_step_end(self, args, state, control, **kw):
+        if state.global_step % 50 == 0:
+            torch.mps.empty_cache()
+
+
 class WeightedTrainer(Trainer):
     """Cross-entropy with rare tags weighted up (a tag's weight: the inverse square root of its share, capped), so
     special categories aren't drowned by names and O."""
@@ -123,6 +132,7 @@ def main():
     ap.add_argument("--base", default=str(BASE))
     ap.add_argument("--epochs", type=float, default=2)
     ap.add_argument("--batch", type=int, default=8)
+    ap.add_argument("--accum", type=int, default=1, help="gradient accumulation steps (batch x accum per update)")
     ap.add_argument("--lr", type=float, default=3e-5)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--seed", type=int, default=13)
@@ -149,14 +159,20 @@ def main():
     gpu = torch.cuda.is_available()
     if args.freeze_embeddings if args.freeze_embeddings is not None else not gpu:
         model.get_input_embeddings().weight.requires_grad_(False)
+    if not gpu:
+        # Activations recomputed in the backward pass: a third more compute, and the batch fits beside everything
+        # else in a 16 GB Mac's memory.
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     targs = TrainingArguments(
         output_dir=args.out + "/run", num_train_epochs=args.epochs, per_device_train_batch_size=args.batch,
-        per_device_eval_batch_size=args.batch, learning_rate=args.lr, warmup_steps=0.06, weight_decay=0.01,
+        gradient_accumulation_steps=args.accum, per_device_eval_batch_size=args.batch, learning_rate=args.lr,
+        warmup_steps=0.06, weight_decay=0.01,
         lr_scheduler_type="linear", logging_steps=50, save_strategy="epoch", eval_strategy="epoch" if evals else "no",
         load_best_model_at_end=bool(evals), metric_for_best_model="eval_loss", greater_is_better=False,
         save_total_limit=1, bf16=gpu, report_to=[], seed=args.seed, dataloader_num_workers=0)
     trainer = WeightedTrainer(model=model, args=targs, train_dataset=train, eval_dataset=evals,
-                              data_collator=DataCollatorForTokenClassification(tok, pad_to_multiple_of=64), weights=weights)
+                              data_collator=DataCollatorForTokenClassification(tok, pad_to_multiple_of=64), weights=weights,
+                              callbacks=[ReleaseMPS()] if torch.backends.mps.is_available() else [])
     trainer.train()
 
     out = Path(args.out)

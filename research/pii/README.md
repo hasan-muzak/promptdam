@@ -111,6 +111,36 @@ One core runs bardsai int8 at about 1,400 tokens/s (170 ms per 1,000 characters 
 5. **Publish the numbers** with this harness, re-run on the student, beside Presidio and the clouds' services
    (not run here: they need accounts).
 
+## The pilot student (2026-10-19)
+
+Our own model, first round: bardsai's checkpoint with a new head over the firewall's labels, trained on 5,300
+texts in 47 languages and code that agents wrote and reviewed twice (`datagen/`, `train/`), 2 epochs on the M1
+Pro (44 minutes, word embeddings frozen). Exported to ONNX fp32, scored through the same harness.
+
+| | REDACT, firewall policy | REDACT, ticket refs out | PII-TRACE | Our holdout (1,140) |
+|---|---|---|---|---|
+| **pilot student** | **0.842** | **0.881** | 0.890 | **0.977** |
+| bardsai | 0.828 | 0.852 | 0.942 | 0.755 (int8) |
+| bardsai + PII-Tracer | 0.919 | | 0.995 | |
+
+On REDACT, per group (student / bardsai): special categories **0.90** / 0.33, dates **0.64** / 0.37, names 0.94 /
+0.94, addresses 0.83 / 0.85, IDs 0.63 / 0.93, worst language 0.79 (SV) / 0.77 (SV).
+
+- **Special categories are solved in kind, not yet in degree.** 0.90 on REDACT is above the pair's 0.64, from
+  5,300 texts. This is the edge no open model has.
+- **Most of the ID gap is a policy we chose.** REDACT and PII-TRACE count ticket, incident, session, claim and
+  "reference" numbers, "card ending in 8821" and one-time codes as personal; our guide leaves them so assistants
+  can still work with them. With REDACT's customer reference numbers out, the student's IDs are 0.88 and its
+  recall 0.881 against bardsai's 0.852. Real misses remain: personal work emails, cities said in passing.
+- **It still flags too much on texts with no personal data**: 56% of the holdout's clean texts get a mask with
+  the default labels on (bardsai: 97%), mostly business dates read as a person's and order numbers read as
+  accounts. The full set needs more of those hard negatives.
+- **Our holdout is easier than the others**: the same guide and the same kind of writer, so 0.977 says the model
+  learned the guide, not that it generalizes. REDACT and PII-TRACE are the honest measures.
+- One review pass left about 0.37 wrong or missed marks per text (the second pass fixed 1,904 more): the full set
+  gets two.
+- fp32 at 2,600 tokens/s on 8 threads; static int8 comes with the full set.
+
 ## Caveats
 
 - Both benchmarks are synthetic. PII-TRACE's release is English only and favors PII-Tracer.

@@ -1,0 +1,37 @@
+{
+ "model": "student-pilot-onnx",
+ "set": "piitrace",
+ "docs": 4500,
+ "timing": {
+  "threads": 8,
+  "seconds": 92.76,
+  "tokens_per_s": 2218,
+  "ms_per_1k_chars": 105.5,
+  "p50_ms": 18.5,
+  "p99_ms": 51.6,
+  "avg_chars": 195
+ },
+ "score": {
+  "recall": 0.89,
+  "char_recall": 0.909,
+  "precision": 0.909,
+  "entities": 2653,
+  "predicted": 2835,
+  "clean_flag_rate": 0.049,
+  "groups": {
+   "name": 1.0,
+   "contact": 0.984,
+   "address": 1.0,
+   "id": 0.388,
+   "date": 0.964,
+   "secret": 0.662,
+   "other": 0.701
+  },
+  "langs": {
+   "EN": 0.89
+  },
+  "tiers": {
+   "-": 0.89
+  }
+ }
+}

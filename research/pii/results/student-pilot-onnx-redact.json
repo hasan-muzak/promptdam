@@ -1,0 +1,64 @@
+{
+ "model": "student-pilot-onnx",
+ "set": "redact",
+ "docs": 1000,
+ "timing": {
+  "threads": 8,
+  "seconds": 238.66,
+  "tokens_per_s": 2538,
+  "ms_per_1k_chars": 126.3,
+  "p50_ms": 160.3,
+  "p99_ms": 901.1,
+  "avg_chars": 1890
+ },
+ "score": {
+  "recall": 0.784,
+  "char_recall": 0.719,
+  "precision": 0.633,
+  "entities": 23798,
+  "predicted": 22043,
+  "clean_flag_rate": null,
+  "groups": {
+   "name": 0.943,
+   "contact": 0.896,
+   "address": 0.831,
+   "id": 0.631,
+   "date": 0.638,
+   "special": 0.903,
+   "secret": 0.706,
+   "other": 0.211
+  },
+  "langs": {
+   "AR": 0.825,
+   "CS": 0.817,
+   "DA": 0.841,
+   "DE": 0.783,
+   "EN": 0.778,
+   "ES": 0.769,
+   "FI": 0.788,
+   "FR": 0.791,
+   "FR_CA": 0.763,
+   "HE": 0.761,
+   "HI": 0.758,
+   "HU": 0.789,
+   "IT": 0.782,
+   "JA": 0.794,
+   "KO": 0.742,
+   "NL": 0.773,
+   "NO": 0.779,
+   "PT_BR": 0.813,
+   "PT_EU": 0.755,
+   "RU": 0.822,
+   "SV": 0.748,
+   "TH": 0.791,
+   "TR": 0.819,
+   "ZH_CN": 0.749,
+   "ZH_TW": 0.736
+  },
+  "tiers": {
+   "HIGH": 0.824,
+   "LOW": 0.421,
+   "MEDIUM": 0.897
+  }
+ }
+}

@@ -89,4 +89,26 @@ def piitrace(limit: int = 0) -> list[Doc]:
     return docs[:limit] if limit else docs
 
 
-SETS = {"redact": redact, "piitrace": piitrace}
+# Our own held-out exam (datagen, written by agents that never saw the training texts): labels in the groups.
+# The context labels (organization, job title, money, public figure) are never masked, so they aren't gold.
+HOLDOUT_GROUPS = {
+    "person": "name", "username": "contact", "email": "contact", "phone": "contact", "url_personal": "contact",
+    "address": "address", "location": "address", "government_id": "id", "account": "id", "ip": "id",
+    "date_of_birth": "date", "date": "date", "secret": "secret",
+    **{k: "special" for k in ("health", "religion", "sexual_orientation", "political_opinion", "trade_union",
+                              "criminal_record", "ethnicity", "biometric_genetic")},
+}
+
+
+def holdout(limit: int = 0) -> list[Doc]:
+    """datagen's held-out set (data/built/holdout.jsonl): 20 texts per language and 200 of code. A text with no
+    gold span is a clean control."""
+    docs = []
+    for line in (ROOT / "built/holdout.jsonl").open(encoding="utf-8"):
+        r = json.loads(line)
+        gold = [Span(s, e, HOLDOUT_GROUPS[label], label) for s, e, label in r["spans"] if label in HOLDOUT_GROUPS]
+        docs.append(Doc(f"holdout-{r['id']}", r["lang"], r["text"], gold, not gold))
+    return docs[:limit] if limit else docs
+
+
+SETS = {"redact": redact, "piitrace": piitrace, "holdout": holdout}
