@@ -879,17 +879,22 @@ doctor's learned findings.
 7. **Agents:** which agent made a call isn't logged (§4.18).
 8. **Docs drift:** `handlers/routes.go`'s description of `prompt_cache` still says Anthropic only.
 
-### 6.2 Coming with round PD (the firewall model)
-- `GET /v1/firewall/presets`: label groups with each label's description, examples and source (pattern, model); the
-  use-case presets with their defaults.
-- `GET/PUT …/firewall`: `model` {secrets, pii, labels with their actions, allow list, fail_mode} and `sensitive`
-  (the special categories' class); plan checks: personal data and special categories Pro, the model's secrets Free.
-- `firewall_events.source` and per-source stats; `POST …/firewall/test` returns the model's findings.
-- The ~35 countries' ID numbers as detectors in the presets.
-- Labels proposed on 2026-10-19 and waiting for the owner's yes: card security codes and expiry, device IDs, licence
-  plates, exact coordinates (masked with personal data); immigration status, financial profile, employment and
-  education records (alert, like special categories); age, gender, nationality and marital status (taught, never
-  masked unless chosen). The accordion shows them only once they exist.
+### 6.2 Round PD (the firewall model)
+Built (2026-10-19):
+- `GET /v1/firewall/presets` gains `labels` (name, class, group, description, off by default) and `use_cases` (the
+  actions each sets): the accordion and the preset picker read them.
+- `GET/PUT …/firewall` gains `sensitive` and `model` {secrets, pii, labels, allow, fail_mode}; plan checks: the
+  model's personal data and masking special categories need Pro, the model's secrets nothing.
+- `firewall_events.source` (pattern or model), `requests.firewall_model` (read, partial, failed, later), hits'
+  `model` flag in `POST …/firewall/test`, which reads with the model when the API has one.
+- The ~35 national ID detectors are in the customer-data preset.
+
+Still to come: per-source stats in `GET …/firewall/stats`, and the source filter on events.
+
+Labels proposed on 2026-10-19 and waiting for the owner's yes: card security codes and expiry, device IDs, licence
+plates, exact coordinates (masked with personal data); immigration status, financial profile, employment and
+education records (alert, like special categories); age, gender, nationality and marital status (taught, never
+masked unless chosen). The accordion shows them only once they exist.
 
 ## 7. Flows across pages
 

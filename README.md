@@ -11,8 +11,17 @@ prompts.
 | `bench/` | The gateway's overhead budget, a load test and a fake model provider |
 | `examples/` | Calling the gateway from curl and Python |
 | `web/site/`, `web/app/`, `web/admin/` | The landing site, the client dashboard and the staff admin (to come) |
-| `deploy/` | The server image and the Caddyfile in front of the gateway's replicas |
+| `detector/` | The detector service: the firewall's model (its own Go module, cgo, ONNX Runtime) |
+| `research/` | The PII detector bake-off, the training set's tooling, and a study of Caveman |
+| `deploy/` | The server and detector images and the Caddyfile in front of the gateway's replicas |
 | `project.md` | The plan |
+
+## The firewall's model
+
+Patterns catch what has a shape (keys, cards, 33 countries' ID numbers); a model reads the text for names,
+addresses, health and the other special categories, and secrets in formats nobody listed, in ~45 languages. Each
+label gets the project's action; a call waits for the model only when one masks or blocks.
+[docs/firewall-model.md](docs/firewall-model.md).
 
 ## Coding agents (Claude Code)
 

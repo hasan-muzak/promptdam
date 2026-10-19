@@ -324,12 +324,28 @@ Model routing is one of Promptdam's core features (decided 2026-10-08, replacing
 ### 6.4 Firewall (`features/firewall`)
 - Every text of a request is scanned before anything is sent anywhere: messages, system, tools and tool results, in every API format. Identifiers (`model`, `role`, `id`…) and inline data (base64 images, files) are skipped. Detectors come from `pkg/redact`, grouped in Promptdam's presets (`GET /v1/firewall/presets`):
   - **"source code"**, the secret class: `.env` assignments, private keys, cloud credentials, connection strings, API tokens. Code that reads a secret isn't one (`Token: req.Token`, `os.Getenv("KEY")`, `cfg[name]`: `firewall/code.go`), and Anthropic's `metadata.user_id`, an opaque id by contract, isn't scanned: Claude Code's session id there was blocked on every call (found 2026-10-17)
-  - **"customer data"**, the pii class: email, phone, card, IBAN, national IDs (IPv4 only when chosen)
+  - **"customer data"**, the pii class: email, phone, card, IBAN, and the national ID numbers of 33 countries and
+    passports' machine-readable line, each checked as its issuer checks it (core `redact` `NationalIDs`, opt-in there
+    so Fixwire's SDK vectors are unchanged; IPv4 only when chosen)
   - **custom**: a project's own named RE2 patterns.
+- **The detector model** (round PD, [docs/firewall-model.md](docs/firewall-model.md)) reads what no pattern has a
+  shape for: names, addresses, dates of birth, IDs and accounts, health and the other special categories (class
+  `sensitive`), and secrets in formats nobody listed (`credential`). It reports every label it finds; the project
+  sets an action per label over its class's (`model.labels`), dates and places off unless chosen, terms never masked
+  (`model.allow`), and use cases as starting points (customer support, healthcare, HR and finance, coding agents,
+  strict). Patterns win a place both found; a value the model found once is masked wherever else the request holds
+  it. A call waits for the model only when a label it reads masks or blocks; alert-only labels are read after the
+  call went. The model's failure falls back to the patterns (`model.fail_mode: open`) unless the project refuses
+  such calls. The model's secrets are on every plan; its personal data needs Pro.
 - **Actions, per class:**
   - `block`: 400 `firewall_blocked` naming the detectors, never the value. The call goes nowhere and is logged.
   - `redact`: masked (`[REDACTED:email]`).
-  - `tokenize`: `⟦email_1⟧`. The mapping lives only in the call's memory and is restored in the answer, whole or streamed, translated or not. A value JSON must escape is redacted instead. Secrets can't be tokenized: a model must never get them back to repeat.
+  - `tokenize`: `⟦email_k3x9q2mb⟧`, named by a keyed hash of the conversation, the detector and the value (the key
+    derived from the vault): the same in every call of a conversation and on every replica, so history keeps its
+    bytes (prompt cache, signed thinking), different in another conversation. The mapping lives only in the call's
+    memory and is restored in the answer, whole or streamed, translated or not, tool calls' arguments included
+    (escaped marks, parallel calls kept apart, held text flushed when a block ends). A value JSON must escape is
+    redacted instead. Secrets can't be tokenized: a model must never get them back to repeat.
   - `alert`, `off`.
   - Defaults: secrets blocked, PII off, custom patterns alerted, answers scanned, no excerpts.
 - **Policies** (CEL, `pkg/policy`) run in order, and the first that holds decides:
@@ -790,6 +806,12 @@ Model routers replace per-family savings experiments, and cross-format translati
   counts Gemini's tokens natively. Gemini 3's unsigned tool calls in the current turn get Google's skip value. The
   log names the door. Tested with Google's and AWS's Go SDKs and the Python SDKs; `task demo:doors` on the owner's
   keys: Gemini and Claude through both doors, tools, a router, counts, $0.009.
+- [ ] Round PD (2026-10-19, plan approved): a firewall that understands personal data and secrets, in every
+  language. Built: national ID numbers of 33 countries (core), tokens named by conversation, tool-call restore
+  fixes, the model's settings and use cases, the detector's client with a scan cache, the gateway's sync and
+  background reads, the detector service (v0 on bardsai's model). In progress: the training set (written by
+  language agents in session: the pilot of ~5,300 texts in 47 languages and code), then our own model trained on it
+  (pilot on the Mac, the full set on a Verda GPU), [research/pii](research/pii/README.md) for its exam.
 - [ ] S4.6 Prod deploy; go-live checklist (§16 of the root doc).
 - **Exit:** ≥ 5 design partners in production, ≥ 2 willing to pay for Team or Business. → **Beta Mon Apr 26**.
 
@@ -870,4 +892,10 @@ Model routers replace per-family savings experiments, and cross-format translati
 - [x] Images: **GHCR, signed with cosign keyless**, an SPDX SBOM attested with each (decided 2026-10-08). No signing key to keep; the VPS verifies the release workflow's identity.
 - [x] Payload-free mode: **built before launch** (decided 2026-10-08), the Business plan's guarantee that nothing a call says is kept. Turning it on deletes what was kept; a downgrade keeps it on.
 - [x] Secrets for coding agents: **not tokenized, for now** (decided with the owner, 2026-10-17). Tokenizing would let an agent edit lines that hold a secret without the provider seeing it, but a prompt injection can still lead the agent to write the restored value somewhere and send it out, so it would be a security promise with a known hole. Coding agents get a project of their own with secrets redacted, and the docs say what that costs ([docs/coding-agents.md](docs/coding-agents.md)). Revisit when a customer asks, with an injection scenario in the live check.
+- [x] **The firewall's model** (decided with the owner, 2026-10-19): training texts written in session by agents per
+  language, never through an API key; a pilot before the full set; the GPU rented from Verda; a call waits for the
+  model when a label masks or blocks, alert-only labels read after the call; the model's secrets on every plan, its
+  personal data on Pro. Mine: the model's failure falls back to the patterns by default; its secrets block only when
+  it is sure (0.9), and become a default only once false blocks on code are measured near zero; dates, places,
+  companies, titles and amounts aren't masked by default.
 - [x] Include OpenAI Responses API routing at MVP: **passthrough only** (auth, budgets, usage, cost, log; no model routing or caching), routing later (decided 2026-10-07).
