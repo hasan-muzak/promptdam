@@ -4,7 +4,12 @@
 > page must contain. Written from the customer's side: what an engineering lead, a platform or security engineer, or a
 > small team opening Promptdam wants to see first, and what they come back to change.
 > Every page lists the API it reads, so the dashboard is built on what exists; §6 lists what the API still lacks.
-> Companion to `project.md` (§4 scope, §5 plans, §6 architecture). Written 2026-10-08.
+> Companion to `project.md` (§4 scope, §5 plans, §6 architecture). Written 2026-10-08, revised 2026-10-19: the frame
+> follows Plugport's dashboard as built (§3), the firewall gains the model's labels (§4.11, round PD), coding agents
+> get a page (§4.18), §6 lists what is really still missing and §8 the order to build in.
+> The app is `web/app` (Nuxt 4 SPA on `@keel/auth-kit` and `@keel/app-kit`, as Plugport's); product components are
+> prefixed `Pd` (`PdFormField`, `PdDangerZone`). `app/utils/pages.ts` builds the sidebar from §3.3 and must stay in step
+> with this page; a page not built yet is a placeholder (`[...slug].vue`) showing its purpose from there.
 
 ---
 
@@ -61,50 +66,102 @@ Their recurring jobs:
 
 ## 3. The frame
 
-### 3.1 Top bar
-- **Organization switcher** (with "Create organization").
-- **Project switcher**: every page except organization settings belongs to a project. Projects are often
-  environments ("web", "prod", "staging"); show the project's name and a colored dot.
-- **Search**: paste a trace (`req_…`, from the `X-Promptdam-Trace` header) to open its request. Later: keys,
-  families, routers by name.
-- **Plan meter**: requests used this month against the plan (`GET /v1/orgs/{org}/usage`), e.g. "312k / 500k". Amber
-  past 80%, red past 100% (hard stop on Free, overage on paid plans). Click: Billing.
-- **Gateway URL** with a copy button (`https://gateway.<domain>/v1`), the one thing every developer needs.
-- **Help**: docs, API reference (muzak.dev/openapi/ui), status page, contact support.
-- **User menu**: account, theme, sign out.
+Plugport's shell, as built (`products/plugport/plugport/web/app/layouts/default.vue` on `KeelAppShell`), with
+Promptdam's items. One layout, `app/layouts/default.vue`.
 
-### 3.2 Sidebar
+### 3.1 Drawer
+- 260 px, permanent on desktop, an overlay below `md` (hamburger). It collapses to a rail (remembered in
+  `keel.nav.rail`): headings become dividers, items get tooltips.
+- **Top (`#switcher`):** the project switcher (`KeelWorkspaceSwitcher`, noun "Project"), with "Create project" for
+  roles that may (`PdCreateProjectDialog`: name, and what it is for: production, staging, coding agents, an
+  internal tool). Projects are often environments; show the name and a colored mark.
+- **Bottom (`#user`):** `KeelSidebarUserMenu`: Account, Sign out. Organizations are switched from Settings › Account,
+  as in Plugport, until an org switcher in this menu is built.
 
-Groups, in order. Items marked with a plan show the lock when the plan lacks the feature, but stay clickable (§2).
+### 3.2 App bar (56 px)
+- **Left (`#crumbs`):** the logo (links to Overview), a rule, the breadcrumb from the sidebar tree.
+- **Right (`#actions`), in order:**
+  - `KeelHeaderActions`: the theme toggle; later the notifications bell (the activity feed's unread items), Docs
+    (muzak.dev/openapi/ui for the API reference) and Help.
+  - **Plan meter:** requests this month against the plan ("312k / 500k" and the plan as a tag), linking to Billing.
+    Ink below 80%, amber past it, red past 100% (Free stops, paid plans run into overage).
+  - **Connect** (primary): opens the snippet dialog of Get started's step 3 (gateway URL, a key to pick, a tab per
+    client). Every developer needs it; hidden for billing-only members.
+- **Search** (later): paste a trace (`req_…`, from `X-Promptdam-Trace`) to open its request.
+- When the user's organizations fail to load: Plugport's amber banner with Try again, above the page.
+- When calls are refused for the whole organization (Free's limit, the spend cap, an unpaid invoice): a red banner on
+  every page with when calls resume and the one fix (§5.4).
 
-| Group | Item | Route | Plan | One-line purpose |
-|---|---|---|---|---|
-| **Overview** | Get started | `/get-started` | all | Setup checklist; shown until the project is activated (§4.1), then moves into Help |
-| | Overview | `/` | all | Spend, savings, risk and what needs attention, at a glance |
-| | Activity | `/activity` | all | What happened that was worth telling: budgets, routers, the firewall, alert rules |
-| **Traffic** | Requests | `/requests` | all | The request log: every call, its model, cost, savings, firewall action |
-| | Analytics | `/analytics` | all | Spend, latency and errors over time, grouped |
-| | Families | `/families` | all | Prompt templates by spend: what each feature costs |
-| **Savings** | Savings | `/savings` | all (export Pro) | The ledger: what Promptdam saved, how, with proof |
-| | Routers | `/routers` | shadow all, active Pro, learned Team | Tiers of models; each call placed in the cheapest that holds up |
-| | Routing rules | `/rules` | Pro | "Calls like this go to that model" |
-| | Cache doctor | `/cache-doctor` | Pro | Why prompt caches miss, and the fix |
-| **Protection** | Firewall | `/firewall` | secrets all, PII Pro, policies Team, custom Business | Secrets and personal data blocked, masked or tokenized |
-| | Budgets | `/budgets` | Pro | Spend caps per project, key, developer or route |
-| | Alert rules | `/alerts` | Pro | Spend spikes, provider errors and outages, slow answers |
-| **Setup** | Providers | `/providers` | all | The project's LLM providers and keys (BYOK) |
-| | API keys | `/keys` | all (per-developer Team) | Gateway keys and what each may do |
-| | Routes | `/routes` | all | Fallbacks, retries, caching per path |
-| | Prices | `/prices` | all | The project's own prices (discounts, self-hosted models) |
-| | Project settings | `/settings` | all | Name, IDs, delete |
-| **Organization** (bottom) | Settings | `/org/*` | all | General, Members, Projects, Billing, Alert channels, Webhooks, Privacy, Audit log |
+### 3.3 Sidebar
 
-**Sidebar badges**: the few states worth a glance, each linking to its page:
-- Routers: a dot when a router is ready to activate (`router.ready`) or a tier was demoted.
+Built by `navFor()` in `app/utils/pages.ts` with `defineNav` (`NavSection{heading?, rule?, entries}`). Only the
+current page's trail is open; one row is lit. Items marked with a plan show a lock when the plan lacks the feature,
+and stay clickable (§2).
+
+| Section | Item | Route | Icon (material-symbols) | Plan | Purpose |
+|---|---|---|---|---|---|
+| (no heading) | Overview | `/` | `dashboard-outline` | all | Spend, savings, risk, what needs attention |
+| | Get started | `/get-started` | `rocket-launch-outline` | all | The setup checklist; leaves the sidebar once the project is activated (§4.1) |
+| | Activity | `/activity` | `notifications-outline` | all | What happened that was worth telling |
+| **Traffic** | Requests | `/requests` | `list-alt-outline` | all | Every call: model, cost, savings, firewall action |
+| | Analytics | `/analytics` | `monitoring` | all | Spend, latency, errors over time |
+| | Families | `/families` | `account-tree-outline` | all | Prompt templates by spend: what each feature costs |
+| **Savings** | Savings | `/savings` | `savings-outline` | all (export Pro) | The ledger, with proof |
+| | Routers | `/routers` | `alt-route` | shadow all, active Pro, learned Team | Tiers of models, the cheapest that holds up |
+| | Routing rules | `/rules` | `rule` | Pro | "Calls like this go to that model" |
+| | Cache doctor | `/cache-doctor` | `cached` | Pro | Why prompt caches miss, and the fix |
+| **Protection** | Firewall | `/firewall` | `shield-outline` | secrets all, personal data Pro, policies Team, patterns Business | What may not leave, and the proof |
+| | Budgets | `/budgets` | `account-balance-wallet-outline` | Pro | Spend caps per project, key, developer, route |
+| | Alert rules | `/alerts` | `notification-important-outline` | Pro | Spikes, provider errors and outages, slow answers |
+| **Setup** | Providers | `/providers` | `hub-outline` | all | The project's own LLM accounts |
+| | API keys | `/keys` | `key-outline` | all (per developer Team) | Gateway keys and what each may do |
+| | Coding agents | `/agents` | `terminal` | all | Claude Code and the other agents through Promptdam (§4.18) |
+| | Routes | `/routes` | `call-split` | all | Fallbacks, retries, caching |
+| | Prices | `/prices` | `sell-outline` | all | The project's own prices |
+| (rule) | Settings | `/settings` | `settings-outline` | all | Tabs (§5): Project, Organization, Members, Alert channels, Webhooks, Privacy, Audit log, Account |
+| | Billing | `/billing` | `receipt-long-outline` | all | Tabs (§5.4): Plan and usage, Spend cap, Invoices |
+
+Settings and Billing are drawn as one item each (`tabs: true`); their pages show a tab rail on the left
+(`KeelSettingsTabs`, 196 px), each tab labelled with its scope: "This project", "Organization" or "You".
+
+**Roles:** a billing-only member sees the rule section only, and no Connect button. Viewers see everything and no
+edit buttons (a `KeelInfoNote` with `lucide:lock`: "You can see everything here, and change nothing").
+
+**Sidebar marks**, each linking to its page (Plugport specifies them and hasn't built them; build them here):
+- Routers: a dot when a router is ready to activate or a tier was demoted.
 - Firewall: the number of calls refused in the last 24 hours.
-- Budgets: the number of budgets past their first threshold this window.
-- Alert rules: a red dot while a rule is firing.
-- Providers: a red dot when a provider's last check failed or a provider is disabled while routes name it.
+- Budgets: the number past their first threshold this window.
+- Alert rules: a red dot while one fires.
+- Providers: a red dot when a check failed, or a disabled provider is still named by a route.
+
+### 3.4 Page anatomy (Plugport's conventions)
+- **Root:** `<div class="flex flex-col gap-6">`; a missing record is `KeelEmptyState` "Not found".
+- **Header:** `KeelPageHeader` with a title (no icon) and a description that is the page's answer in a sentence, the
+  key number in `font-medium text-ink` ("**$8,412** spent this month, **$3,950** saved"). Actions on the right: the
+  main one flat primary, secondary ones tonal or text. The range picker (`KeelDateRangePicker`, presets 24h, 7d, 30d,
+  90d, the API's maximum as `max-days`) sits in the actions; the range lives in the URL.
+- **Notes:** `KeelInfoNote` for states: retention ("Your plan keeps 30 days of calls, so the range before 19 Sep is
+  empty"), payload-free, read-only, "kept from your previous plan".
+- **Lists:** `KeelListBar` (status tabs with counts, search, a filter menu, `KeelDataTableColumnsMenu`), then
+  `KeelDataTable` in `<v-card border flat>` (page sizes 15, 50, 100), active filters as chips with Clear all.
+- **Details:** rich records get a page (a router, a family); log rows open a right-docked panel, as Plugport's calls:
+  `v-dialog :scrim="false"`, 34 rem, its state in the URL (`?request=req_…`, `?event=…`), so a link opens it.
+- **Figures:** `KeelStatistic` tiles, `KeelMetricCard` for a series with a chart or table view (`v-model:view`),
+  `KeelSparkline` in rows; colors from the theme's `chart-1…6`.
+- **Forms:** `PdFormField` (label above, "Optional", one line for the hint or the error), outlined fields, never
+  compact density or floating labels; `KeelSegmentedControl` for few short choices, `KeelChoiceList` for choices that
+  need a sentence; code (CEL, regex, JSON) in `KeelCodeEditor`.
+- **Saving:** settings that save explicitly use the floating save bar ("2 changes", Discard, Save, then "Saved");
+  gateway settings apply within seconds, so say "Applied", never "deploy".
+- **Dialogs:** 440 to 600 px, bordered body, Cancel then the action. A secret is shown once in a persistent dialog with
+  `KeelCopyField` and "I've saved it".
+- **Danger zone:** `PdDangerZone`, last on the page: what goes with it, then "Type its slug to confirm" (the slug,
+  never the name), the button disabled until it matches.
+- **Locked, not hidden:** the page stays; the header action becomes "Upgrade to Pro" (to Billing) with a warning note
+  saying what the plan adds for this project, ideally with their number. A 402 `plan_required` becomes this state.
+- **Empty states:** `KeelEmptyState` in a bordered card: what fills the page and the action (a snippet, a button).
+- **Preview:** `?preview=` simulates states while building and reviewing (`new`, `loading`, `free`, `pro`, `team`,
+  `viewer`, `billing`, `over-quota`), as Plugport's `useOrg`.
 
 ---
 
@@ -117,25 +174,37 @@ Each page: **Purpose**, **Shows**, **Actions**, **Empty state**, **Plan**, **API
 **Purpose:** take a new project from nothing to its first logged call in five minutes. "Activated" is 1,000 requests
 within 7 days (project.md §9).
 
-**Shows:** a checklist, each step ticking itself:
-1. **Add a provider**: OpenAI, Anthropic, Gemini, Mistral, DeepSeek… or any OpenAI- or Anthropic-compatible endpoint.
-   Inline form; the key is checked against the provider on save (it costs nothing).
-2. **Create a gateway key**: shown once, with copy. Explain `pd_sk_…`.
-3. **Point your client at Promptdam**: tabs with a ready snippet, the key and gateway URL filled in:
-   - OpenAI SDK (Python, Node): `base_url`
+**First run** (before any page): the auth-kit `onboarding` layout (`keel.auth.onboarding: "/get-started"` in
+`app.config.ts`), as Plugport's: `KeelSteps` "Your organization" (name, data region with `KeelChoiceList`) then
+"Your first project" (name, what it is for). The guard sends a user there while the organization has no project.
+
+**Then the checklist** (this page, and a `KeelLayerCard` "Get started" on the Overview with "2 of 5 done"), each step
+ticking itself:
+1. **Add a provider:** OpenAI, Anthropic, Gemini, Mistral, DeepSeek, OpenRouter, a cloud account (Bedrock, Vertex,
+   Azure), or any OpenAI- or Anthropic-compatible endpoint. Inline form; checked on save with one tiny call.
+2. **Create a gateway key:** shown once, with copy. Explain `pd_sk_…`.
+3. **Point your client at Promptdam:** tabs with a ready snippet, the key and gateway URL filled in:
+   - OpenAI SDK (Python, Node): `base_url` = the gateway's `/v1`
    - Anthropic SDK: `base_url`
    - Vercel AI SDK, LangChain
    - Google's SDK (google-genai): `GOOGLE_GEMINI_BASE_URL` (the gateway's `/gemini`) and `GEMINI_API_KEY`
-   - AWS's SDKs and AnthropicBedrock: the endpoint `/bedrock`, the key as a Bedrock API key (bearer token), set on
-     the client (the `AWS_BEARER_TOKEN_BEDROCK` variable reaches every Bedrock client in the process)
-   - Claude Code: `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`
+   - AWS's SDKs and AnthropicBedrock: the endpoint `/bedrock`, the key as a Bedrock API key (bearer token)
+   - Claude Code (from `docs/coding-agents.md`): `ANTHROPIC_BASE_URL` = the gateway's root, **without** `/v1`;
+     `ANTHROPIC_AUTH_TOKEN` = the key; `ANTHROPIC_API_KEY` unset (Claude Code sends it first); for a team, the same in
+     each developer's `~/.claude/settings.json` (`env`), with `ANTHROPIC_CUSTOM_HEADERS="X-Promptdam-User: <name>"`
+     so analytics name the developer. A link to Coding agents (§4.18) for the rest.
    - curl.
-4. **Send a request**: waits for the first call (poll the request log), then shows it: model, tokens, cost, latency.
-   "It works" moment.
+   Below the tabs, one line: "If Promptdam can't be reached, your app can call the provider directly" with a link to
+   `docs/fallback.md`.
+4. **Send a request:** waits for the first call (polls the request log), then shows it: model, tokens, cost,
+   latency. The "it works" moment.
 5. **Next wins** (after the first calls), each a card with a button:
    - "Create a router from your providers" (the suggested router, in shadow mode: free, it only watches).
-   - "Turn on prompt caching for the default route" (Anthropic).
+   - "Turn on prompt caching for the default route" (every provider: Anthropic's breakpoints, OpenAI's cache key,
+     what Promptdam learned for the rest).
    - "Your secrets are already blocked": a link to the firewall, with a one-line test.
+   - For a project made for coding agents: "Secrets are blocked: an agent's whole session stops at one. Redact them
+     instead" (§4.18).
 
 **API:** `GET /v1/provider-kinds`, `POST …/providers`, `POST …/providers/{provider}/check`, `POST …/keys` (scope
 `gateway`), `GET …/requests?limit=1`, `GET …/routers/suggest`.
@@ -210,7 +279,7 @@ later.
 
 **API:** `GET …/requests` (filters, `cursor`, `limit`), `GET …/requests/{request}`.
 
-### 4.4 Request detail (drawer, or `/requests/{trace}`)
+### 4.4 Request detail (right-docked panel, `?request=req_…`)
 **Purpose:** everything Promptdam knows about one call, without its content.
 
 **Shows:**
@@ -248,6 +317,11 @@ later.
 
 **API:** `GET …/requests/{request}`, `GET …/firewall/events?request=req_…` (the call's firewall events),
 `GET …/requests/{request}/payload` (404 `payload_gone` once expired or deleted).
+
+**Not returned yet** (§6.1): the request log keeps them, `RequestOut` doesn't carry them: the door, provider kind,
+backend, target model, cache strategy and trial, pooled, the provider's reported cost, expected cache tokens, the list
+price's cost, the router's and the decision model's cost and wait, the matched rule, the counterfactual, the payload's
+presence, request and response bytes. Build the sections that need them with the fields hidden until they arrive.
 
 ### 4.5 Analytics (`/analytics`)
 **Purpose:** trends and breakdowns: "what drives our spend, and is it getting worse?"
@@ -444,43 +518,82 @@ potential monthly saving, without the detail and the fix. Show it as the upsell:
 
 ### 4.11 Firewall (`/firewall`)
 **Purpose:** "nothing sensitive leaves without our say, and we can prove it." The page security engineers live on.
+Since round PD (project.md, in progress) two detectors work together: **patterns** (exact shapes: keys, cards, IBANs,
+national ID numbers of ~35 countries with their checksums) and **the model** (it reads the text: names, addresses,
+dates of birth, health and the other special categories, secrets in formats no pattern knows, in ~45 languages).
+The model reports everything it finds with its label; **the project decides per label what happens**, so changing a
+setting never needs a retrained model, and applies within seconds.
 
 Tabs:
 - **Overview:**
-  - what is protected now, in one line per class: "Secrets: **blocked**. Personal data: **off** (turn on redaction,
-    Pro). Your own patterns: none. Answers: scanned."
-  - range stats: calls the firewall acted on, calls refused, findings per action and per detector, a daily chart
-    (calls and refusals);
-  - recent refusals; a hint that `firewall.blocked` webhooks and alerts exist (link to org webhooks and channels).
-- **Events:** the table of what was found: time, request (link), key, developer, route, model, detector, class, action,
-  where in the request (messages, system, tools…, or the answer), count, refused or not, by what (class, policy),
-  masked excerpt when kept. Filters: detector, class, action, location, key, refused only; 31 days per query.
-- **Protection** (the settings form):
-  - on/off for the whole firewall (with a strong warning);
-  - **Secrets** ("source code" preset: `.env` secrets, private keys, cloud credentials, connection strings, API
-    tokens): block, redact, alert or off. Tokenize isn't offered for secrets: say why.
-  - **Personal data** ("customer data" preset: email, phone, card, IBAN, national IDs; IPv4 optional): off, alert,
-    redact, tokenize, block, and which detectors. Tokenize explained with the example: "the provider sees
-    `⟦email_1⟧`, your user gets the real address back".
+  - what is protected now, one line per group: "Secrets: **blocked**. Personal data: **masked** (12 kinds).
+    Special categories: **alert**. Your own patterns: none. Answers: scanned."
+  - range stats: calls the firewall acted on, calls refused, findings per action, per detector and per source
+    (pattern or model), a daily chart (calls and refusals);
+  - recent refusals; a hint that `firewall.blocked` webhooks and alerts exist (link to Settings › Webhooks and Alert
+    channels).
+- **Events:** the table of findings: time, request (opens its panel), key, developer, route, model, detector, class,
+  action, where (messages, system, tools…, the answer), count, refused or not and by what (class, policy, the scan),
+  the source (pattern or model), the masked excerpt when kept. Filters: detector, class, action, location, key,
+  source, refused only; 31 days per query.
+- **Protection** (the settings form, with the save bar):
+  - **Preset** at the top (`KeelChoiceList`): the use case sets the defaults below, which stay editable:
+    - **Customer support** (default): names, contact details, addresses, IDs, cards and accounts masked; special
+      categories alert; dates (except birth dates), cities, companies and amounts kept, since the assistant needs them.
+    - **Healthcare:** as support, and health data masked.
+    - **HR and finance:** as support, and salaries, performance reviews and financial details masked.
+    - **Coding agents:** secrets redacted (never blocked: one block stops an agent's session), personal data in code
+      and logs masked.
+    - **Strict:** every label masked; a warning that answers lose dates, places and names they may need.
+    - **Custom:** what the customer set by hand.
+  - **The accordion** (`v-expansion-panels`, one panel per group, its title with how many labels are on: "Contact
+    details · 3 of 3 masked"). In each panel, one row per label: its name, a sentence with an example ("Names of
+    private people: Ayşe Yılmaz, Dr. Weber"), which detector finds it (pattern, model or both), and its action as a
+    `KeelSegmentedControl` (off, alert, mask, tokenize, block; tokenize hidden where it can't apply). Groups:
+    - **Identity:** person names, usernames, dates of birth.
+    - **Contact:** emails, phone numbers, personal links.
+    - **Location:** addresses, cities and regions tied to a person (exact coordinates proposed, §6.2).
+    - **IDs and accounts:** national ID numbers (with the countries listed and their checksums), passports, tax and
+      licence numbers, bank accounts and IBANs, cards (card security codes, device IDs and licence plates proposed,
+      §6.2).
+    - **Special categories** (GDPR Art. 9 and 10): health, religion, sexual orientation, political opinion, trade
+      union, criminal record, ethnicity, biometric and genetic data. Alert by default: "masking them can change what
+      the answer is about; turn masking on where your users share them".
+    - **Secrets:** API keys, tokens, private keys, passwords, connection strings: block, redact or alert; tokenize is
+      never offered ("a value an agent can write back would leave by another way"). Below it, **Find secrets in
+      unknown formats** (the model; Free): on/off.
+    - **Context the firewall never masks** (shown for clarity, off and locked): company names, job titles, amounts,
+      public figures.
+    Each panel has "Turn all on" and "Turn all off". A label's "Learn more" opens examples in several languages.
+  - **Never mask** (the allow list): terms the firewall must leave alone, such as the company's own name, product
+    names, a support agent's name ("Promptdam", "Ayşe from Support"). Up to 200.
+  - **Your own patterns** (Business): name and regular expression (RE2), a test box, the action.
   - **Answers:** scan them (alerts only: what was written can't be taken back).
-  - **If a request can't be scanned:** refuse it while secrets are blocked (default), always refuse, or let it through.
-  - **Excerpts:** keep the masked text around each finding in its event (off by default; a privacy note).
-  - Each detector listed with its description (from presets).
-- **Policies** (Team): ordered rules, the first that holds decides: block, allow (cancels a class's block), or send to
-  a model (which then serves alone, without fallbacks). A CEL editor with a variables panel: `request`, `findings`,
-  `classes`, `locations`, `target`, `principal`, `org`, and ready examples: "no personal data to DeepSeek", "the CI key
-  may send secrets to our self-hosted model", "cards go to the EU provider". Compile errors at their line and column.
-- **Custom patterns** (Business): name and regular expression (RE2), with a test box; the action for the class.
-- **Test** (playground): paste a request (any format), see what each finding gets, the request as the provider would
-  get it (masked, tokenized; a diff view), the policy that decides and the target it saw. It tries the form's current,
-  unsaved settings: "test before you save".
+  - **If a request can't be scanned** (patterns): refuse it while secrets are blocked (default), always, or let it
+    through. **If the model can't answer in time:** go on with patterns only (default) or refuse the call. Say what
+    the wait is: "calls with new text wait for the model when an action masks or blocks; alert-only labels are checked
+    after the call is sent, with no wait".
+  - **Excerpts:** keep the masked text around each finding (off by default; a privacy note).
+  - The whole firewall on/off, last, with a strong warning.
+- **Policies** (Team): ordered rules, the first that holds decides: block, allow (cancels a class's block), or send to a
+  model (which then serves alone, without fallbacks). A CEL editor with a variables panel: `request`, `findings`,
+  `classes` (secret, pii, sensitive, custom), `locations`, `target`, `principal`, `org`, and ready examples: "no
+  personal data to DeepSeek", "health data only to our EU provider", "the CI key may send secrets to our self-hosted
+  model". Errors at their line and column.
+- **Test** (playground): paste a request (any format) or pick a sample per language; see each finding with its source
+  and the action it gets, the request as the provider would get it (a diff view), the policy that decides and the
+  target. It tries the form's current, unsaved settings: "test before you save". The same call through
+  `POST …/firewall/test` shows what an answer's restore would give back (tool calls included).
 
-**Plan:** secrets and alerts on every plan; redacting or tokenizing personal data on Pro; policies on Team; custom
-patterns on Business. After a downgrade, saved settings keep applying: show "kept from your previous plan" next to
-them, editable only to remove.
+**Plan:** secrets (patterns and the model) and alerts on every plan; masking, tokenizing or blocking personal data and
+special categories on Pro; policies on Team; your own patterns on Business. After a downgrade, saved settings keep
+applying: "kept from your previous plan", editable only to remove.
 
-**API:** `GET /v1/firewall/presets`, `GET/PUT …/firewall`, `GET …/firewall/events`, `GET …/firewall/stats`,
-`POST …/firewall/test`.
+**API:** today `GET /v1/firewall/presets`, `GET/PUT …/firewall`, `GET …/firewall/events`, `GET …/firewall/stats`,
+`POST …/firewall/test`. Round PD adds (§6.2): the presets' label groups and use-case presets; in the settings a
+`model` block (secrets, personal data, labels and their actions, the allow list, the model's fail mode) and the
+`sensitive` class; `source` on events and stats. Until then, build the accordion from the presets the API serves today
+(secret and customer-data detectors) and show the model's labels as "coming".
 
 ### 4.12 Budgets (`/budgets`)
 **Purpose:** "no team, key or developer can blow the month."
@@ -586,7 +699,8 @@ requests per minute, default route. A key without settings may call every model,
 `X-Promptdam-Route`, else its key's, else `default`.
 
 **Shows:** name (`default` first), the fallback chain drawn as model → model → model (any provider, either API format),
-retries, response cache TTL, prompt caching (Anthropic breakpoints added), the router its calls go through.
+retries, response cache TTL, prompt caching (on every provider: breakpoints where the provider wants them, OpenAI's
+cache key, what Promptdam learned of the model), the router its calls go through.
 
 **Editor:** name, fallbacks (ordered model picker), retries (0 to 3), cache TTL (off to a week), prompt caching,
 router.
@@ -605,20 +719,66 @@ the busiest first, each with a "Set price" button.
 
 **API:** `GET/PUT …/prices`, `DELETE …/prices/{price}`, `GET …/prices/missing`, `GET …/models` (list prices).
 
-### 4.17 Project settings (`/settings`)
+### 4.17 Settings › Project (`/settings`, scope "This project")
 **Payload capture:** off by default. On, the gateway keeps each call's request and answer (a share of calls with the
 sample rate; requests only if answers are off), always masked, sealed, and kept as long as the plan keeps logs. Say
 plainly what is stored and for how long; "Delete all payloads" empties them now. API: `GET/PUT …/payloads/settings`,
 `DELETE …/payloads`. In payload-free mode (§5.7) the switch is locked off; saving it on answers 409 `payload_free`.
 
-Name, project ID (copy), the gateway URL, and **Delete project**: everything Promptdam keeps of it goes (configuration
-now, logs and caches by a background purge); type the name to confirm.
+Name, project ID (copy), the gateway URL, who has access, and **Delete project** in `PdDangerZone`: everything
+Promptdam keeps of it goes (configuration now, logs and caches by a background purge); type its slug to confirm.
 
 **API:** `GET/PATCH/DELETE /v1/orgs/{org}/projects/{project}`.
 
+### 4.18 Coding agents (`/agents`)
+**Purpose:** "our developers' coding agents go through Promptdam: their secrets don't leave, and we see what each
+agent and developer costs." The page for platform and security leads rolling out Claude Code, Codex and the rest.
+The next round (after PD) makes every major agent first-class; this page is built for it and fills as it lands.
+
+**Shows:**
+- **Agents**, one card each with its setup and its state in this project (calls in the last 7 days):
+  - **Claude Code** (works today, measured: `docs/coding-agents.md`): the settings snippet (gateway root without
+    `/v1`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` unset), per developer in `~/.claude/settings.json` with
+    `X-Promptdam-User`, and a one-line check (`claude -p "hello"`).
+  - **Codex, OpenCode, Gemini CLI, Antigravity, Cursor**: "coming in the next round", each with what will work then.
+    Codex speaks the Responses API, which Promptdam passes through today without routing or caching: say so.
+- **Recommended settings**, checked against the project: secrets redacted, not blocked (a block stops the agent's
+  session); the project used only by agents; no router on agents' calls yet (a turn may switch models mid tool loop
+  only where measured safe); prompt caching on. Each with a Fix button that opens the setting.
+- **Developers:** calls, spend and secrets caught per developer this range (from the key's developer or
+  `X-Promptdam-User`), linking to the request log filtered by them. Per-developer keys and budgets need Team: locked
+  state with the upgrade.
+- **Secrets caught in agents' traffic:** the last firewall events of this project, by detector ("12 AWS keys, 3
+  database passwords this week, none reached a provider").
+
+**Empty state:** the Claude Code snippet with the key picker.
+
+**Plan:** all; per-developer keys and budgets Team.
+
+**API:** `GET …/analytics/spend?group_by=developer`, `GET …/requests?developer=`, `GET …/firewall/events`,
+`GET …/firewall`, `GET …/routes`, `GET/PUT …/keys/{key}/gateway`. Missing (§6.1): grouping and filtering by end user
+(`X-Promptdam-User`), and which agent made a call (the gateway sees Claude Code's session header; it isn't logged as
+an agent yet).
+
 ---
 
-## 5. Organization pages (`/org/*`, shared Keel pages)
+## 5. Settings and Billing tabs (shared Keel pages)
+
+Settings (`/settings/*`) and Billing (`/billing/*`) are the sidebar's foot items, each with its tab rail (§3.3):
+
+| Tab | Route | Scope | Section |
+|---|---|---|---|
+| Project | `/settings` | This project | §4.17 |
+| Organization | `/settings/organization` | Organization | §5.1, §5.2 |
+| Members | `/settings/members` | Organization | §5.3 |
+| Alert channels | `/settings/alert-channels` | Organization | §5.5 |
+| Webhooks | `/settings/webhooks` | Organization | §5.6 |
+| Privacy | `/settings/privacy` | Organization | §5.7 (Business) |
+| Audit log | `/settings/audit-log` | Organization | §5.8 (Team) |
+| Account | `/settings/account` | You | §5.9 (and the organizations you belong to, to switch) |
+| Plan and usage | `/billing` | This period | §5.4 |
+| Spend cap | `/billing/spend-cap` | Overage | §5.4 |
+| Invoices | `/billing/invoices` | At Stripe | §5.4 |
 
 ### 5.1 General
 Organization name, ID, data region (read-only after creation), **Transfer ownership**, **Delete organization**.
@@ -654,8 +814,9 @@ API: `GET …/members`, `PATCH/DELETE …/members/{user}`, `GET/POST …/invitat
   gateway answers 429 `quota_exceeded` or `spend_cap_reached` meanwhile.
 - **Invoices and payment method:** the Stripe portal.
 - Actions: change plan (checkout), cancel, resume, preview the next invoice.
-- API: `GET /v1/billing/plans`, `GET /v1/orgs/{org}/billing`, `…/billing/checkout`, `…/billing/plan`, `…/billing/cancel`,
-  `…/billing/resume`, `…/billing/upcoming`, `…/billing/portal`, `…/billing/spend-caps`, `GET …/usage`,
+- API: `GET /v1/billing/plans`, `GET /v1/orgs/{org}/billing`, `…/billing/checkout`, `…/billing/plan`, `DELETE
+  …/billing/scheduled-change` (keep the current plan), `…/billing/cancel`, `…/billing/resume`, `…/billing/upcoming`,
+  `…/billing/portal`, `GET …/billing/spend-caps`, `PUT/DELETE …/billing/spend-caps/{meter}`, `GET …/usage`,
   `GET …/usage/periods`.
 
 ### 5.5 Alert channels
@@ -665,8 +826,8 @@ firing and resolving.
 API: `GET/POST /v1/orgs/{org}/channels`, delete, test.
 
 ### 5.6 Webhooks
-Endpoints (URL, events subscribed, enabled), the signing secret (reveal, rotate), a test message, deliveries with
-status and **Replay**. Event types listed with their descriptions, Promptdam's included: `budget.threshold_reached`,
+Endpoints (URL, events subscribed, enabled) as an accordion, as Plugport's, the signing secret (reveal, rotate), a
+test message, deliveries with status, one delivery's request and response, and **Replay**. Event types listed with their descriptions, Promptdam's included: `budget.threshold_reached`,
 `budget.exceeded`, `router.ready`, `router.tier_demoted`, `firewall.blocked`, `alert.fired`, `alert.resolved`.
 API: `GET /v1/webhooks/events`, `…/webhooks` CRUD, secret, test, deliveries, replay.
 
@@ -677,7 +838,7 @@ may be stored. While it is on:
 - turning any of them on answers 409 `payload_free`: the project pages show those settings locked, with a link here.
 
 Turning it on **deletes what was kept**: every project's payloads and cached answers. Say so in the confirmation
-("Every project's kept prompts, answers and cached answers are deleted now"), with the organization's name to type. Show who
+("Every project's kept prompts, answers and cached answers are deleted now"), with the organization's slug to type. Show who
 turned it on and when. Turning it off needs no plan; a downgrade leaves it on. Admins and owners change it, every
 change is in the audit log (`privacy.updated`). Below Business, show what it guarantees and the upgrade (402
 `plan_required`).
@@ -697,14 +858,38 @@ Name, email, sign-in method; delete account (with a preview of what goes). API: 
 
 ## 6. What the API still lacks for these pages
 
-Built since this page was written (2026-10-08): the model picker (`GET …/models`), list and missing prices, the ledger
-export, the request log's and firewall events' filters, the activity feed (and each budget's history), the overview in
-one call, the routers' `watching` and `learned`, the plan checks (prompt caching, the cache doctor, per-developer keys,
-the ledger export, the audit log), alert rules, per-project usage, and the audit log of every project change.
+Built since 2026-10-08: the model picker, list and missing prices, the ledger export, the request log's and firewall
+events' filters, the activity feed, the overview in one call, the routers' `watching` and `learned`, the plan checks,
+alert rules, per-project usage, the audit log of every project change, payload capture, payload-free mode, cloud
+providers, the doors, decision outcomes, tier effort and examples, turns and `healed`, `savings_basis`, the cache
+doctor's learned findings.
 
-Since then: payload capture (§4.4 and §4.17), payload-free mode (§5.7).
+### 6.1 Open (from the audit of 2026-10-19)
+1. **Request fields:** `RequestOut` lacks door, kind, backend, target_model, cache_strategy, cache_trial, pooled,
+   cost_reported, cache_expected_tokens, computed_micros, input_micros, router_micros, decision, decision_ms, rule,
+   counterfactual_micros, payload_ref (a "payload kept" flag), request_bytes, response_bytes. All are in ClickHouse;
+   the handler maps a subset (`handlers/analytics.go`).
+2. **Request filters:** conversation, family, end user (`X-Promptdam-User`), tag, door.
+3. **Analytics grouping** by end user and by door.
+4. **Decision models:** `GET …/models` doesn't mark the models that decide (`llm.Model.Decisions`), so the router
+   settings can't list them first.
+5. **Learned caching:** no endpoint shows what Promptdam learned per model (strategy, backends kept off) beyond the
+   cache doctor's findings.
+6. **Ledger export:** no `savings_basis` or `priced` column.
+7. **Agents:** which agent made a call isn't logged (§4.18).
+8. **Docs drift:** `handlers/routes.go`'s description of `prompt_cache` still says Anthropic only.
 
-Left: nothing the pages above need.
+### 6.2 Coming with round PD (the firewall model)
+- `GET /v1/firewall/presets`: label groups with each label's description, examples and source (pattern, model); the
+  use-case presets with their defaults.
+- `GET/PUT …/firewall`: `model` {secrets, pii, labels with their actions, allow list, fail_mode} and `sensitive`
+  (the special categories' class); plan checks: personal data and special categories Pro, the model's secrets Free.
+- `firewall_events.source` and per-source stats; `POST …/firewall/test` returns the model's findings.
+- The ~35 countries' ID numbers as detectors in the presets.
+- Labels proposed on 2026-10-19 and waiting for the owner's yes: card security codes and expiry, device IDs, licence
+  plates, exact coordinates (masked with personal data); immigration status, financial profile, employment and
+  education records (alert, like special categories); age, gender, nationality and marital status (taught, never
+  masked unless chosen). The accordion shows them only once they exist.
 
 ## 7. Flows across pages
 
@@ -719,3 +904,19 @@ Left: nothing the pages above need.
 - **A budget threshold:** alert → Budgets (progress, who spends) → Analytics grouped by key or developer → raise the
   limit or block.
 - **A failing provider:** fallback absorbs it (request log shows fallbacks) → Providers (check error) → fix the key.
+
+## 8. Build order
+
+What to build first, so each evening ends with something that works end to end:
+1. **Shell:** `default.vue` on `KeelAppShell`, `app/utils/pages.ts` from §3.3 (every page a placeholder at first),
+   the project switcher, the plan meter, Connect, `?preview=`.
+2. **First run and Get started** (§4.1): the onboarding steps, the checklist, the snippet dialog (Connect reuses it).
+3. **Providers and API keys** (§4.13, §4.14): a project can't send a call without them.
+4. **Requests and the request panel** (§4.3, §4.4): the first page developers open every day.
+5. **Overview** (§4.2): one call (`GET …/overview`), the KPI tiles, the spend-vs-without chart, Needs attention.
+6. **Firewall** (§4.11): Overview, Events and Test today; the accordion on today's presets, the model's labels when
+   round PD lands.
+7. **Savings and Routers** (§4.7, §4.8): the product's proof and its core feature.
+8. **Settings and Billing tabs** (§5): mostly shared with Plugport's pages; copy and adapt.
+9. **The rest:** Analytics, Families, Cache doctor, Rules, Budgets, Alert rules, Routes, Prices, Activity, Coding
+   agents.
