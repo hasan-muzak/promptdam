@@ -34,8 +34,21 @@ var Env = sync.OnceValue(func() *policy.Env {
 // while changing something else isn't an error.
 func (s Settings) Needs(old Settings) []string {
 	var out []string
-	if s.PII != old.PII && s.PII != Off && s.PII != Alert {
+	masks := func(a string) bool { return a != "" && a != Off && a != Alert } // empty: the default, which never masks
+	switch {
+	case s.PII != old.PII && masks(s.PII),
+		s.Sensitive != old.Sensitive && masks(s.Sensitive),
+		s.Model.PII && !old.Model.PII:
+		// The model reading for personal data costs what a plan pays for,
+		// alerts included.
 		out = append(out, catalog.PIIRedaction)
+	default:
+		for name, a := range s.Model.Labels {
+			if l, _ := modelLabel(name); l.Class != ClassSecret && masks(a) && old.Model.Labels[name] != a {
+				out = append(out, catalog.PIIRedaction)
+				break
+			}
+		}
 	}
 	if slices.ContainsFunc(s.Policies, func(p Policy) bool { return !slices.Contains(old.Policies, p) }) {
 		out = append(out, catalog.FirewallPolicies)

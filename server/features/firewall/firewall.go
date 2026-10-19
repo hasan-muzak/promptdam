@@ -82,9 +82,12 @@ var SecretDetectors = func() []string {
 // Settings are a project's firewall.
 type Settings struct {
 	Enabled bool `json:"enabled"`
-	// Secrets, PII and CustomAction are the classes' actions.
+	// Secrets, PII, Sensitive and CustomAction are the classes' actions.
 	Secrets string `json:"secrets"`
 	PII     string `json:"pii"`
+	// Sensitive is the special categories' (ClassSensitive), which only the
+	// model finds.
+	Sensitive string `json:"sensitive,omitempty"`
 	// PIIDetectors are the personal data looked for (default all of
 	// PIIDetectors; redact.IPv4 may be added).
 	PIIDetectors []string `json:"pii_detectors,omitempty"`
@@ -97,19 +100,22 @@ type Settings struct {
 	ScanResponses bool `json:"scan_responses"`
 	// Excerpts keeps a masked excerpt around each finding in its event.
 	Excerpts bool `json:"excerpts"`
+	// Model is what the detector model reads for (round PD).
+	Model ModelSettings `json:"model"`
 }
 
 // Defaults are a project's firewall until it sets one: secrets blocked,
 // answers scanned.
 func Defaults() Settings {
-	return Settings{Enabled: true, Secrets: Block, PII: Off, CustomAction: Alert, FailMode: FailSecretsClosed, ScanResponses: true}
+	return Settings{Enabled: true, Secrets: Block, PII: Off, Sensitive: Alert, CustomAction: Alert, FailMode: FailSecretsClosed,
+		ScanResponses: true, Model: ModelSettings{FailMode: ModelFailOpen}}
 }
 
 // Policy is a CEL condition and what it does to a call:
 //
 //	request    the call as routing rules see it (request.model, .tags…)
 //	findings   map of detector → count of findings in the request
-//	classes    map of class (secret, pii, custom) → count
+//	classes    map of class (secret, pii, sensitive, custom) → count
 //	locations  map of the request's part (messages, system, tools…) → count
 //	target     map: provider, kind and model the call goes to
 //	principal  map: key (key_…), developer and user of the call
@@ -171,11 +177,15 @@ func (s *Settings) Check(env *policy.Env) error {
 	if s.CustomAction == "" {
 		s.CustomAction = Alert
 	}
+	if s.Sensitive == "" {
+		s.Sensitive = Alert
+	}
 	if s.FailMode == "" {
 		s.FailMode = FailSecretsClosed
 	}
 	switch {
-	case !slices.Contains(actions, s.Secrets), !slices.Contains(actions, s.PII), !slices.Contains(actions, s.CustomAction):
+	case !slices.Contains(actions, s.Secrets), !slices.Contains(actions, s.PII), !slices.Contains(actions, s.CustomAction),
+		!slices.Contains(actions, s.Sensitive):
 		return invalid("an action is off, alert, redact, tokenize or block")
 	case s.Secrets == Tokenize:
 		return invalid("secrets can't be tokenized: a model must never get them back to repeat")
@@ -186,13 +196,17 @@ func (s *Settings) Check(env *policy.Env) error {
 	case len(s.Policies) > MaxPolicies:
 		return invalid("at most %d policies", MaxPolicies)
 	}
+	if err := s.checkModel(); err != nil {
+		return err
+	}
 	for _, d := range s.PIIDetectors {
 		if !slices.Contains(PIIDetectors, d) && d != redact.IPv4 {
 			return invalid("%q is not a personal data detector (%s, %s)", d, strings.Join(PIIDetectors, ", "), redact.IPv4)
 		}
 	}
 	for name, re := range s.Custom {
-		if name == "" || len(name) > 32 || strings.ContainsAny(name, " ⟦⟧") || slices.Contains(redact.DefaultDetectors, name) {
+		if _, model := modelLabel(name); name == "" || len(name) > 32 || strings.ContainsAny(name, " ⟦⟧") ||
+			slices.Contains(redact.DefaultDetectors, name) || slices.Contains(redact.NationalIDs, name) || model {
 			return invalid("%q: a custom pattern's name is 1 to 32 characters, unlike a built-in detector's", name)
 		}
 		if re == "" || len(re) > MaxPattern {
@@ -243,6 +257,13 @@ type Engine struct {
 func Compile(s Settings, env *policy.Env) (*Engine, error) {
 	if !s.Enabled {
 		return nil, nil
+	}
+	// Settings saved before the special categories and the model had them.
+	if s.Sensitive == "" {
+		s.Sensitive = Alert
+	}
+	if s.Model.FailMode == "" {
+		s.Model.FailMode = ModelFailOpen
 	}
 	e := &Engine{s: s, class: map[string]string{}, env: env}
 	detectors := []string{} // none is none, not redact's defaults
@@ -302,6 +323,8 @@ func (e *Engine) action(class string) string {
 		return e.s.Secrets
 	case ClassPII:
 		return e.s.PII
+	case ClassSensitive:
+		return e.s.Sensitive
 	}
 	return e.s.CustomAction
 }
@@ -588,7 +611,7 @@ func (e *Engine) Decide(o *Outcome, req rules.Request, c Call) {
 	if len(e.s.Policies) == 0 || o.BlockedBy == "scan" || o.Failed {
 		return
 	}
-	findings, classes := map[string]int64{}, map[string]int64{ClassSecret: 0, ClassPII: 0, ClassCustom: 0}
+	findings, classes := map[string]int64{}, map[string]int64{ClassSecret: 0, ClassPII: 0, ClassSensitive: 0, ClassCustom: 0}
 	locations := map[string]int64{}
 	for d := range e.class {
 		findings[d] = 0

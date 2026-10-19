@@ -28,7 +28,7 @@ const CodeInvalidFirewall = "invalid_firewall"
 // FirewallPolicy is a CEL condition and what it does to a call.
 type FirewallPolicy struct {
 	Name   string `json:"name"`
-	When   string `json:"when" doc:"CEL over request (as routing rules see it), findings (detector → count), classes (secret, pii, custom → count), locations (messages, system, tools… → count), target (provider, kind, model), principal (key, developer, user) and org (plan)"`
+	When   string `json:"when" doc:"CEL over request (as routing rules see it), findings (detector → count), classes (secret, pii, sensitive, custom → count), locations (messages, system, tools… → count), target (provider, kind, model), principal (key, developer, user) and org (plan)"`
 	Action string `json:"action" doc:"block, allow (cancels a class's block) or route_to"`
 	Model  string `json:"model,omitempty" doc:"route_to's model: model, or provider/model. The call goes there only, without fallbacks"`
 }
@@ -39,7 +39,9 @@ type FirewallSettings struct {
 	Secrets string `json:"secrets" doc:"What API keys, tokens, private keys and connection strings get: block (the default), redact, alert or off"`
 	PII     string `json:"pii" doc:"What personal data gets: off (the default), alert, redact, tokenize (the model sees a placeholder; the answer gets the value back) or block. Redact and tokenize need a plan with PII redaction"`
 	// PIIDetectors are the personal data looked for.
-	PIIDetectors  []string          `json:"pii_detectors" doc:"email, phone, credit_card, iban, us_ssn, tr_tckn, ipv4; empty: all but ipv4"`
+	PIIDetectors  []string          `json:"pii_detectors" doc:"The customer-data preset's detectors (email, phone, credit_card, iban, national IDs…; GET /v1/firewall/presets), ipv4 too; empty: all but ipv4"`
+	Sensitive     string            `json:"sensitive" doc:"What special categories (health, beliefs, orientation, union, crime, ethnicity, biometrics) get: alert (the default), off, redact, tokenize or block. The model finds them; masking needs a plan with PII redaction"`
+	Model         FirewallModel     `json:"model" doc:"What the detector model reads for"`
 	Custom        map[string]string `json:"custom" doc:"The project's own patterns: name → regular expression (RE2). Needs a plan with custom policies"`
 	CustomAction  string            `json:"custom_action" doc:"What custom patterns' findings get: alert (the default), redact, tokenize, block or off"`
 	Policies      []FirewallPolicy  `json:"policies" doc:"In order: the first that holds decides. Needs a plan with firewall policies"`
@@ -48,15 +50,26 @@ type FirewallSettings struct {
 	Excerpts      bool              `json:"excerpts" doc:"Keep the text around each finding, findings masked, in its event"`
 }
 
+// FirewallModel is what the detector model reads for.
+type FirewallModel struct {
+	Secrets  bool              `json:"secrets" doc:"Find keys, tokens and passwords in formats no pattern knows (the credential label), with the secrets' action. Every plan"`
+	PII      bool              `json:"pii" doc:"Find personal data and special categories by reading the text: names, addresses, health… Needs a plan with PII redaction"`
+	Labels   map[string]string `json:"labels" doc:"Actions for single labels (GET /v1/firewall/presets lists them), over their class's: person → tokenize, location → redact"`
+	Allow    []string          `json:"allow" doc:"Terms never masked: your company's name, products, a support agent's name"`
+	FailMode string            `json:"fail_mode" doc:"When the model can't answer in time: open (the default: the patterns alone) or closed (the call is refused)"`
+}
+
 // Validate implements muzak.Validatable.
 func (s *FirewallSettings) Validate(v *muzak.Validation) {
 	v.Slice(&s.Policies).MaxItems(firewall.MaxPolicies)
-	v.Slice(&s.PIIDetectors).MaxItems(10)
+	v.Slice(&s.PIIDetectors).MaxItems(64)
+	v.Slice(&s.Model.Allow).MaxItems(firewall.MaxAllow)
 }
 
 func (s FirewallSettings) settings() firewall.Settings {
 	out := firewall.Settings{Enabled: s.Enabled, Secrets: s.Secrets, PII: s.PII, PIIDetectors: s.PIIDetectors, Custom: s.Custom,
-		CustomAction: s.CustomAction, FailMode: s.FailMode, ScanResponses: s.ScanResponses, Excerpts: s.Excerpts}
+		CustomAction: s.CustomAction, FailMode: s.FailMode, ScanResponses: s.ScanResponses, Excerpts: s.Excerpts,
+		Sensitive: s.Sensitive, Model: firewall.ModelSettings(s.Model)}
 	for _, p := range s.Policies {
 		out.Policies = append(out.Policies, firewall.Policy(p))
 	}
@@ -66,7 +79,19 @@ func (s FirewallSettings) settings() firewall.Settings {
 func firewallOut(s firewall.Settings) FirewallSettings {
 	out := FirewallSettings{Enabled: s.Enabled, Secrets: s.Secrets, PII: s.PII, PIIDetectors: s.PIIDetectors, Custom: s.Custom,
 		CustomAction: s.CustomAction, Policies: []FirewallPolicy{}, FailMode: s.FailMode, ScanResponses: s.ScanResponses,
-		Excerpts: s.Excerpts}
+		Excerpts: s.Excerpts, Sensitive: s.Sensitive, Model: FirewallModel(s.Model)}
+	if out.Sensitive == "" {
+		out.Sensitive = firewall.Alert
+	}
+	if out.Model.FailMode == "" {
+		out.Model.FailMode = firewall.ModelFailOpen
+	}
+	if out.Model.Labels == nil {
+		out.Model.Labels = map[string]string{}
+	}
+	if out.Model.Allow == nil {
+		out.Model.Allow = []string{}
+	}
 	if out.PIIDetectors == nil {
 		out.PIIDetectors = []string{}
 	}
@@ -425,9 +450,14 @@ func firewallQueryFail(err error) error {
 // FirewallPresetsOut lists the firewall's presets.
 type FirewallPresetsOut struct {
 	Data []firewall.Preset `json:"data"`
+	// Labels are the detector model's, grouped as the dashboard shows them.
+	Labels []firewall.Label `json:"labels" doc:"The detector model's labels: name, class (secret, pii, sensitive), group (identity, contact, location, ids, special, secrets), off when off by default"`
+	// UseCases are starting points for a project's firewall.
+	UseCases []firewall.UseCase `json:"use_cases" doc:"Starting points (customer support, healthcare, HR and finance, coding agents, strict): the classes' actions and the model's settings each sets"`
 }
 
-// FirewallPresets lists the firewall's presets: each class's detectors.
+// FirewallPresets lists the firewall's presets: each class's detectors, the
+// model's labels and the use cases.
 func (h *Handlers) FirewallPresets(*muzak.Context, muzak.Empty) (FirewallPresetsOut, error) {
-	return FirewallPresetsOut{Data: firewall.Presets}, nil
+	return FirewallPresetsOut{Data: firewall.Presets, Labels: firewall.ModelLabels, UseCases: firewall.UseCases}, nil
 }
