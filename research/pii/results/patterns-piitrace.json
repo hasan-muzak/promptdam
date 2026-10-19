@@ -1,0 +1,31 @@
+{
+ "model": "patterns",
+ "set": "piitrace",
+ "docs": 4500,
+ "timing": {
+  "seconds": 0.575
+ },
+ "score": {
+  "recall": 0.174,
+  "char_recall": 0.216,
+  "precision": 1.0,
+  "entities": 2653,
+  "predicted": 462,
+  "clean_flag_rate": 0.0,
+  "groups": {
+   "name": 0.0,
+   "contact": 0.565,
+   "address": 0.0,
+   "id": 0.0,
+   "date": 0.0,
+   "secret": 0.0,
+   "other": 0.0
+  },
+  "langs": {
+   "EN": 0.174
+  },
+  "tiers": {
+   "-": 0.174
+  }
+ }
+}

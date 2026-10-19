@@ -1,0 +1,55 @@
+{
+ "model": "bardsai-eu-pii+pii-tracer",
+ "set": "redact",
+ "docs": 1000,
+ "score": {
+  "recall": 0.93,
+  "char_recall": 0.898,
+  "precision": 0.661,
+  "entities": 23798,
+  "predicted": 72353,
+  "clean_flag_rate": null,
+  "groups": {
+   "name": 0.955,
+   "contact": 0.959,
+   "address": 0.943,
+   "id": 0.946,
+   "date": 0.895,
+   "special": 0.699,
+   "secret": 0.853,
+   "other": 0.856
+  },
+  "langs": {
+   "AR": 0.956,
+   "CS": 0.973,
+   "DA": 0.975,
+   "DE": 0.941,
+   "EN": 0.924,
+   "ES": 0.918,
+   "FI": 0.909,
+   "FR": 0.963,
+   "FR_CA": 0.909,
+   "HE": 0.926,
+   "HI": 0.883,
+   "HU": 0.947,
+   "IT": 0.949,
+   "JA": 0.969,
+   "KO": 0.923,
+   "NL": 0.894,
+   "NO": 0.938,
+   "PT_BR": 0.922,
+   "PT_EU": 0.934,
+   "RU": 0.94,
+   "SV": 0.869,
+   "TH": 0.955,
+   "TR": 0.936,
+   "ZH_CN": 0.94,
+   "ZH_TW": 0.863
+  },
+  "tiers": {
+   "HIGH": 0.874,
+   "LOW": 0.907,
+   "MEDIUM": 0.953
+  }
+ }
+}

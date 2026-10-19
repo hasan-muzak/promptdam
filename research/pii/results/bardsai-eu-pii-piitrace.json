@@ -1,0 +1,37 @@
+{
+ "model": "bardsai-eu-pii",
+ "set": "piitrace",
+ "docs": 4500,
+ "timing": {
+  "threads": 8,
+  "seconds": 142.07,
+  "tokens_per_s": 1448,
+  "ms_per_1k_chars": 161.6,
+  "p50_ms": 29.2,
+  "p99_ms": 47.5,
+  "avg_chars": 195
+ },
+ "score": {
+  "recall": 0.942,
+  "char_recall": 0.941,
+  "precision": 0.973,
+  "entities": 2653,
+  "predicted": 9624,
+  "clean_flag_rate": 0.044,
+  "groups": {
+   "name": 1.0,
+   "contact": 0.996,
+   "address": 1.0,
+   "id": 1.0,
+   "date": 0.321,
+   "secret": 1.0,
+   "other": 1.0
+  },
+  "langs": {
+   "EN": 0.942
+  },
+  "tiers": {
+   "-": 0.942
+  }
+ }
+}

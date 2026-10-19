@@ -1,0 +1,37 @@
+{
+ "model": "pii-tracer",
+ "set": "piitrace",
+ "docs": 4500,
+ "timing": {
+  "threads": 8,
+  "seconds": 669.14,
+  "tokens_per_s": 280,
+  "ms_per_1k_chars": 761.0,
+  "p50_ms": 150.0,
+  "p99_ms": 211.5,
+  "avg_chars": 195
+ },
+ "score": {
+  "recall": 0.971,
+  "char_recall": 0.981,
+  "precision": 0.95,
+  "entities": 2653,
+  "predicted": 2800,
+  "clean_flag_rate": 0.036,
+  "groups": {
+   "name": 0.937,
+   "contact": 1.0,
+   "address": 1.0,
+   "id": 0.982,
+   "date": 0.914,
+   "secret": 0.981,
+   "other": 0.986
+  },
+  "langs": {
+   "EN": 0.971
+  },
+  "tiers": {
+   "-": 0.971
+  }
+ }
+}

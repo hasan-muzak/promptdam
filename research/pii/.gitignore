@@ -1,0 +1,8 @@
+.venv/
+data/
+models/
+results/raw/
+results/queue.log
+results/last.*
+results-fetch-*.log
+__pycache__/

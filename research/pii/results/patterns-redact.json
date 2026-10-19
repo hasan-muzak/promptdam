@@ -1,0 +1,58 @@
+{
+ "model": "patterns",
+ "set": "redact",
+ "docs": 1000,
+ "timing": {
+  "seconds": 0.185
+ },
+ "score": {
+  "recall": 0.093,
+  "char_recall": 0.152,
+  "precision": 0.849,
+  "entities": 23798,
+  "predicted": 2603,
+  "clean_flag_rate": null,
+  "groups": {
+   "name": 0.003,
+   "contact": 0.767,
+   "address": 0.001,
+   "id": 0.052,
+   "date": 0.003,
+   "special": 0.001,
+   "secret": 0.088,
+   "other": 0.007
+  },
+  "langs": {
+   "AR": 0.114,
+   "CS": 0.093,
+   "DA": 0.086,
+   "DE": 0.085,
+   "EN": 0.081,
+   "ES": 0.095,
+   "FI": 0.101,
+   "FR": 0.067,
+   "FR_CA": 0.105,
+   "HE": 0.089,
+   "HI": 0.089,
+   "HU": 0.094,
+   "IT": 0.118,
+   "JA": 0.091,
+   "KO": 0.085,
+   "NL": 0.108,
+   "NO": 0.101,
+   "PT_BR": 0.083,
+   "PT_EU": 0.119,
+   "RU": 0.072,
+   "SV": 0.109,
+   "TH": 0.103,
+   "TR": 0.068,
+   "ZH_CN": 0.112,
+   "ZH_TW": 0.072
+  },
+  "tiers": {
+   "HIGH": 0.057,
+   "LOW": 0.024,
+   "MEDIUM": 0.127
+  }
+ }
+}

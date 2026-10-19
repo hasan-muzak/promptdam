@@ -1,0 +1,37 @@
+{
+ "model": "gliner2-pii",
+ "set": "piitrace",
+ "docs": 4500,
+ "timing": {
+  "threads": 8,
+  "seconds": 487.43,
+  "tokens_per_s": 346,
+  "ms_per_1k_chars": 554.3,
+  "p50_ms": 107.1,
+  "p99_ms": 143.6,
+  "avg_chars": 195
+ },
+ "score": {
+  "recall": 0.781,
+  "char_recall": 0.72,
+  "precision": 0.781,
+  "entities": 2653,
+  "predicted": 5292,
+  "clean_flag_rate": 0.067,
+  "groups": {
+   "name": 0.992,
+   "contact": 0.712,
+   "address": 0.964,
+   "id": 0.277,
+   "date": 0.937,
+   "secret": 0.619,
+   "other": 0.64
+  },
+  "langs": {
+   "EN": 0.781
+  },
+  "tiers": {
+   "-": 0.781
+  }
+ }
+}

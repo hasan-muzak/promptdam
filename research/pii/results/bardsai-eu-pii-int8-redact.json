@@ -1,0 +1,64 @@
+{
+ "model": "bardsai-eu-pii-int8",
+ "set": "redact",
+ "docs": 1000,
+ "timing": {
+  "threads": 8,
+  "seconds": 88.88,
+  "tokens_per_s": 6816,
+  "ms_per_1k_chars": 47.0,
+  "p50_ms": 62.2,
+  "p99_ms": 326.4,
+  "avg_chars": 1890
+ },
+ "score": {
+  "recall": 0.813,
+  "char_recall": 0.761,
+  "precision": 0.739,
+  "entities": 23798,
+  "predicted": 37928,
+  "clean_flag_rate": null,
+  "groups": {
+   "name": 0.91,
+   "contact": 0.915,
+   "address": 0.909,
+   "id": 0.874,
+   "date": 0.33,
+   "special": 0.221,
+   "secret": 0.647,
+   "other": 0.697
+  },
+  "langs": {
+   "AR": 0.83,
+   "CS": 0.887,
+   "DA": 0.841,
+   "DE": 0.814,
+   "EN": 0.798,
+   "ES": 0.803,
+   "FI": 0.771,
+   "FR": 0.87,
+   "FR_CA": 0.792,
+   "HE": 0.817,
+   "HI": 0.742,
+   "HU": 0.823,
+   "IT": 0.818,
+   "JA": 0.824,
+   "KO": 0.773,
+   "NL": 0.815,
+   "NO": 0.851,
+   "PT_BR": 0.809,
+   "PT_EU": 0.808,
+   "RU": 0.835,
+   "SV": 0.774,
+   "TH": 0.787,
+   "TR": 0.834,
+   "ZH_CN": 0.825,
+   "ZH_TW": 0.764
+  },
+  "tiers": {
+   "HIGH": 0.747,
+   "LOW": 0.613,
+   "MEDIUM": 0.898
+  }
+ }
+}

@@ -1,0 +1,28 @@
+{
+ "model": "bardsai-eu-pii+gliner2-pii",
+ "set": "piitrace",
+ "docs": 4500,
+ "score": {
+  "recall": 0.995,
+  "char_recall": 0.977,
+  "precision": 0.905,
+  "entities": 2653,
+  "predicted": 14916,
+  "clean_flag_rate": 0.067,
+  "groups": {
+   "name": 1.0,
+   "contact": 1.0,
+   "address": 1.0,
+   "id": 1.0,
+   "date": 0.946,
+   "secret": 1.0,
+   "other": 1.0
+  },
+  "langs": {
+   "EN": 0.995
+  },
+  "tiers": {
+   "-": 0.995
+  }
+ }
+}

@@ -1,0 +1,64 @@
+{
+ "model": "openai-privacy-filter",
+ "set": "redact",
+ "docs": 1000,
+ "timing": {
+  "threads": 8,
+  "seconds": 1063.34,
+  "tokens_per_s": 597,
+  "ms_per_1k_chars": 562.6,
+  "p50_ms": 1136.5,
+  "p99_ms": 2257.9,
+  "avg_chars": 1890
+ },
+ "score": {
+  "recall": 0.678,
+  "char_recall": 0.659,
+  "precision": 0.684,
+  "entities": 23798,
+  "predicted": 16766,
+  "clean_flag_rate": null,
+  "groups": {
+   "name": 0.803,
+   "contact": 0.903,
+   "address": 0.509,
+   "id": 0.659,
+   "date": 0.764,
+   "special": 0.063,
+   "secret": 0.735,
+   "other": 0.134
+  },
+  "langs": {
+   "AR": 0.687,
+   "CS": 0.659,
+   "DA": 0.688,
+   "DE": 0.704,
+   "EN": 0.692,
+   "ES": 0.731,
+   "FI": 0.523,
+   "FR": 0.76,
+   "FR_CA": 0.737,
+   "HE": 0.486,
+   "HI": 0.642,
+   "HU": 0.686,
+   "IT": 0.766,
+   "JA": 0.679,
+   "KO": 0.628,
+   "NL": 0.744,
+   "NO": 0.651,
+   "PT_BR": 0.749,
+   "PT_EU": 0.699,
+   "RU": 0.774,
+   "SV": 0.669,
+   "TH": 0.615,
+   "TR": 0.714,
+   "ZH_CN": 0.642,
+   "ZH_TW": 0.529
+  },
+  "tiers": {
+   "HIGH": 0.617,
+   "LOW": 0.461,
+   "MEDIUM": 0.767
+  }
+ }
+}

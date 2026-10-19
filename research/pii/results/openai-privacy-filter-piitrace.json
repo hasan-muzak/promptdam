@@ -1,0 +1,37 @@
+{
+ "model": "openai-privacy-filter",
+ "set": "piitrace",
+ "docs": 4500,
+ "timing": {
+  "threads": 8,
+  "seconds": 1102.3,
+  "tokens_per_s": 165,
+  "ms_per_1k_chars": 1253.6,
+  "p50_ms": 233.1,
+  "p99_ms": 426.8,
+  "avg_chars": 195
+ },
+ "score": {
+  "recall": 0.909,
+  "char_recall": 0.9,
+  "precision": 0.984,
+  "entities": 2653,
+  "predicted": 2561,
+  "clean_flag_rate": 0.036,
+  "groups": {
+   "name": 0.929,
+   "contact": 0.903,
+   "address": 0.959,
+   "id": 0.978,
+   "date": 0.842,
+   "secret": 0.843,
+   "other": 0.872
+  },
+  "langs": {
+   "EN": 0.909
+  },
+  "tiers": {
+   "-": 0.909
+  }
+ }
+}

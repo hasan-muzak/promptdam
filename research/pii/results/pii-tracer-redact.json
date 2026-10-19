@@ -1,0 +1,64 @@
+{
+ "model": "pii-tracer",
+ "set": "redact",
+ "docs": 1000,
+ "timing": {
+  "threads": 8,
+  "seconds": 799.4,
+  "tokens_per_s": 981,
+  "ms_per_1k_chars": 423.0,
+  "p50_ms": 588.5,
+  "p99_ms": 2947.8,
+  "avg_chars": 1890
+ },
+ "score": {
+  "recall": 0.836,
+  "char_recall": 0.789,
+  "precision": 0.665,
+  "entities": 23798,
+  "predicted": 22266,
+  "clean_flag_rate": null,
+  "groups": {
+   "name": 0.94,
+   "contact": 0.946,
+   "address": 0.664,
+   "id": 0.907,
+   "date": 0.885,
+   "special": 0.578,
+   "secret": 0.853,
+   "other": 0.309
+  },
+  "langs": {
+   "AR": 0.836,
+   "CS": 0.838,
+   "DA": 0.901,
+   "DE": 0.807,
+   "EN": 0.828,
+   "ES": 0.844,
+   "FI": 0.833,
+   "FR": 0.857,
+   "FR_CA": 0.829,
+   "HE": 0.847,
+   "HI": 0.81,
+   "HU": 0.871,
+   "IT": 0.858,
+   "JA": 0.87,
+   "KO": 0.768,
+   "NL": 0.809,
+   "NO": 0.816,
+   "PT_BR": 0.861,
+   "PT_EU": 0.819,
+   "RU": 0.858,
+   "SV": 0.771,
+   "TH": 0.85,
+   "TR": 0.882,
+   "ZH_CN": 0.818,
+   "ZH_TW": 0.792
+  },
+  "tiers": {
+   "HIGH": 0.835,
+   "LOW": 0.554,
+   "MEDIUM": 0.932
+  }
+ }
+}
