@@ -161,6 +161,26 @@ class OnnxClassifier(TokenClassifier):
         return self.sess.run(None, feed)[0][0].astype(np.float32)
 
 
+class Student:
+    """Our model (train/train.py) as the detector service reads it: 512-token windows overlapping by 128, BIOES
+    Viterbi, and the context labels it learns for the boundary (organization, job title, money, public figure)
+    never reported. onnx reads train/export.py's model.onnx instead of the checkpoint."""
+
+    CONTEXT = {"organization", "job_title", "money", "public_figure"}
+
+    def __init__(self, path: Path, onnx: bool):
+        if onnx:
+            self.m = OnnxClassifier(path.name, path, "model.onnx", window=510, overlap=128, viterbi=True)
+        else:
+            self.m = TokenClassifier(path.name, path, window=510, overlap=128, viterbi=True)
+
+    def predict(self, text: str):
+        return [s for s in self.m.predict(text) if s[2] not in self.CONTEXT]
+
+    def tokens(self, text: str) -> int:
+        return self.m.tokens(text)
+
+
 class Tracer:
     """Perplexity's PII-Tracer through its own predict (its repository's code,
     read before running: a bidirectional Qwen3 encoder, two heads, a Viterbi)."""
@@ -247,4 +267,7 @@ def load(name: str):
         return Gliner(ROOT / "gliner2-pii", special=True)
     if name == "patterns":
         return Patterns()
+    if name.startswith("student-"):  # student-pilot, student-pilot-onnx: models/student-pilot
+        onnx = name.endswith("-onnx")
+        return Student(ROOT / name.removesuffix("-onnx"), onnx)
     raise SystemExit(f"unknown model {name}")
