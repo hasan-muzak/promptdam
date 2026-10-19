@@ -1,10 +1,7 @@
-// Package detector is the gateway's client of the detector service: the
-// model that reads a request's text for personal data and secrets no
-// pattern has a shape for (round PD). The service runs apart (its own
-// module, ONNX Runtime through cgo, which the gateway's static build
-// doesn't take); this package holds what both speak, the cgo-free wire
-// types, and the client the firewall asks.
-package detector
+// Package wire is what the gateway and the detector service speak: the
+// service runs apart (its own module, ONNX Runtime through cgo, which the
+// gateway's static build doesn't take), and imports only this.
+package wire
 
 // Priorities of a request: a call waiting on the answer goes first.
 const (

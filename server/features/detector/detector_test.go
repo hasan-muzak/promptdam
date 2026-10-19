@@ -16,6 +16,7 @@ import (
 
 	"github.com/hasan-muzak/keel-core/pkg/testkit"
 
+	"github.com/hasan-muzak/promptdam/server/features/detector/wire"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 )
 
@@ -25,7 +26,7 @@ type service struct {
 	texts  atomic.Int32
 	status atomic.Int32
 	model  string
-	extra  []Span
+	extra  []wire.Span
 	block  chan struct{} // when set, answers wait for it
 }
 
@@ -38,17 +39,17 @@ func (s *service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "down", int(st))
 		return
 	}
-	var req SpansRequest
-	if r.Header.Get("Authorization") != "Bearer tok" || json.NewDecoder(r.Body).Decode(&req) != nil || req.Priority != PrioritySync {
+	var req wire.SpansRequest
+	if r.Header.Get("Authorization") != "Bearer tok" || json.NewDecoder(r.Body).Decode(&req) != nil || req.Priority != wire.PrioritySync {
 		http.Error(w, "bad", http.StatusBadRequest)
 		return
 	}
-	out := SpansResponse{Model: s.model}
+	out := wire.SpansResponse{Model: s.model}
 	for _, t := range req.Texts {
 		s.texts.Add(1)
-		ts := TextSpan{ID: t.ID, Spans: append([]Span{}, s.extra...)}
+		ts := wire.TextSpan{ID: t.ID, Spans: append([]wire.Span{}, s.extra...)}
 		for i := strings.Index(t.Text, "Ayşe"); i >= 0; {
-			ts.Spans = append(ts.Spans, Span{Start: i, End: i + len("Ayşe"), Label: "person", Score: 0.9})
+			ts.Spans = append(ts.Spans, wire.Span{Start: i, End: i + len("Ayşe"), Label: "person", Score: 0.9})
 			next := strings.Index(t.Text[i+1:], "Ayşe")
 			if next < 0 {
 				break
@@ -147,7 +148,7 @@ func TestBreaker(t *testing.T) {
 
 // Spans that aren't places in their text are dropped.
 func TestSpansChecked(t *testing.T) {
-	s := &service{model: "m1", extra: []Span{{Start: -1, End: 2, Label: "person"}, {Start: 1, End: 2, Label: "person"},
+	s := &service{model: "m1", extra: []wire.Span{{Start: -1, End: 2, Label: "person"}, {Start: 1, End: 2, Label: "person"},
 		{Start: 0, End: 99, Label: "person"}, {Start: 0, End: 1, Label: ""}}}
 	_, r := client(t, s, Options{})
 	got, err := r.Spans(context.Background(), []string{"Çağrı"})

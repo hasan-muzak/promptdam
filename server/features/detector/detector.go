@@ -1,3 +1,6 @@
+// Package detector is the gateway's client of the detector service: the
+// model that reads a request's text for personal data and secrets no
+// pattern has a shape for (round PD). What both speak is in wire.
 package detector
 
 import (
@@ -27,6 +30,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/kv"
 	"github.com/hasan-muzak/keel-core/pkg/memcache"
 
+	"github.com/hasan-muzak/promptdam/server/features/detector/wire"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 )
 
@@ -281,10 +285,10 @@ func (c *Client) ask(ctx context.Context, project uuid.UUID, segs []segment, ask
 // call asks the service for the pieces idx holds, with a timeout that grows
 // with their size, and remembers the answers.
 func (c *Client) call(ctx context.Context, project uuid.UUID, segs []segment, idx []int, found [][]firewall.Span) error {
-	req := SpansRequest{Priority: PrioritySync}
+	req := wire.SpansRequest{Priority: wire.PrioritySync}
 	bytesAsked := 0
 	for _, i := range idx {
-		req.Texts = append(req.Texts, Text{ID: strconv.Itoa(i), Text: segs[i].s})
+		req.Texts = append(req.Texts, wire.Text{ID: strconv.Itoa(i), Text: segs[i].s})
 		bytesAsked += len(segs[i].s)
 	}
 	wait := c.latency.timeout(bytesAsked)
@@ -318,7 +322,7 @@ func (c *Client) call(ctx context.Context, project uuid.UUID, segs []segment, id
 		c.failed()
 		return fmt.Errorf("detector: %d %s", res.StatusCode, bytes.TrimSpace(raw[:min(len(raw), 200)]))
 	}
-	var out SpansResponse
+	var out wire.SpansResponse
 	if err := json.Unmarshal(raw, &out); err != nil {
 		c.failed()
 		return fmt.Errorf("detector: unreadable answer: %w", err)
@@ -328,7 +332,7 @@ func (c *Client) call(ctx context.Context, project uuid.UUID, segs []segment, id
 	if out.Model != c.version.Load().(string) {
 		c.version.Store(out.Model) // later pieces are keyed by the version that read them
 	}
-	byID := make(map[string][]Span, len(out.Texts))
+	byID := make(map[string][]wire.Span, len(out.Texts))
 	for _, t := range out.Texts {
 		byID[t.ID] = t.Spans
 	}
@@ -377,7 +381,7 @@ func (c *Client) failed() {
 }
 
 // checked keeps the spans that are places in s, on its characters' edges.
-func checked(s string, spans []Span) []firewall.Span {
+func checked(s string, spans []wire.Span) []firewall.Span {
 	out := make([]firewall.Span, 0, len(spans))
 	for _, sp := range spans {
 		if sp.Start < 0 || sp.End > len(s) || sp.Start >= sp.End || !utf8.RuneStart(s[sp.Start]) ||
