@@ -94,20 +94,81 @@ const maxDepth = 10_000
 // the document kept byte for byte. changed is false (and out doc itself)
 // when nothing was replaced.
 func rewrite(doc []byte, fn func(w *Walker, s string) (string, bool)) (out []byte, changed bool, err error) {
-	w := &Walker{}
 	copied := 0 // doc[:copied] is in out
+	err = walk(doc, func(w *Walker, start, end int, s string) {
+		if repl, ok := fn(w, s); ok {
+			out = append(out, doc[copied:start]...)
+			out = appendString(out, repl)
+			copied, changed = end, true
+		}
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if !changed {
+		return doc, false, nil
+	}
+	return append(out, doc[copied:]...), true, nil
+}
+
+// Leaf is one string value of a document (keys aside), with what a scan
+// needs of its place.
+type Leaf struct {
+	// doc[Start:End] is the value's JSON string, quotes included.
+	Start, End int
+	S          string
+	// Top is the top-level key it is under; Skip marks the protocol's
+	// identifiers and opaque fields, which aren't text.
+	Top  string
+	Skip bool
+}
+
+// leaves are a document's string values in order: one read serves every
+// detector, and splice writes all their replacements at once.
+func leaves(doc []byte) ([]Leaf, error) {
+	var out []Leaf
+	err := walk(doc, func(w *Walker, start, end int, s string) {
+		out = append(out, Leaf{Start: start, End: end, S: s, Top: w.Top(), Skip: ignored(w) || opaque(w)})
+	})
+	return out, err
+}
+
+// splice is doc with the values of ls whose index repl holds replaced, the
+// rest kept byte for byte.
+func splice(doc []byte, ls []Leaf, repl map[int]string) []byte {
+	if len(repl) == 0 {
+		return doc
+	}
+	out := make([]byte, 0, len(doc)+len(doc)/8)
+	copied := 0
+	for i, l := range ls {
+		r, ok := repl[i]
+		if !ok {
+			continue
+		}
+		out = append(out, doc[copied:l.Start]...)
+		out = appendString(out, r)
+		copied = l.End
+	}
+	return append(out, doc[copied:]...)
+}
+
+// walk calls fn with every string value (keys aside) of a JSON document
+// and where its JSON string lies: doc[start:end], quotes included.
+func walk(doc []byte, fn func(w *Walker, start, end int, s string)) error {
+	w := &Walker{}
 	expectKey := false
 	for i := 0; i < len(doc); i++ {
 		switch c := doc[i]; c {
 		case '{', '[':
 			if len(w.frames) >= maxDepth {
-				return nil, false, errMalformed
+				return errMalformed
 			}
 			w.frames = append(w.frames, frame{object: c == '{'})
 			expectKey = c == '{'
 		case '}', ']':
 			if len(w.frames) == 0 {
-				return nil, false, errMalformed
+				return errMalformed
 			}
 			w.frames = w.frames[:len(w.frames)-1]
 		case ',':
@@ -121,24 +182,21 @@ func rewrite(doc []byte, fn func(w *Walker, s string) (string, bool)) (out []byt
 		case '"':
 			end, escaped, err := stringEnd(doc, i)
 			if err != nil {
-				return nil, false, err
+				return err
 			}
-			raw := doc[i+1 : end]
 			var s string
 			if escaped {
 				if err := json.Unmarshal(doc[i:end+1], &s); err != nil {
-					return nil, false, errMalformed
+					return errMalformed
 				}
 			} else {
-				s = string(raw)
+				s = string(doc[i+1 : end])
 			}
 			if expectKey {
 				w.frames[len(w.frames)-1].key = s
 				expectKey = false
-			} else if repl, ok := fn(w, s); ok {
-				out = append(out, doc[copied:i]...)
-				out = appendString(out, repl)
-				copied, changed = end+1, true
+			} else {
+				fn(w, i, end+1, s)
 			}
 			i = end
 		default:
@@ -154,10 +212,7 @@ func rewrite(doc []byte, fn func(w *Walker, s string) (string, bool)) (out []byt
 			}
 		}
 	}
-	if !changed {
-		return doc, false, nil
-	}
-	return append(out, doc[copied:]...), true, nil
+	return nil
 }
 
 // stringEnd finds the closing quote of the string starting at doc[i].

@@ -392,75 +392,8 @@ var ErrScan = errors.New("firewall: the request couldn't be scanned")
 // with what fail mode says: a blocked outcome, or one let through.
 func (e *Engine) Inspect(body []byte) (*Outcome, error) {
 	o := &Outcome{}
-	hits := map[[2]string]*Hit{}
-	var order [][2]string
-	out, changed, err := rewrite(body, func(w *Walker, s string) (string, bool) {
-		if ignored(w) || opaque(w) || blob(s) {
-			return "", false
-		}
-		fs := e.find(s)
-		if len(fs) == 0 {
-			return "", false
-		}
-		// Everything found in the text, read once if an excerpt is kept.
-		var spans []redact.Finding
-		loc := w.Top()
-		var b strings.Builder
-		last, changed := 0, false
-		for _, f := range fs {
-			class := e.class[f.Detector]
-			action := e.action(class)
-			value := s[f.Start:f.End]
-			// A value that JSON must escape can't be put back verbatim in
-			// a streamed answer's text: it is masked instead.
-			if action == Tokenize && !plain(value) {
-				action = Redact
-			}
-			k := [2]string{f.Detector, loc}
-			h := hits[k]
-			if h == nil {
-				h = &Hit{Detector: f.Detector, Class: class, Action: action, Location: loc}
-				if e.all != nil {
-					if spans == nil {
-						spans = e.all.Find(s)
-						slices.SortFunc(spans, func(a, b redact.Finding) int { return a.Start - b.Start })
-					}
-					h.Excerpt = excerpt(s, f, spans)
-				}
-				hits[k] = h
-				order = append(order, k)
-			}
-			h.Count++
-			b.WriteString(s[last:f.Start])
-			switch action {
-			case Block:
-				o.Blocked, o.BlockedBy = true, class
-				b.WriteString(value)
-			case Redact:
-				b.WriteString("[REDACTED:" + f.Detector + "]")
-				changed = true
-			case Tokenize:
-				if o.Tokens == nil {
-					o.Tokens = e.r.Tokenizer()
-				}
-				b.WriteString(o.Tokens.Token(f.Detector, value))
-				changed = true
-			default:
-				b.WriteString(value)
-			}
-			last = f.End
-		}
-		if !changed {
-			return "", false
-		}
-		b.WriteString(s[last:])
-		return b.String(), true
-	})
-	for _, k := range order {
-		o.Hits = append(o.Hits, *hits[k])
-	}
+	ls, err := leaves(body)
 	if err != nil {
-		o.Hits = nil
 		if e.s.FailMode == FailClosed || e.s.FailMode == FailSecretsClosed && e.s.Secrets == Block {
 			o.Blocked, o.BlockedBy = true, "scan"
 		} else {
@@ -468,10 +401,93 @@ func (e *Engine) Inspect(body []byte) (*Outcome, error) {
 		}
 		return o, ErrScan
 	}
-	if changed {
-		o.Body = out
+	sc := scan{e: e, o: o, hits: map[[2]string]*Hit{}}
+	repl := map[int]string{}
+	for i, l := range ls {
+		if l.Skip || blob(l.S) {
+			continue
+		}
+		if r, ok := sc.apply(l, e.find(l.S)); ok {
+			repl[i] = r
+		}
+	}
+	for _, k := range sc.order {
+		o.Hits = append(o.Hits, *sc.hits[k])
+	}
+	if len(repl) > 0 {
+		o.Body = splice(body, ls, repl)
 	}
 	return o, nil
+}
+
+// scan is one request's: its outcome, and its hits per detector and
+// location in the order first found.
+type scan struct {
+	e     *Engine
+	o     *Outcome
+	hits  map[[2]string]*Hit
+	order [][2]string
+}
+
+// apply takes the findings fs in one value and returns the value with the
+// classes' actions applied; false when it is unchanged.
+func (sc *scan) apply(l Leaf, fs []redact.Finding) (string, bool) {
+	if len(fs) == 0 {
+		return "", false
+	}
+	e, o, s := sc.e, sc.o, l.S
+	// Everything found in the text, read once if an excerpt is kept.
+	var spans []redact.Finding
+	var b strings.Builder
+	last, changed := 0, false
+	for _, f := range fs {
+		class := e.class[f.Detector]
+		action := e.action(class)
+		value := s[f.Start:f.End]
+		// A value that JSON must escape can't be put back verbatim in a
+		// streamed answer's text: it is masked instead.
+		if action == Tokenize && !plain(value) {
+			action = Redact
+		}
+		k := [2]string{f.Detector, l.Top}
+		h := sc.hits[k]
+		if h == nil {
+			h = &Hit{Detector: f.Detector, Class: class, Action: action, Location: l.Top}
+			if e.all != nil {
+				if spans == nil {
+					spans = e.all.Find(s)
+					slices.SortFunc(spans, func(a, b redact.Finding) int { return a.Start - b.Start })
+				}
+				h.Excerpt = excerpt(s, f, spans)
+			}
+			sc.hits[k] = h
+			sc.order = append(sc.order, k)
+		}
+		h.Count++
+		b.WriteString(s[last:f.Start])
+		switch action {
+		case Block:
+			o.Blocked, o.BlockedBy = true, class
+			b.WriteString(value)
+		case Redact:
+			b.WriteString("[REDACTED:" + f.Detector + "]")
+			changed = true
+		case Tokenize:
+			if o.Tokens == nil {
+				o.Tokens = e.r.Tokenizer()
+			}
+			b.WriteString(o.Tokens.Token(f.Detector, value))
+			changed = true
+		default:
+			b.WriteString(value)
+		}
+		last = f.End
+	}
+	if !changed {
+		return "", false
+	}
+	b.WriteString(s[last:])
+	return b.String(), true
 }
 
 // plain reports a value JSON writes as it is.
