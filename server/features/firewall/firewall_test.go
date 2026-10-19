@@ -86,7 +86,7 @@ func TestPIIRedactedOrTokenized(t *testing.T) {
 	var text strings.Builder
 	for _, piece := range []string{"Sent to ⟦em", "ail_1⟧", " now."} {
 		ev, _ := json.Marshal(map[string]any{"choices": []map[string]any{{"index": 0, "delta": map[string]string{"content": piece}}}})
-		if out := r.Event(ev); out != nil {
+		if out, _ := r.Event("", ev); out != nil {
 			ev = out
 		}
 		var c struct {
@@ -233,7 +233,7 @@ func BenchmarkResponseEvent(b *testing.B) {
 		`"choices":[{"index":0,"delta":{"content":"tok42 "},"finish_reason":null,"logprobs":null}]}`)
 	b.ReportAllocs()
 	for b.Loop() {
-		r.Event(ev)
+		r.Event("", ev)
 	}
 }
 

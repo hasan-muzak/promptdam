@@ -189,6 +189,29 @@ func TestPIITokenizedAndRestored(t *testing.T) {
 	}
 }
 
+// An answer that ends inside what looks like a token loses nothing: the
+// held text reaches the client, in every streamed format.
+func TestStreamEndingInATokensStart(t *testing.T) {
+	s := firewall.Defaults()
+	s.PII = firewall.Tokenize
+	w := world(t, &s)
+	const said = "Mail ada@example.com about ⟦em"
+	for _, c := range []struct{ name, path, model string }{
+		{"chat", "/v1/chat/completions", "gpt-5-mini"},
+		{"messages", "/v1/messages", "claude-sonnet-5-5"},
+		{"messages to a chat model", "/v1/messages", "gpt-5-mini"},
+		{"chat to a messages model", "/v1/chat/completions", "claude-sonnet-5-5"},
+	} {
+		status, _, body := w.Call(c.path, request(c.path, c.model, said, true))
+		if status != http.StatusOK {
+			t.Fatalf("%s: %d %s", c.name, status, body)
+		}
+		if got := answer(t, c.path, body, true); got != "You said: "+said {
+			t.Fatalf("%s: the client got %q", c.name, got)
+		}
+	}
+}
+
 func TestPolicies(t *testing.T) {
 	s := firewall.Defaults()
 	s.PII = firewall.Alert

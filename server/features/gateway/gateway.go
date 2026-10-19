@@ -92,13 +92,15 @@ type Route struct {
 }
 
 // ResponseFilter rewrites a provider's answer: a whole one (Body), or a
-// stream's events one by one (Event, each event's data), in the
-// provider's API format; nil returns leave them as they are. End follows
-// the last. A filter serves one call.
+// stream's events one by one (Event, each event's name and data), in the
+// provider's API format; nil returns leave them as they are. Event may
+// also return events to write before the one it was given, and End, which
+// follows the last, events to write before the stream ends: text a filter
+// held back across events. A filter serves one call.
 type ResponseFilter interface {
 	Body(doc []byte) []byte
-	Event(data []byte) []byte
-	End()
+	Event(name string, data []byte) (out []byte, before []wire.Event)
+	End() []wire.Event
 }
 
 // PromptTTL are the lifetimes of a call's prompt cache breakpoints: on its

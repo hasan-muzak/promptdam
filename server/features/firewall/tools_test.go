@@ -122,7 +122,7 @@ func TestStreamedToolCallsRestored(t *testing.T) {
 		arg, _ := json.Marshal(p.s)
 		ev := []byte(`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":` + strconv.Itoa(p.index) +
 			`,"function":{"arguments":` + string(arg) + `}}]}}]}`)
-		if out := r.Event(ev); out != nil {
+		if out, _ := r.Event("", ev); out != nil {
 			ev = out
 		}
 		var c struct {
@@ -150,7 +150,7 @@ func TestStreamedToolCallsRestored(t *testing.T) {
 		part, _ := json.Marshal(piece)
 		ev := []byte(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":` +
 			string(part) + `}}`)
-		if out := r.Event(ev); out != nil {
+		if out, _ := r.Event("", ev); out != nil {
 			ev = out
 		}
 		var d struct {
@@ -163,5 +163,60 @@ func TestStreamedToolCallsRestored(t *testing.T) {
 	}
 	if input.String() != `{"to":"`+adaMail+`"}` {
 		t.Fatalf("anthropic %q", input.String())
+	}
+}
+
+// A stream that ends inside what looked like a token loses nothing: the
+// held text goes out in a copy of its block's last event, before the event
+// that ends the block, or when the stream ends.
+func TestHeldTextIsReleased(t *testing.T) {
+	e := engine(t, func(s *Settings) { s.PII = Tokenize })
+	o, _ := e.Inspect(chat("Mail " + adaMail))
+
+	r := e.Response(o)
+	delta := func(text string) []byte {
+		b, _ := json.Marshal(text)
+		return []byte(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":` + string(b) + `}}`)
+	}
+	text := func(data []byte) string {
+		var d struct {
+			Delta struct{ Text string } `json:"delta"`
+		}
+		_ = json.Unmarshal(data, &d)
+		return d.Delta.Text
+	}
+	var got strings.Builder
+	out, before := r.Event("content_block_delta", delta("Price: 5 ⟦eur"))
+	if before != nil || text(out) != "Price: 5 " {
+		t.Fatalf("held: %q %v", text(out), before)
+	}
+	got.WriteString(text(out))
+	_, before = r.Event("content_block_stop", []byte(`{"type":"content_block_stop","index":0}`))
+	if len(before) != 1 || before[0].Name != "content_block_delta" || text(before[0].Data) != "⟦eur" {
+		t.Fatalf("released at the block's end: %+v", before)
+	}
+	if got.WriteString(text(before[0].Data)); got.String() != "Price: 5 ⟦eur" {
+		t.Fatalf("text %q", got.String())
+	}
+	if r.End() != nil {
+		t.Fatal("released twice")
+	}
+
+	// A stream cut with no block end: End releases it.
+	r = e.Response(o)
+	choice := func(content string) []byte {
+		b, _ := json.Marshal(content)
+		return []byte(`{"id":"c1","choices":[{"index":0,"delta":{"content":` + string(b) + `}}]}`)
+	}
+	r.Event("", choice("Mail ⟦em"))
+	rest := r.End()
+	var c struct {
+		ID      string
+		Choices []struct {
+			Delta struct{ Content string } `json:"delta"`
+		} `json:"choices"`
+	}
+	if len(rest) != 1 || json.Unmarshal(rest[0].Data, &c) != nil || c.ID != "c1" || c.Choices[0].Delta.Content != "⟦em" {
+		t.Fatalf("released at the end: %+v", rest)
 	}
 }

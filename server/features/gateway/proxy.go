@@ -668,33 +668,55 @@ func (c *call) relay(res *http.Response, t Target, cancel context.CancelFunc, dr
 			}
 		}
 		var out []byte
-		gone := false
-		s := wire.NewScanner(body, 0)
-		for s.Next() {
-			ev := s.Event()
-			usage := meter.Event(ev)
-			ev = c.filterEvent(ev)
+		// emit writes one event in the client's format; false when the
+		// client is gone.
+		emit := func(ev wire.Event, usage bool) bool {
 			if st != nil {
 				if out = st.Event(out[:0], ev); len(out) > 0 {
-					if gone = !c.write(out); gone {
-						break
+					if !c.write(out) {
+						return false
 					}
 					_ = rc.Flush()
 				}
-				continue
+				return true
 			}
 			if usage && dropUsage {
-				continue
+				return true
 			}
 			if c.answerModel != "" {
 				ev = namedEvent(ev, c.answerModel)
 			}
-			if gone = !c.write(ev.Raw); gone {
-				break
+			if !c.write(ev.Raw) {
+				return false
 			}
 			_ = rc.Flush()
+			return true
+		}
+		gone := false
+		s := wire.NewScanner(body, 0)
+		for s.Next() && !gone {
+			ev := s.Event()
+			usage := meter.Event(ev)
+			ev, before := c.filterEvent(ev)
+			for _, b := range before {
+				if gone = !emit(b, false); gone {
+					break
+				}
+			}
+			if !gone {
+				gone = !emit(ev, usage)
+			}
 		}
 		readErr = s.Err()
+		if c.filter != nil && !gone && readErr == nil {
+			// Text the filter still holds (the answer ended inside what
+			// looked like a token) goes out before the stream ends.
+			for _, b := range c.filter.End() {
+				if gone = !emit(b, false); gone {
+					break
+				}
+			}
+		}
 		if st != nil && !gone && readErr == nil && !body.fired.Load() {
 			if out = st.End(out[:0]); len(out) > 0 {
 				c.write(out)
@@ -862,16 +884,20 @@ func (c *call) filterBody(doc []byte) []byte {
 }
 
 // filterEvent passes a provider's event through the route's response
-// filter; a partial event (longer than the scanner holds) goes as it is.
-func (c *call) filterEvent(ev wire.Event) wire.Event {
+// filter, with the events the filter releases before it; a partial event
+// (longer than the scanner holds) goes as it is.
+func (c *call) filterEvent(ev wire.Event) (wire.Event, []wire.Event) {
 	if c.filter == nil || ev.Partial || len(ev.Data) == 0 {
-		return ev
+		return ev, nil
 	}
-	data := c.filter.Event(ev.Data)
+	data, before := c.filter.Event(ev.Name, ev.Data)
+	for i := range before {
+		before[i].Raw = frame(before[i].Name, before[i].Data)
+	}
 	if data == nil {
-		return ev
+		return ev, before
 	}
-	return wire.Event{Name: ev.Name, Data: data, Raw: frame(ev.Name, data)}
+	return wire.Event{Name: ev.Name, Data: data, Raw: frame(ev.Name, data)}, before
 }
 
 // named is a whole answer naming model ("" leaves it): its top-level
