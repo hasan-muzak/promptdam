@@ -17,7 +17,7 @@ import (
 )
 
 // token is a firewall placeholder in a request.
-var token = regexp.MustCompile(`⟦[a-z_]+_\d+⟧`)
+var token = regexp.MustCompile(`⟦[a-z_]+_[a-z0-9]+⟧`)
 
 // Calls through the doors meet the whole gateway: the project's key, read
 // where Google's and AWS's clients send it, the firewall, whose

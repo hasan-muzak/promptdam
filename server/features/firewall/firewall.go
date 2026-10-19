@@ -9,6 +9,9 @@
 package firewall
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base32"
 	"errors"
 	"fmt"
 	"maps"
@@ -19,6 +22,7 @@ import (
 
 	"cel.dev/cel-go/cel"
 
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 	"github.com/hasan-muzak/keel-core/pkg/policy"
 	"github.com/hasan-muzak/keel-core/pkg/redact"
 
@@ -390,7 +394,34 @@ var ErrScan = errors.New("firewall: the request couldn't be scanned")
 // Inspect scans a request body and applies the classes' actions: the
 // policies come after, with Decide. A scan that fails returns ErrScan
 // with what fail mode says: a blocked outcome, or one let through.
-func (e *Engine) Inspect(body []byte) (*Outcome, error) {
+func (e *Engine) Inspect(body []byte) (*Outcome, error) { return e.InspectCall(body, Scan{}) }
+
+// Scan is what Inspect knows of a call beside its body.
+type Scan struct {
+	// Conversation is the call's conversation (its first message's
+	// anchor) and Key the gateway's token key. With a key, a value's token
+	// is named by a keyed hash of the conversation, the detector and the
+	// value: the same in every call of the conversation and on every
+	// replica, unlinkable across conversations, and nothing a provider can
+	// compute from what it sees. Without one, tokens are numbered.
+	Conversation wire.Anchor
+	Key          []byte
+}
+
+// tokenName names a value's token for a call with a key.
+func (c Scan) tokenName(detector, value string) string {
+	mac := hmac.New(sha256.New, c.Key)
+	mac.Write(c.Conversation[:])
+	mac.Write([]byte(detector))
+	mac.Write([]byte{0})
+	mac.Write([]byte(value))
+	return detector + "_" + strings.ToLower(tokenEncoding.EncodeToString(mac.Sum(nil)[:5]))
+}
+
+var tokenEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
+
+// InspectCall is Inspect for a call: its tokens are named as Scan says.
+func (e *Engine) InspectCall(body []byte, call Scan) (*Outcome, error) {
 	o := &Outcome{}
 	ls, err := leaves(body)
 	if err != nil {
@@ -401,7 +432,7 @@ func (e *Engine) Inspect(body []byte) (*Outcome, error) {
 		}
 		return o, ErrScan
 	}
-	sc := scan{e: e, o: o, hits: map[[2]string]*Hit{}}
+	sc := scan{e: e, o: o, call: call, hits: map[[2]string]*Hit{}}
 	repl := map[int]string{}
 	for i, l := range ls {
 		if l.Skip || blob(l.S) {
@@ -425,6 +456,7 @@ func (e *Engine) Inspect(body []byte) (*Outcome, error) {
 type scan struct {
 	e     *Engine
 	o     *Outcome
+	call  Scan
 	hits  map[[2]string]*Hit
 	order [][2]string
 }
@@ -475,6 +507,9 @@ func (sc *scan) apply(l Leaf, fs []redact.Finding) (string, bool) {
 		case Tokenize:
 			if o.Tokens == nil {
 				o.Tokens = e.r.Tokenizer()
+				if len(sc.call.Key) > 0 {
+					o.Tokens = e.r.TokenizerNamed(sc.call.tokenName)
+				}
 			}
 			b.WriteString(o.Tokens.Token(f.Detector, value))
 			changed = true

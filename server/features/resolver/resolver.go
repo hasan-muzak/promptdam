@@ -149,6 +149,9 @@ type Config struct {
 	// Caching plans a call's prompt caching by its model's learned profile
 	// (features/cacheprofile); nil plans by the price list alone.
 	Caching CachePlanner
+	// TokenKey names the firewall's tokens (firewall.Scan): the same key on
+	// every replica, derived from the vault; empty numbers them.
+	TokenKey []byte
 	// Pooled reports a provider whose calls are pooled into the profiles
 	// and planned by them (default providers.Public: a kind's own public
 	// API); tests let their fake providers stand in.
@@ -562,7 +565,7 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 // replaces the client's for everything that reads it next; one it
 // couldn't scan is refused or let through as its fail mode says.
 func (r *Resolver) inspect(e *firewall.Engine, c *gateway.Call, m *Meta) error {
-	o, err := e.Inspect(c.Body)
+	o, err := e.InspectCall(c.Body, firewall.Scan{Conversation: c.Request.Turn.First, Key: r.cfg.TokenKey})
 	m.Firewall = o
 	if err != nil {
 		slog.Warn("resolver: the firewall couldn't scan a request", "trace", c.Trace, "project", m.Project, "blocked", o.Blocked, "err", err)

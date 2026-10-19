@@ -74,7 +74,7 @@ func run() error {
 	res := resolver.New(resolver.Config{
 		Keys: c.APIKeys, Snapshots: snapshots, Quota: c.Metering, Spend: app.Spend, Rates: rates, Prices: app.Prices,
 		Scope: core.ScopeGateway, Rules: app.RuleEnv, Entitlements: c.Metering.Entitlements, Decider: decide.New(transport),
-		Turns: turns, Caching: app.CacheProfiles,
+		Turns: turns, Caching: app.CacheProfiles, TokenKey: c.Vault.Derive(core.TokenKeyPurpose),
 	})
 	log := requestlog.New(requestlog.Config{
 		Events: c.Events, Prices: app.Prices, Spend: app.Spend, Entitlements: c.Metering.Entitlements, Payloads: app.PayloadStore,

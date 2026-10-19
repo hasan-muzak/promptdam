@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/hasan-muzak/keel-core/pkg/llm/wire"
 )
 
 const (
@@ -218,5 +220,32 @@ func TestHeldTextIsReleased(t *testing.T) {
 	}
 	if len(rest) != 1 || json.Unmarshal(rest[0].Data, &c) != nil || c.ID != "c1" || c.Choices[0].Delta.Content != "⟦em" {
 		t.Fatalf("released at the end: %+v", rest)
+	}
+}
+
+// With the gateway's key, a value's token is named by its conversation and
+// itself: the next call of the conversation tokenizes it alike even when a
+// new value comes before it, and another conversation's token differs.
+func TestTokensNamedByConversation(t *testing.T) {
+	e := engine(t, func(s *Settings) { s.PII = Tokenize })
+	key := []byte("0123456789abcdef0123456789abcdef")
+	conv := Scan{Conversation: wire.Anchor{1}, Key: key}
+	first, _ := e.InspectCall(chat("Mail "+adaMail), conv)
+	later := []byte(`{"model":"claude","max_tokens":5,"system":"Copy ` + adaPhone + `","messages":[` +
+		`{"role":"user","content":"Mail ` + adaMail + `"}]}`)
+	second, _ := e.InspectCall(later, conv)
+	tok := first.Tokens.Token("email", adaMail)
+	if !strings.HasPrefix(tok, "⟦email_") || second.Tokens.Token("email", adaMail) != tok ||
+		!strings.Contains(string(second.Body), tok) {
+		t.Fatalf("tokens differ: %s, %s", tok, second.Body)
+	}
+	other, _ := e.InspectCall(chat("Mail "+adaMail), Scan{Conversation: wire.Anchor{2}, Key: key})
+	if other.Tokens.Token("email", adaMail) == tok {
+		t.Fatal("linkable across conversations")
+	}
+	// The answer gets the value back as always.
+	answer := `{"choices":[{"message":{"content":"Sent to ` + tok + `"}}]}`
+	if got := string(e.Response(second).Body([]byte(answer))); !strings.Contains(got, adaMail) {
+		t.Fatalf("restored %s", got)
 	}
 }

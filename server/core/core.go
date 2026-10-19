@@ -38,6 +38,11 @@ type Config struct {
 	ModelPrices string `env:"PROMPTDAM_MODEL_PRICES"`
 }
 
+// TokenKeyPurpose is the vault-derived key's purpose that names the
+// firewall's tokens: every gateway (and the API's playground) names a value
+// alike.
+const TokenKeyPurpose = "promptdam firewall tokens"
+
 // Load reads the configuration from the environment (and .env).
 func Load() (Config, error) { return config.Load[Config]() }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -156,6 +157,10 @@ func TestAnswersAreScanned(t *testing.T) {
 
 // Personal data reaches providers as placeholders, and clients get it
 // back, in either format, whole or streamed, translated or not.
+// namedTokens is what a provider gets of the masked message: tokens named by
+// the gateway's key, the same in every call of a conversation.
+var namedTokens = regexp.MustCompile(`Mail ⟦email_[a-z2-7]{8}⟧, then call ⟦phone_[a-z2-7]{8}⟧`)
+
 func TestPIITokenizedAndRestored(t *testing.T) {
 	s := firewall.Defaults()
 	s.PII = firewall.Tokenize
@@ -180,7 +185,7 @@ func TestPIITokenizedAndRestored(t *testing.T) {
 		}
 		sent := string(w.Fake.Requests()[n].Body)
 		if strings.Contains(sent, "ada@example.com") || strings.Contains(sent, "7946") ||
-			!strings.Contains(sent, "Mail ⟦email_1⟧, then call ⟦phone_2⟧") {
+			!namedTokens.MatchString(sent) {
 			t.Fatalf("%s: the provider got %s", c.name, sent)
 		}
 		if got := answer(t, c.path, body, c.stream); got != "You said: "+said {

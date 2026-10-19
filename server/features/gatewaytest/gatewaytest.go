@@ -28,6 +28,7 @@ import (
 	"github.com/hasan-muzak/keel-core/pkg/keel"
 	"github.com/hasan-muzak/keel-core/pkg/safehttp"
 	"github.com/hasan-muzak/keel-core/pkg/testkit"
+	"github.com/hasan-muzak/keel-core/pkg/vault"
 
 	"github.com/hasan-muzak/promptdam/bench/fakeupstream"
 	"github.com/hasan-muzak/promptdam/server/core"
@@ -170,6 +171,7 @@ func New(t *testing.T, opts Options) *World {
 		Keys: c.APIKeys, Snapshots: snaps, Quota: c.Metering, Spend: w.App.Spend, Rates: rates, Prices: w.App.Prices,
 		Scope: core.ScopeGateway, Rules: w.App.RuleEnv, Sample: opts.Sample, Entitlements: c.Metering.Entitlements,
 		Decider: decide.New(transport), Turns: w.Turns, Caching: w.App.CacheProfiles, Pooled: opts.pooled,
+		TokenKey: tokenKey(c.Vault),
 	})
 	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})
 	w.Eval = evaluate.New(evaluate.Config{Resolver: res, Transport: transport, Events: c.Events, Prices: w.App.Prices,
@@ -212,7 +214,7 @@ func (w *World) Replica() *httptest.Server {
 		Keys: w.C.APIKeys, Snapshots: snaps, Quota: w.C.Metering, Spend: w.App.Spend,
 		Rates: counter.New(w.C.KV, "rpm", counter.Options{}), Prices: w.App.Prices, Scope: core.ScopeGateway,
 		Rules: w.App.RuleEnv, Sample: w.opts.Sample, Entitlements: w.C.Metering.Entitlements, Decider: decide.New(transport),
-		Turns: turns, Caching: w.App.CacheProfiles, Pooled: w.opts.pooled,
+		Turns: turns, Caching: w.App.CacheProfiles, Pooled: w.opts.pooled, TokenKey: tokenKey(w.C.Vault),
 	})
 	for _, l := range []interface {
 		Start(context.Context) error
@@ -383,4 +385,12 @@ func (w *World) Eventually(check func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	w.T.Fatal("the change never reached the gateway")
+}
+
+// tokenKey is the firewall's token key, as the gateway derives it.
+func tokenKey(v *vault.Vault) []byte {
+	if v == nil {
+		return nil
+	}
+	return v.Derive(core.TokenKeyPurpose)
 }
