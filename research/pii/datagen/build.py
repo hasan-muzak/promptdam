@@ -52,6 +52,7 @@ def render(raw: str, rng: random.Random) -> tuple[str, list[list]]:
     """The text with marks replaced by their values, and the labeled spans."""
     out, spans, last = [], [], 0
     pos = 0
+    same = {}  # ⦃=generator#ref⦄: one value for every mark with that generator and ref in this text
     for m in MARK.finditer(raw):
         out.append(raw[last:m.start()])
         pos += m.start() - last
@@ -60,7 +61,10 @@ def render(raw: str, rng: random.Random) -> tuple[str, list[list]]:
         if kind in ("=", "~"):
             if value is not None:
                 raise Reject(f"a generator takes no value: {m.group(0)[:40]}")
-            if kind == "=":
+            name, _, ref = name.partition("#")
+            if ref and (kind, name, ref) in same:
+                value, label = same[kind, name, ref]
+            elif kind == "=":
                 g = fill.labeled(name)
                 if not g:
                     raise Reject(f"unknown generator ={name}")
@@ -69,6 +73,8 @@ def render(raw: str, rng: random.Random) -> tuple[str, list[list]]:
                 if name not in fill.DECOYS:
                     raise Reject(f"unknown look-alike ~{name}")
                 value, label = fill.DECOYS[name](rng), None
+            if ref:
+                same[kind, name, ref] = value, label
         else:
             if name not in LABELS:
                 raise Reject(f"unknown label {name!r}")
