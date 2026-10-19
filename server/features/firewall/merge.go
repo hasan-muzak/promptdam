@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"unicode"
@@ -20,10 +21,16 @@ type Span struct {
 
 // Reader is the detector model as Inspect asks it: the spans of each text,
 // in order. The gateway's is the detector service's client
-// (features/detector), which caches what it read before.
+// (features/detector), which caches what it read before. It may answer
+// ErrPartial with the spans of the texts it could read in time (the
+// newest), the others' left nil.
 type Reader interface {
 	Spans(ctx context.Context, texts []string) ([][]Span, error)
 }
+
+// ErrPartial is a Reader's answer for part of the texts: more new text
+// than a call may wait for.
+var ErrPartial = errors.New("firewall: the detector model read part of the request")
 
 // SureSecret is how sure the model must be of a secret no pattern knows to
 // block a call with it; below, the finding only alerts. A block stops an

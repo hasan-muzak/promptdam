@@ -367,8 +367,9 @@ type Outcome struct {
 	// Policy is the policy that decided, RouteTo its model (route_to).
 	Policy, RouteTo string
 	// Failed reports a scan that failed and was let through (fail open);
-	// ModelFailed the model's, the patterns' findings applied alone.
-	Failed, ModelFailed bool
+	// ModelFailed the model's, the patterns' findings applied alone;
+	// ModelPartial a model that read only the newest of the request's text.
+	Failed, ModelFailed, ModelPartial bool
 }
 
 // Kinds are the detectors found, sorted.
@@ -489,7 +490,9 @@ func (e *Engine) InspectCall(body []byte, call Scan) (*Outcome, error) {
 		}
 	}
 	if call.Model != nil && (e.s.Model.Secrets || e.s.Model.PII) {
-		if err := e.readModel(call, ls, found); err != nil {
+		if err := e.readModel(call, ls, found); errors.Is(err, ErrPartial) {
+			o.ModelPartial = true
+		} else if err != nil {
 			if e.s.Model.FailMode == ModelFailClosed {
 				o.Blocked, o.BlockedBy = true, BlockedByModel
 				return o, ErrScan
@@ -608,7 +611,8 @@ func (e *Engine) readModel(call Scan, ls []Leaf, found [][]finding) error {
 		ctx = context.Background()
 	}
 	spans, err := call.Model.Spans(ctx, texts)
-	if err != nil {
+	partial := errors.Is(err, ErrPartial)
+	if err != nil && !partial {
 		return err
 	}
 	if len(spans) != len(texts) {
@@ -618,6 +622,9 @@ func (e *Engine) readModel(call Scan, ls []Leaf, found [][]finding) error {
 		found[i] = merge(found[i], e.modelFindings(ls[i].S, spans[k]))
 	}
 	e.consistent(ls, found)
+	if partial {
+		return ErrPartial
+	}
 	return nil
 }
 
