@@ -17,6 +17,13 @@ type frame struct {
 	object bool
 	key    string // the object's current key
 	index  int    // the array's current index
+	// idx is an object's own "index" field when it came before the value
+	// read (a streamed tool call's or content block's, which OpenAI and
+	// Anthropic write first): it tells the object apart from others at the
+	// same array position. An index written after the content isn't seen,
+	// and the position alone places the value.
+	idx    int
+	hasIdx bool
 }
 
 // Top is the document's top-level key the value is under ("" for a value
@@ -39,8 +46,23 @@ func (w *Walker) Key() string {
 	return ""
 }
 
+// InPayload reports a value inside a tool's input (Anthropic's tool_use
+// input, below the document's top level): there, keys like id or type are
+// the tool's own fields, holding data, not the protocol's identifiers.
+// The Responses API's top-level input is the protocol's own list.
+func (w *Walker) InPayload() bool {
+	for i := 1; i < len(w.frames)-1; i++ {
+		if f := w.frames[i]; f.object && f.key == "input" {
+			return true
+		}
+	}
+	return false
+}
+
 // Path is the value's place: its keys and indexes from the root, joined by
-// dots (messages.3.content.0.text).
+// dots (messages.3.content.0.text). An object with its own index field
+// carries it after its key (delta#1.partial_json), so parallel tool calls
+// and content blocks, which can share an array position, keep apart.
 func (w *Walker) Path() string {
 	var b strings.Builder
 	for i, f := range w.frames {
@@ -49,6 +71,10 @@ func (w *Walker) Path() string {
 		}
 		if f.object {
 			b.WriteString(f.key)
+			if f.hasIdx {
+				b.WriteByte('#')
+				b.WriteString(strconv.Itoa(f.idx))
+			}
 		} else {
 			b.WriteString(strconv.Itoa(f.index))
 		}
@@ -115,6 +141,17 @@ func rewrite(doc []byte, fn func(w *Walker, s string) (string, bool)) (out []byt
 				copied, changed = end+1, true
 			}
 			i = end
+		default:
+			if n := len(w.frames); n > 0 && c >= '0' && c <= '9' {
+				if f := &w.frames[n-1]; f.object && f.key == "index" && !f.hasIdx {
+					j := i
+					for j < len(doc) && doc[j] >= '0' && doc[j] <= '9' && f.idx < 1<<20 {
+						f.idx = f.idx*10 + int(doc[j]-'0')
+						j++
+					}
+					f.hasIdx, i = true, j-1
+				}
+			}
 		}
 	}
 	if !changed {

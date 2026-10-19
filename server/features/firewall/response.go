@@ -1,7 +1,6 @@
 package firewall
 
 import (
-	"bytes"
 	"maps"
 	"slices"
 
@@ -39,18 +38,21 @@ func (e *Engine) Response(o *Outcome) *Response {
 	return &Response{e: e, tokens: tokens, scan: e.s.ScanResponses, hits: map[string]*Hit{}}
 }
 
-var tokenMark = []byte("⟦")
+// maybeToken reports a string that may hold a token, as it is or
+// JSON-escaped (a model's tool call arguments), or that ends where one may
+// begin (a stream's next piece completes it).
+func maybeToken(s string) bool { return redact.MayHoldToken(s) }
 
 // Body filters a whole answer; nil when it is unchanged.
 func (r *Response) Body(doc []byte) []byte {
 	out, changed, err := rewrite(doc, func(w *Walker, s string) (string, bool) {
-		if skipped[w.Key()] {
+		if ignored(w) {
 			return "", false
 		}
 		if r.scan {
 			r.found(r.e.find(s))
 		}
-		if r.tokens != nil && bytes.Contains([]byte(s), tokenMark) {
+		if r.tokens != nil && maybeToken(s) {
 			if restored := r.tokens.Restore(s); restored != s {
 				return restored, true
 			}
@@ -66,12 +68,14 @@ func (r *Response) Body(doc []byte) []byte {
 // Event filters one event of a streamed answer (its data); nil when it is
 // unchanged.
 func (r *Response) Event(data []byte) []byte {
-	restore := r.tokens != nil && (bytes.Contains(data, tokenMark) || r.holding())
+	// With tokens, every string is looked at: a piece may end in the first
+	// bytes of an escaped mark, which no test of the event's bytes finds.
+	restore := r.tokens != nil
 	if !restore && !r.scan {
 		return nil
 	}
 	out, changed, err := rewrite(data, func(w *Walker, s string) (string, bool) {
-		if skipped[w.Key()] {
+		if ignored(w) {
 			return "", false
 		}
 		path := ""
@@ -95,7 +99,7 @@ func (r *Response) Event(data []byte) []byte {
 		}
 		rs := r.restorers[path]
 		if rs == nil {
-			if !bytes.Contains([]byte(s), tokenMark) {
+			if !maybeToken(s) {
 				return "", false
 			}
 			if r.restorers == nil {
@@ -114,9 +118,6 @@ func (r *Response) Event(data []byte) []byte {
 	}
 	return out
 }
-
-// holding reports a token held back from an earlier event.
-func (r *Response) holding() bool { return len(r.restorers) > 0 }
 
 // End finishes the scan of a streamed answer.
 func (r *Response) End() {

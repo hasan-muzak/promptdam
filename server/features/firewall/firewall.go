@@ -353,6 +353,11 @@ func (o *Outcome) Action() string {
 	return best
 }
 
+// ignored reports a value under a key whose strings hold the protocol's
+// identifiers, not text; inside a tool's input those keys are the tool's
+// own and are read.
+func ignored(w *Walker) bool { return skipped[w.Key()] && !w.InPayload() }
+
 // skipped are keys whose strings hold identifiers, not text.
 var skipped = map[string]bool{
 	"model": true, "role": true, "type": true, "id": true, "tool_call_id": true, "tool_use_id": true, "call_id": true,
@@ -390,7 +395,7 @@ func (e *Engine) Inspect(body []byte) (*Outcome, error) {
 	hits := map[[2]string]*Hit{}
 	var order [][2]string
 	out, changed, err := rewrite(body, func(w *Walker, s string) (string, bool) {
-		if skipped[w.Key()] || opaque(w) || blob(s) {
+		if ignored(w) || opaque(w) || blob(s) {
 			return "", false
 		}
 		fs := e.find(s)
