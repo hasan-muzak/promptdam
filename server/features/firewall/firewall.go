@@ -63,7 +63,10 @@ const (
 
 // PIIDetectors are personal data's detectors; every other default one
 // finds secrets.
-var PIIDetectors = []string{redact.Email, redact.Phone, redact.CreditCard, redact.IBAN, redact.USSSN, redact.TRTCKN}
+// The countries' national IDs are among them (core redact's opt-in
+// NationalIDs), so a project masking personal data masks those too.
+var PIIDetectors = append([]string{redact.Email, redact.Phone, redact.CreditCard, redact.IBAN, redact.USSSN, redact.TRTCKN},
+	redact.NationalIDs...)
 
 // SecretDetectors are the default detectors that aren't personal data's.
 var SecretDetectors = func() []string {
@@ -275,7 +278,7 @@ func Compile(s Settings, env *policy.Env) (*Engine, error) {
 	}
 	e.r = r
 	if s.Excerpts {
-		all := append(slices.Clone(redact.DefaultDetectors), redact.IPv4)
+		all := append(append(slices.Clone(redact.DefaultDetectors), redact.IPv4), redact.NationalIDs...)
 		if e.all, err = redact.New(redact.Options{Detectors: all, Patterns: s.Custom}); err != nil {
 			return nil, fmt.Errorf("firewall: %w", err)
 		}

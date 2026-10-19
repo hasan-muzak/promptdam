@@ -249,3 +249,22 @@ func TestTokensNamedByConversation(t *testing.T) {
 		t.Fatalf("restored %s", got)
 	}
 }
+
+// National ID numbers are personal data: masked with the rest, each by its
+// country's detector, and a number that fails its check is left alone.
+func TestNationalIDsMasked(t *testing.T) {
+	e := engine(t, func(s *Settings) { s.PII = Redact })
+	o, err := e.Inspect(chat("Aadhaar 9514 5754 9426, NINO GR811064D, CPF 388.919.978-03, codice SSRRRN44M22A944S"))
+	if err != nil || o.Body == nil {
+		t.Fatalf("%+v %v", o, err)
+	}
+	got := string(o.Body)
+	for _, want := range []string{"[REDACTED:in_aadhaar]", "[REDACTED:uk_nino]", "[REDACTED:br_cpf]", "[REDACTED:it_fiscal_code]"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s in %s", want, got)
+		}
+	}
+	if o, _ := e.Inspect(chat("Order 9514 5754 9427 shipped")); o.Body != nil {
+		t.Fatalf("a failed check masked: %s", o.Body)
+	}
+}

@@ -32,6 +32,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/core"
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/families"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
 	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 	"github.com/hasan-muzak/promptdam/server/handlers"
@@ -636,7 +637,7 @@ func TestFirewall(t *testing.T) {
 	put := func(s map[string]any) *testclient.Response { return e.client.Put(path, alice, testclient.JSON(s)) }
 
 	presets := testclient.Decoded[handlers.FirewallPresetsOut](e.client.Get("/v1/firewall/presets", alice).AssertStatus(http.StatusOK))
-	if len(presets.Data) != 2 || presets.Data[0].Class != "secret" || len(presets.Data[1].Detectors) != 7 {
+	if len(presets.Data) != 2 || presets.Data[0].Class != "secret" || len(presets.Data[1].Detectors) != len(firewall.PIIDetectors)+1 { // and IPv4, off
 		t.Fatalf("presets %+v", presets)
 	}
 	for _, p := range presets.Data {
