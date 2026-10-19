@@ -40,3 +40,10 @@ regexes = ['''sk_(live|test)_0123456789abcdef''']
 [[allowlists]]
 description = "Custom-pattern fixture"
 regexes = ['''BADGE-\d+''']
+
+# Release archives' checksums in the Dockerfiles: "TOKENIZERS_SHA256" next to
+# a hash reads as a generic API key.
+[[allowlists]]
+description = "Dockerfile checksums"
+regexTarget = "line"
+regexes = ['''ARG [A-Z0-9_]+_SHA256=[0-9a-f]{64}''']

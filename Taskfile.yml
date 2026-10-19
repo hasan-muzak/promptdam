@@ -170,3 +170,30 @@ tasks:
     desc: "Load-test release builds of the gateway behind Caddy at a fake provider (docs/performance.md): task bench:load -- a|b|c|d|e, or -- run -rate 200. Heavy: needs a quiet machine, the stack up and migrated, and caddy"
     cmds:
       - bench/load.sh {{.CLI_ARGS}}
+
+  detector:lib:
+    desc: Fetch the detector service's native libraries (ONNX Runtime, HF tokenizers) into detector/lib
+    cmds:
+      - bash detector/lib.sh
+
+  detector:test:
+    desc: Test the detector service (its engine reads with a real model when detector/models/bardsai-v0 is there)
+    dir: detector
+    env:
+      GOWORK: "off"
+      CGO_LDFLAGS: "-L{{.TASKFILE_DIR}}/detector/lib"
+    cmds:
+      - go vet ./...
+      - go test ./...
+
+  detector:run:
+    desc: Run the detector service on this machine (DETECTOR_MODEL_DIR, default detector/models/bardsai-v0)
+    dir: detector
+    env:
+      GOWORK: "off"
+      CGO_LDFLAGS: "-L{{.TASKFILE_DIR}}/detector/lib"
+      DETECTOR_DEV: "1"
+      DETECTOR_ADDR: 127.0.0.1:8484
+    cmds:
+      - go run ./cmd/detector
+

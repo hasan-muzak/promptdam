@@ -1,0 +1,31 @@
+{
+  "labels": {
+    "PERSON_NAME": "person",
+    "PERSON_ALIAS": "person",
+    "CONTACT_HANDLE": "username",
+    "DATE_OF_BIRTH": "date_of_birth",
+    "EMAIL_ADDRESS": "email",
+    "PHONE_NUMBER": "phone",
+    "IDENTIFYING_LINK": "url_personal",
+    "POSTAL_ADDRESS": "address",
+    "LOCATION": "location",
+    "GEO_LOCATION": "location",
+    "PERSON_IDENTIFIER": "government_id",
+    "DOCUMENT_IDENTIFIER": "government_id",
+    "ACCOUNT_IDENTIFIER": "account_number",
+    "BANK_ACCOUNT_IDENTIFIER": "account_number",
+    "PAYMENT_CARD": "account_number",
+    "IP_ADDRESS": "ipv4",
+    "AUTH_SECRET": "credential",
+    "PAYMENT_CARD_SECURITY": "credential",
+    "HEALTH_DATA": "health",
+    "RELIGION_OR_BELIEF": "religion",
+    "SEXUAL_ORIENTATION": "sexual_orientation",
+    "POLITICAL_OPINION": "political_opinion",
+    "TRADE_UNION_MEMBERSHIP": "trade_union",
+    "CRIMINAL_OFFENCE_DATA": "criminal_record",
+    "ETHNIC_ORIGIN": "ethnicity",
+    "BIOMETRIC_DATA": "biometric_genetic"
+  },
+  "min_score": 0.3
+}
