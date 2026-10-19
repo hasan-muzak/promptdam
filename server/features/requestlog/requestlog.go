@@ -41,26 +41,29 @@ const defaultRetention = 7
 
 // Row is one call in the request log.
 type Row struct {
-	ProjectID, OrgID, KeyID                                 uuid.UUID
-	TS                                                      time.Time
-	Trace, Developer, User, Route                           string
-	Conversation, TurnKind, ChainState                      string
-	HumanTurns                                              uint16
-	ChainGapMs                                              uint32
-	FamilyID, PrefixHash                                    string
-	PrefixFlags                                             uint16
-	PrefixTokens, EstInput, Messages, MaxTokens             uint32
-	HasTools, JSONOutput                                    bool
-	Rule                                                    string
-	Router, Tier, DecidedTier, TierSource                   string
-	TierConfidence                                          float32
-	Shadow                                                  bool
-	Effort, Healed                                          string
-	RouterMicros                                            int64
-	Decision                                                string
-	DecisionMs                                              uint32
-	FirewallAction                                          string
-	FirewallKinds                                           []string
+	ProjectID, OrgID, KeyID                     uuid.UUID
+	TS                                          time.Time
+	Trace, Developer, User, Route               string
+	Conversation, TurnKind, ChainState          string
+	HumanTurns                                  uint16
+	ChainGapMs                                  uint32
+	FamilyID, PrefixHash                        string
+	PrefixFlags                                 uint16
+	PrefixTokens, EstInput, Messages, MaxTokens uint32
+	HasTools, JSONOutput                        bool
+	Rule                                        string
+	Router, Tier, DecidedTier, TierSource       string
+	TierConfidence                              float32
+	Shadow                                      bool
+	Effort, Healed                              string
+	RouterMicros                                int64
+	Decision                                    string
+	DecisionMs                                  uint32
+	FirewallAction                              string
+	FirewallKinds                               []string
+	// FirewallModel is what the detector model did (firewall.Outcome's
+	// ModelState).
+	FirewallModel                                           string
 	PayloadRef                                              string
 	Tags                                                    []string
 	APIFormat, Door, Provider, Kind, RequestedModel         string
@@ -91,7 +94,7 @@ var columns = []string{
 	"human_turns", "chain_gap_ms", "chain_state", "family_id", "prefix_hash",
 	"prefix_flags", "prefix_tokens", "est_input_tokens", "messages", "max_tokens", "has_tools", "json_output", "rule",
 	"router", "tier", "decided_tier", "tier_source", "tier_confidence", "shadow", "effort", "healed", "router_micros", "decision", "decision_ms",
-	"firewall_action", "firewall_kinds", "payload_ref", "api_format", "door", "provider",
+	"firewall_action", "firewall_kinds", "firewall_model", "payload_ref", "api_format", "door", "provider",
 	"kind", "requested_model", "served_model", "backend", "target_model", "computed_micros", "cache_strategy", "cache_trial",
 	"pooled", "cost_reported", "cache_expected_tokens", "input_micros", "stream", "translated", "status", "error_code", "attempts", "ttfb_ms", "latency_ms",
 	"upstream_ms", "usage_known", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
@@ -105,7 +108,7 @@ func values(r Row) []any {
 		r.HumanTurns, r.ChainGapMs, r.ChainState, r.FamilyID, r.PrefixHash,
 		r.PrefixFlags, r.PrefixTokens, r.EstInput, r.Messages, r.MaxTokens, r.HasTools, r.JSONOutput, r.Rule,
 		r.Router, r.Tier, r.DecidedTier, r.TierSource, r.TierConfidence, r.Shadow, r.Effort, r.Healed, r.RouterMicros, r.Decision, r.DecisionMs,
-		r.FirewallAction, r.FirewallKinds, r.PayloadRef, r.APIFormat, r.Door, r.Provider,
+		r.FirewallAction, r.FirewallKinds, r.FirewallModel, r.PayloadRef, r.APIFormat, r.Door, r.Provider,
 		r.Kind, r.RequestedModel, r.ServedModel, r.Backend, r.TargetModel, r.ComputedMicros, r.CacheStrategy, r.CacheTrial,
 		r.Pooled, r.CostReported, r.CacheExpected, r.InputMicros, r.Stream, r.Translated, r.Status, r.ErrorCode, r.Attempts, r.TTFBms, r.LatencyMs,
 		r.UpstreamMs, r.UsageKnown, r.InputTokens, r.OutputTokens, r.CacheRead, r.CacheWrite, r.Think, r.CostMicros,
@@ -291,6 +294,8 @@ func (l *Log) Record(r *gateway.Record) {
 		}
 	}
 	var fw []firewall.Event
+	var tmpl firewall.Event
+	var later <-chan []firewall.Hit
 	row.FirewallKinds = []string{}
 	if o := m.Firewall; o != nil {
 		var answer []firewall.Hit
@@ -302,15 +307,56 @@ func (l *Log) Record(r *gateway.Record) {
 			row.FirewallAction = firewall.Alert
 		}
 		row.FirewallKinds = kinds(o.Hits, answer)
-		fw = firewall.Events(firewall.Event{ProjectID: m.Project, TS: row.TS, Trace: r.Trace, OrgID: m.Org, KeyID: m.Key,
-			Developer: m.Developer, Route: m.Route, RequestedModel: r.RequestedModel, Provider: r.Provider}, o, answer)
+		row.FirewallModel = o.ModelState()
+		tmpl = firewall.Event{ProjectID: m.Project, TS: row.TS, Trace: r.Trace, OrgID: m.Org, KeyID: m.Key,
+			Developer: m.Developer, Route: m.Route, RequestedModel: r.RequestedModel, Provider: r.Provider}
+		fw = firewall.Events(tmpl, o, answer)
+		later = o.Later
 	}
 	var keep *payloads.Entry
 	if m.Capture != nil && r.Body != nil {
 		keep = &payloads.Entry{Org: m.Org, Project: m.Project, At: row.TS, Capture: m.Capture, Format: r.Format,
 			Stream: r.Stream, Status: r.Status, Request: r.Body, Answer: r.Answer}
 	}
-	l.writing.Go(func() { l.write(m.Org, row, fw, keep, turn) })
+	l.writing.Go(func() {
+		if later != nil {
+			row, fw = withLater(row, fw, tmpl, later)
+		}
+		l.write(m.Org, row, fw, keep, turn)
+	})
+}
+
+// laterWait bounds how long a row waits for the model's read after the
+// call went (its own read is bounded too).
+const laterWait = 12 * time.Second
+
+// withLater adds the hits of the model's read after the call went to the
+// row and its events: they only alert.
+func withLater(row Row, fw []firewall.Event, tmpl firewall.Event, later <-chan []firewall.Hit) (Row, []firewall.Event) {
+	var hits []firewall.Hit
+	select {
+	case hits = <-later:
+	case <-time.After(laterWait):
+	}
+	if len(hits) == 0 {
+		return row, fw
+	}
+	if row.FirewallAction == "" {
+		row.FirewallAction = firewall.Alert
+	}
+	row.FirewallKinds = kinds(append(hitsOf(row.FirewallKinds), hits...), nil)
+	o := &firewall.Outcome{Hits: hits}
+	tmpl.Blocked, tmpl.BlockedBy, tmpl.Policy = false, "", ""
+	return row, append(fw, firewall.Events(tmpl, o, nil)...)
+}
+
+// hitsOf are kinds as hits, for kinds to merge them with more.
+func hitsOf(kinds []string) []firewall.Hit {
+	out := make([]firewall.Hit, len(kinds))
+	for i, k := range kinds {
+		out[i] = firewall.Hit{Detector: k}
+	}
+	return out
 }
 
 // Turn kinds: a call that starts its turn (answers a human message), or one

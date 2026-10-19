@@ -20,6 +20,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/budgets"
 	"github.com/hasan-muzak/promptdam/server/features/cachepolicy"
 	"github.com/hasan-muzak/promptdam/server/features/cacheprofile"
+	"github.com/hasan-muzak/promptdam/server/features/detector"
 	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/keysettings"
 	"github.com/hasan-muzak/promptdam/server/features/payloads"
@@ -27,6 +28,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/privacy"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/purge"
+	"github.com/hasan-muzak/promptdam/server/features/resolver"
 	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
@@ -82,6 +84,10 @@ type App struct {
 	Watcher *routers.Watcher
 	// GatewayURL is where clients reach the gateway, for setup instructions.
 	GatewayURL string
+	// Detector is the detector model's client (nil without a service: the
+	// firewall reads with its patterns alone).
+	Detector                   *detector.Client
+	detectorURL, detectorToken string
 	// Providers keeps projects' LLM providers and their keys.
 	Providers *providers.Service
 	// Keys keeps what the gateway applies to each API key.
@@ -123,6 +129,20 @@ func WithGatewayURL(url string) Option {
 	return func(a *App) { a.GatewayURL = url }
 }
 
+// WithDetector sets the detector service (empty url: none).
+func WithDetector(url, token string) Option {
+	return func(a *App) { a.detectorURL, a.detectorToken = url, token }
+}
+
+// DetectorReader is the detector as the resolver reads it: nil when there
+// is none (an interface holding a nil client isn't).
+func (a *App) DetectorReader() resolver.Detector {
+	if a.Detector == nil {
+		return nil
+	}
+	return a.Detector
+}
+
 // OnChanged registers a function run after a project's gateway
 // configuration (providers, keys, routes, budgets) changes.
 func (a *App) OnChanged(fn func(ctx context.Context, project uuid.UUID)) {
@@ -140,6 +160,10 @@ func NewApp(c *keel.Core, opts ...Option) *App {
 	a := &App{Core: c, Ent: pdent.NewClient(pdent.Driver(entsql.OpenDB(dialect.Postgres, c.DB.SQL)))}
 	for _, o := range opts {
 		o(a)
+	}
+	if a.detectorURL != "" {
+		a.Detector = detector.New(detector.Options{URL: a.detectorURL, Token: a.detectorToken, KV: c.KV,
+			CacheKey: c.Vault.Derive(DetectorCacheKeyPurpose)})
 	}
 	a.Prices = prices.New(prices.Config{Ent: a.Ent, KV: c.KV, Fallback: a.fallback})
 	a.CacheProfiles = cacheprofile.New(cacheprofile.Config{Ent: a.Ent, KV: c.KV})

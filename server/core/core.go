@@ -36,7 +36,16 @@ type Config struct {
 	// ModelPrices is a JSON model price catalog (pkg/llm's shape). Empty:
 	// the embedded one.
 	ModelPrices string `env:"PROMPTDAM_MODEL_PRICES"`
+	// DetectorURL is the detector service (the firewall's model, round PD),
+	// DetectorToken its bearer token. Empty: the firewall reads with its
+	// patterns alone.
+	DetectorURL   string `env:"PROMPTDAM_DETECTOR_URL"`
+	DetectorToken string `env:"PROMPTDAM_DETECTOR_TOKEN" secret:"true"`
 }
+
+// DetectorCacheKeyPurpose is the vault-derived key's purpose that keys the
+// detector's scan cache.
+const DetectorCacheKeyPurpose = "promptdam detector scan cache"
 
 // TokenKeyPurpose is the vault-derived key's purpose that names the
 // firewall's tokens: every gateway (and the API's playground) names a value

@@ -225,7 +225,12 @@ func (h *Handlers) TestFirewall(ctx *muzak.Context, in TestFirewallIn) (TestFire
 	if e == nil {
 		return out, nil
 	}
-	o, err := e.Inspect(in.Request)
+	// The model reads here whatever its labels' actions: a playground waits.
+	var scan firewall.Scan
+	if reads, _ := e.ModelReads(); reads && h.Detector != nil {
+		scan.Model, scan.Ctx = h.Detector.For(pa.Project.ID), ctx.Context()
+	}
+	o, err := e.InspectCall(in.Request, scan)
 	if err != nil && !errors.Is(err, firewall.ErrScan) {
 		return TestFirewallOut{}, err
 	}

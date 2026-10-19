@@ -23,6 +23,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/conversation"
 	"github.com/hasan-muzak/promptdam/server/features/decide"
 	"github.com/hasan-muzak/promptdam/server/features/evaluate"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/requestlog"
 	"github.com/hasan-muzak/promptdam/server/features/resolver"
@@ -62,7 +63,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	app := core.NewApp(c, core.WithPrices(prices))
+	app := core.NewApp(c, core.WithPrices(prices), core.WithDetector(cfg.DetectorURL, cfg.DetectorToken))
 
 	snapshots := snapshot.NewStore(c.KV, app.Sources())
 	rates := counter.New(c.KV, "rpm", counter.Options{})
@@ -71,10 +72,14 @@ func run() error {
 	transport := safehttp.NewTransport(safehttp.TransportOptions{AllowLoopback: cfg.Env == config.Development})
 	// Conversations' turns, shared by every gateway replica through Valkey.
 	turns := conversation.New(c.KV, conversation.Options{})
+	// The detector model's reads after a call went, for labels that only
+	// alert: started before the log, which waits on them, stopped after.
+	later := firewall.NewLater()
 	res := resolver.New(resolver.Config{
 		Keys: c.APIKeys, Snapshots: snapshots, Quota: c.Metering, Spend: app.Spend, Rates: rates, Prices: app.Prices,
 		Scope: core.ScopeGateway, Rules: app.RuleEnv, Entitlements: c.Metering.Entitlements, Decider: decide.New(transport),
 		Turns: turns, Caching: app.CacheProfiles, TokenKey: c.Vault.Derive(core.TokenKeyPurpose),
+		Detector: app.DetectorReader(), Later: later,
 	})
 	log := requestlog.New(requestlog.Config{
 		Events: c.Events, Prices: app.Prices, Spend: app.Spend, Entitlements: c.Metering.Entitlements, Payloads: app.PayloadStore,
@@ -107,7 +112,7 @@ func run() error {
 	// The payload store starts before the log and stops after it: the
 	// log's last rows add the last payloads.
 	for _, l := range []lifecycle{app.Prices, app.CacheProfiles, c.Metering, c.APIKeys.Lifecycle(), app.SpendCounters, rates, evalSpend, snapshots,
-		turns, app.PayloadStore, log, eval} {
+		turns, app.PayloadStore, later, log, eval} {
 		if err := l.Start(ctx); err != nil {
 			return err
 		}

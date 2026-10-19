@@ -34,7 +34,9 @@ type Event struct {
 	Class    string `ch:"class"`
 	Action   string `ch:"action"`
 	Location string `ch:"location"`
-	Count    uint32 `ch:"count"`
+	// Source is who found it: pattern or model.
+	Source string `ch:"source"`
+	Count  uint32 `ch:"count"`
 	// Blocked, BlockedBy and Policy are the call's.
 	Blocked       bool   `ch:"blocked"`
 	BlockedBy     string `ch:"blocked_by"`
@@ -45,12 +47,12 @@ type Event struct {
 
 // EventColumns are the table's columns, in EventValues' order.
 var EventColumns = []string{"project_id", "ts", "trace", "org_id", "key_id", "developer", "route", "requested_model", "provider",
-	"detector", "class", "action", "location", "count", "blocked", "blocked_by", "policy", "excerpt", "retention_days"}
+	"detector", "class", "action", "location", "source", "count", "blocked", "blocked_by", "policy", "excerpt", "retention_days"}
 
 // EventValues are an event's values, in EventColumns' order.
 func EventValues(e Event) []any {
 	return []any{e.ProjectID, e.TS, e.Trace, e.OrgID, e.KeyID, e.Developer, e.Route, e.RequestedModel, e.Provider,
-		e.Detector, e.Class, e.Action, e.Location, e.Count, e.Blocked, e.BlockedBy, e.Policy, e.Excerpt, e.RetentionDays}
+		e.Detector, e.Class, e.Action, e.Location, e.Source, e.Count, e.Blocked, e.BlockedBy, e.Policy, e.Excerpt, e.RetentionDays}
 }
 
 // Events are what a call's outcome and its answer's hits leave in the
@@ -67,6 +69,10 @@ func Events(call Event, o *Outcome, answer []Hit) []Event {
 			e := call
 			e.Detector, e.Class, e.Action, e.Location, e.Count, e.Excerpt = h.Detector, h.Class, h.Action, h.Location,
 				uint32(min(h.Count, 1<<31)), h.Excerpt
+			e.Source = SourcePattern
+			if h.Model {
+				e.Source = SourceModel
+			}
 			out = append(out, e)
 		}
 	}
@@ -84,6 +90,12 @@ func Events(call Event, o *Outcome, answer []Hit) []Event {
 	}
 	return out
 }
+
+// Sources of a finding.
+const (
+	SourcePattern = "pattern"
+	SourceModel   = "model"
+)
 
 // Query limits.
 const (

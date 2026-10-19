@@ -367,9 +367,31 @@ type Outcome struct {
 	// Policy is the policy that decided, RouteTo its model (route_to).
 	Policy, RouteTo string
 	// Failed reports a scan that failed and was let through (fail open);
-	// ModelFailed the model's, the patterns' findings applied alone;
-	// ModelPartial a model that read only the newest of the request's text.
-	Failed, ModelFailed, ModelPartial bool
+	// ModelRead a model that read the request; ModelFailed one that
+	// failed, the patterns' findings applied alone; ModelPartial one that
+	// read only the newest of the request's text.
+	Failed, ModelRead, ModelFailed, ModelPartial bool
+	// Later brings the hits of a model read after the call went (labels
+	// that only alert); nil when there is none.
+	Later <-chan []Hit
+}
+
+// ModelState is what the model did for the request log: read, partial,
+// failed, later, or "" when it didn't read.
+func (o *Outcome) ModelState() string {
+	switch {
+	case o == nil:
+		return ""
+	case o.ModelFailed:
+		return "failed"
+	case o.ModelPartial:
+		return "partial"
+	case o.ModelRead:
+		return "read"
+	case o.Later != nil:
+		return "later"
+	}
+	return ""
 }
 
 // Kinds are the detectors found, sorted.
@@ -491,8 +513,10 @@ func (e *Engine) InspectCall(body []byte, call Scan) (*Outcome, error) {
 	}
 	if call.Model != nil && (e.s.Model.Secrets || e.s.Model.PII) {
 		if err := e.readModel(call, ls, found); errors.Is(err, ErrPartial) {
-			o.ModelPartial = true
-		} else if err != nil {
+			o.ModelRead, o.ModelPartial = true, true
+		} else if err == nil {
+			o.ModelRead = true
+		} else {
 			if e.s.Model.FailMode == ModelFailClosed {
 				o.Blocked, o.BlockedBy = true, BlockedByModel
 				return o, ErrScan

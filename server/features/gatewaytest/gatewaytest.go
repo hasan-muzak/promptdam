@@ -35,6 +35,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/conversation"
 	"github.com/hasan-muzak/promptdam/server/features/decide"
 	"github.com/hasan-muzak/promptdam/server/features/evaluate"
+	"github.com/hasan-muzak/promptdam/server/features/firewall"
 	"github.com/hasan-muzak/promptdam/server/features/gateway"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
 	"github.com/hasan-muzak/promptdam/server/features/requestlog"
@@ -61,6 +62,9 @@ type Options struct {
 	// GoogleTokenURL is a fake Google token service for Vertex providers
 	// (cloudauthtest.NewTokenServer).
 	GoogleTokenURL string
+	// Detector reads requests with a (fake) detector model; reads after
+	// the call went run on the World's own Later.
+	Detector resolver.Detector
 	// OwnEndpoints treats the fake provider as what it is, an endpoint of
 	// the project's own (providers.Public). By default it stands in for
 	// providers' public APIs: its calls are pooled into the caching
@@ -98,10 +102,11 @@ type World struct {
 	// it subscribed.
 	Customer string
 
-	mu      sync.Mutex
-	records []gateway.Record
-	ahead   time.Duration // how far metering's clock runs ahead (Fresh)
-	opts    Options
+	mu        sync.Mutex
+	records   []gateway.Record
+	ahead     time.Duration // how far metering's clock runs ahead (Fresh)
+	opts      Options
+	laterPool *firewall.Later
 }
 
 // New starts a World.
@@ -171,7 +176,7 @@ func New(t *testing.T, opts Options) *World {
 		Keys: c.APIKeys, Snapshots: snaps, Quota: c.Metering, Spend: w.App.Spend, Rates: rates, Prices: w.App.Prices,
 		Scope: core.ScopeGateway, Rules: w.App.RuleEnv, Sample: opts.Sample, Entitlements: c.Metering.Entitlements,
 		Decider: decide.New(transport), Turns: w.Turns, Caching: w.App.CacheProfiles, Pooled: opts.pooled,
-		TokenKey: tokenKey(c.Vault),
+		TokenKey: tokenKey(c.Vault), Detector: opts.Detector, Later: w.later(t),
 	})
 	evalSpend := counter.New(c.KV, "evalspend", counter.Options{})
 	w.Eval = evaluate.New(evaluate.Config{Resolver: res, Transport: transport, Events: c.Events, Prices: w.App.Prices,
@@ -215,6 +220,7 @@ func (w *World) Replica() *httptest.Server {
 		Rates: counter.New(w.C.KV, "rpm", counter.Options{}), Prices: w.App.Prices, Scope: core.ScopeGateway,
 		Rules: w.App.RuleEnv, Sample: w.opts.Sample, Entitlements: w.C.Metering.Entitlements, Decider: decide.New(transport),
 		Turns: turns, Caching: w.App.CacheProfiles, Pooled: w.opts.pooled, TokenKey: tokenKey(w.C.Vault),
+		Detector: w.opts.Detector, Later: w.later(nil),
 	})
 	for _, l := range []interface {
 		Start(context.Context) error
@@ -393,4 +399,17 @@ func tokenKey(v *vault.Vault) []byte {
 		return nil
 	}
 	return v.Derive(core.TokenKeyPurpose)
+}
+
+// later is the World's pool of reads after a call went, started once and
+// stopped when the test ends.
+func (w *World) later(t *testing.T) *firewall.Later {
+	if w.laterPool == nil {
+		w.laterPool = firewall.NewLater()
+		_ = w.laterPool.Start(context.Background())
+		if t != nil {
+			t.Cleanup(func() { _ = w.laterPool.Stop(context.Background()) })
+		}
+	}
+	return w.laterPool
 }

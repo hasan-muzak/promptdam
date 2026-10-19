@@ -152,6 +152,11 @@ type Config struct {
 	// TokenKey names the firewall's tokens (firewall.Scan): the same key on
 	// every replica, derived from the vault; empty numbers them.
 	TokenKey []byte
+	// Detector reads requests with the detector model (features/detector);
+	// nil reads with the firewall's patterns alone. Later reads after a
+	// call went, for labels that only alert.
+	Detector Detector
+	Later    *firewall.Later
 	// Pooled reports a provider whose calls are pooled into the profiles
 	// and planned by them (default providers.Public: a kind's own public
 	// API); tests let their fake providers stand in.
@@ -419,7 +424,7 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	// blocks is placed without the decision model, for the policies that
 	// may let it through to see where it would go.
 	if e := snap.Firewall; e != nil {
-		if err := r.inspect(e, c, m); err != nil {
+		if err := r.inspect(ctx, e, c, m); err != nil {
 			return nil, err
 		}
 	}
@@ -561,11 +566,32 @@ func (r *Resolver) Resolve(ctx context.Context, c *gateway.Call) (*gateway.Route
 	return out, nil
 }
 
+// Detector is the detector model's client: a reader of a project's calls.
+type Detector interface {
+	For(project uuid.UUID) firewall.Reader
+}
+
+// laterWait bounds a read after the call went.
+const laterWait = 10 * time.Second
+
 // inspect runs the firewall over a call's request. A request it masked
 // replaces the client's for everything that reads it next; one it
-// couldn't scan is refused or let through as its fail mode says.
-func (r *Resolver) inspect(e *firewall.Engine, c *gateway.Call, m *Meta) error {
-	o, err := e.InspectCall(c.Body, firewall.Scan{Conversation: c.Request.Turn.First, Key: r.cfg.TokenKey})
+// couldn't scan is refused or let through as its fail mode says. The model
+// reads it now when a label it finds masks or blocks; when its labels only
+// alert, after the call went.
+func (r *Resolver) inspect(ctx context.Context, e *firewall.Engine, c *gateway.Call, m *Meta) error {
+	scan := firewall.Scan{Conversation: c.Request.Turn.First, Key: r.cfg.TokenKey}
+	reads, waits := e.ModelReads()
+	var later firewall.Reader
+	if reads && r.cfg.Detector != nil {
+		if reader := r.cfg.Detector.For(m.Project); waits {
+			scan.Model, scan.Ctx = reader, ctx
+		} else if r.cfg.Later != nil {
+			later = reader
+		}
+	}
+	original := c.Body
+	o, err := e.InspectCall(c.Body, scan)
 	m.Firewall = o
 	if err != nil {
 		slog.Warn("resolver: the firewall couldn't scan a request", "trace", c.Trace, "project", m.Project, "blocked", o.Blocked, "err", err)
@@ -573,6 +599,22 @@ func (r *Resolver) inspect(e *firewall.Engine, c *gateway.Call, m *Meta) error {
 			return blocked(m, o)
 		}
 		return nil
+	}
+	if later != nil {
+		hits := make(chan []firewall.Hit, 1)
+		after := scan
+		after.Model = later
+		if r.cfg.Later.Offer(func() {
+			actx, cancel := context.WithTimeout(context.Background(), laterWait)
+			defer cancel()
+			after.Ctx = actx
+			if o2, err := e.InspectCall(original, after); err == nil && o2.ModelRead {
+				hits <- firewall.ModelHits(o2)
+			}
+			close(hits)
+		}) {
+			o.Later = hits
+		}
 	}
 	if o.Body != nil {
 		req, err := wire.ParseRequest(c.Format, o.Body)

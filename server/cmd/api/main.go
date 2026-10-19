@@ -42,7 +42,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	app := core.NewApp(c, core.WithPrices(prices), core.WithGatewayURL(cfg.GatewayURL))
+	app := core.NewApp(c, core.WithPrices(prices), core.WithGatewayURL(cfg.GatewayURL),
+		core.WithDetector(cfg.DetectorURL, cfg.DetectorToken))
 	if handled, err := cli.Run(ctx, os.Args[1:], os.Stdout, append(c.Commands(), devCommands(c, app)...)...); handled {
 		return err
 	}

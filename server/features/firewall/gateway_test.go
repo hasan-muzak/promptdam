@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/hasan-muzak/keel-core/pkg/ent/webhookdelivery"
 	"github.com/hasan-muzak/keel-core/pkg/entx"
@@ -385,5 +389,82 @@ func TestWatcherTellsOfBlocks(t *testing.T) {
 		if _, alerts := told(); alerts != 2 {
 			t.Fatalf("%d alerts with the digest", alerts)
 		}
+	}
+}
+
+// fakeDetector marks every "Ayşe Yılmaz" as a person, for any project.
+type fakeDetector struct{ asked atomic.Int32 }
+
+func (d *fakeDetector) For(uuid.UUID) firewall.Reader { return d }
+
+func (d *fakeDetector) Spans(_ context.Context, texts []string) ([][]firewall.Span, error) {
+	d.asked.Add(1)
+	out := make([][]firewall.Span, len(texts))
+	for i, t := range texts {
+		if j := strings.Index(t, "Ayşe Yılmaz"); j >= 0 {
+			out[i] = []firewall.Span{{Start: j, End: j + len("Ayşe Yılmaz"), Label: "person", Score: 0.9}}
+		}
+	}
+	return out, nil
+}
+
+// The model's findings through the gateway: a project masking names gets
+// them tokenized before the provider and back in the answer, logged as the
+// model's; a project that only alerts sends the call unread and logs the
+// model's findings after it went.
+func TestDetectorThroughTheGateway(t *testing.T) {
+	ctx := context.Background()
+	det := &fakeDetector{}
+	w := gatewaytest.New(t, gatewaytest.Options{ClickHouse: true, Detector: det,
+		Upstream: fakeupstream.Options{Reply: echo, StreamReply: true}})
+	s := firewall.Defaults()
+	s.PII, s.Model.PII = firewall.Tokenize, true
+	if _, err := w.App.Firewall.Put(w.Scoped(), w.Org, w.Project, s); err != nil {
+		t.Fatal(err)
+	}
+	const said = "Write to Ayşe Yılmaz about the order"
+	status, _, body := w.Call("/v1/chat/completions", request("", "gpt-5-mini", said, false))
+	sent := string(w.Fake.Requests()[0].Body)
+	if status != http.StatusOK || strings.Contains(sent, "Ayşe") || !strings.Contains(sent, "⟦person_") {
+		t.Fatalf("%d, the provider got %s", status, sent)
+	}
+	if got := answer(t, "/v1/chat/completions", body, false); got != "You said: "+said {
+		t.Fatalf("the client got %q", got)
+	}
+
+	// Alerts only: the call goes as it is, the model reads after.
+	s.PII = firewall.Alert
+	if _, err := w.App.Firewall.Put(w.Scoped(), w.Org, w.Project, s); err != nil {
+		t.Fatal(err)
+	}
+	w.Call("/v1/chat/completions", request("", "gpt-5-mini", said+" again", false))
+	if sent := string(w.Fake.Requests()[1].Body); !strings.Contains(sent, "Ayşe Yılmaz") {
+		t.Fatalf("alert-only masked: %s", sent)
+	}
+	if err := w.Log.Stop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct {
+		Action string   `ch:"firewall_action"`
+		Kinds  []string `ch:"firewall_kinds"`
+		Model  string   `ch:"firewall_model"`
+	}
+	if err := w.C.Events.Select(ctx, &rows, events.Project(w.Project),
+		`SELECT firewall_action, firewall_kinds, firewall_model FROM requests WHERE {tenant} ORDER BY ts`); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].Model != "read" || rows[0].Action != "tokenize" || rows[1].Model != "later" ||
+		rows[1].Action != "alert" || !slices.Contains(rows[1].Kinds, "person") {
+		t.Fatalf("requests %+v", rows)
+	}
+	var sources []struct {
+		Source string `ch:"source"`
+	}
+	if err := w.C.Events.Select(ctx, &sources, events.Project(w.Project),
+		`SELECT source FROM firewall_events WHERE {tenant} AND detector = 'person' ORDER BY ts`); err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 2 || sources[0].Source != "model" || sources[1].Source != "model" {
+		t.Fatalf("sources %v", sources)
 	}
 }

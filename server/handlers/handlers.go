@@ -26,6 +26,7 @@ import (
 	"github.com/hasan-muzak/promptdam/server/features/prices"
 	"github.com/hasan-muzak/promptdam/server/features/privacy"
 	"github.com/hasan-muzak/promptdam/server/features/providers"
+	"github.com/hasan-muzak/promptdam/server/features/resolver"
 	"github.com/hasan-muzak/promptdam/server/features/responsecache"
 	"github.com/hasan-muzak/promptdam/server/features/routers"
 	"github.com/hasan-muzak/promptdam/server/features/routes"
@@ -34,6 +35,9 @@ import (
 
 // Handlers hold Promptdam's services.
 type Handlers struct {
+	// Detector reads with the firewall's model in the playground, as the
+	// gateway does (nil: patterns alone).
+	Detector    resolver.Detector
 	Tenancy     *tenancy.Service
 	Providers   *providers.Service
 	Keys        *keysettings.Service
