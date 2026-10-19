@@ -118,9 +118,10 @@ type Leaf struct {
 	Start, End int
 	S          string
 	// Top is the top-level key it is under; Skip marks the protocol's
-	// identifiers and opaque fields, which aren't text.
-	Top  string
-	Skip bool
+	// identifiers and opaque fields, which aren't text; Thinking a model's
+	// thinking, signed as the provider wrote it.
+	Top            string
+	Skip, Thinking bool
 }
 
 // leaves are a document's string values in order: one read serves every
@@ -128,7 +129,8 @@ type Leaf struct {
 func leaves(doc []byte) ([]Leaf, error) {
 	var out []Leaf
 	err := walk(doc, func(w *Walker, start, end int, s string) {
-		out = append(out, Leaf{Start: start, End: end, S: s, Top: w.Top(), Skip: ignored(w) || opaque(w)})
+		out = append(out, Leaf{Start: start, End: end, S: s, Top: w.Top(), Skip: ignored(w) || opaque(w),
+			Thinking: w.Key() == "thinking"})
 	})
 	return out, err
 }

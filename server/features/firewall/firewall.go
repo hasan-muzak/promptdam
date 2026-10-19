@@ -9,6 +9,7 @@
 package firewall
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base32"
@@ -250,6 +251,8 @@ type Engine struct {
 	// all finds everything, whatever the classes' actions, to mask
 	// excerpts (only when they are kept).
 	all *redact.Redactor
+	// allow finds the terms never masked, lowered.
+	allow *redact.Literals
 }
 
 // Compile builds an Engine from checked settings; nil when the firewall
@@ -290,7 +293,7 @@ func Compile(s Settings, env *policy.Env) (*Engine, error) {
 			e.class[name] = ClassCustom
 		}
 	}
-	if len(detectors) == 0 && len(custom) == 0 && len(s.Policies) == 0 {
+	if len(detectors) == 0 && len(custom) == 0 && len(s.Policies) == 0 && !s.Model.Secrets && !s.Model.PII {
 		return nil, nil
 	}
 	r, err := redact.New(redact.Options{Detectors: detectors, Patterns: custom})
@@ -298,6 +301,13 @@ func Compile(s Settings, env *policy.Env) (*Engine, error) {
 		return nil, fmt.Errorf("firewall: %w", err)
 	}
 	e.r = r
+	if len(s.Model.Allow) > 0 {
+		terms := make([]string, len(s.Model.Allow))
+		for i, t := range s.Model.Allow {
+			terms[i] = strings.ToLower(t)
+		}
+		e.allow = redact.NewLiterals(terms)
+	}
 	if s.Excerpts {
 		all := append(append(slices.Clone(redact.DefaultDetectors), redact.IPv4), redact.NationalIDs...)
 		if e.all, err = redact.New(redact.Options{Detectors: all, Patterns: s.Custom}); err != nil {
@@ -339,6 +349,8 @@ type Hit struct {
 	// Excerpt is the text around the first finding, every finding in it
 	// masked (only when the settings keep excerpts).
 	Excerpt string
+	// Model reports the detector model's finding, not a pattern's.
+	Model bool
 }
 
 // Outcome is what the firewall made of a request.
@@ -354,8 +366,9 @@ type Outcome struct {
 	BlockedBy string
 	// Policy is the policy that decided, RouteTo its model (route_to).
 	Policy, RouteTo string
-	// Failed reports a scan that failed and was let through (fail open).
-	Failed bool
+	// Failed reports a scan that failed and was let through (fail open);
+	// ModelFailed the model's, the patterns' findings applied alone.
+	Failed, ModelFailed bool
 }
 
 // Kinds are the detectors found, sorted.
@@ -417,6 +430,13 @@ func blob(s string) bool {
 // ErrScan is a request the firewall couldn't read.
 var ErrScan = errors.New("firewall: the request couldn't be scanned")
 
+// ErrModel is a detector model's answer that doesn't fit the question.
+var ErrModel = errors.New("firewall: the detector model's answer doesn't fit")
+
+// BlockedByModel is what blocked a call the detector model couldn't read
+// when its fail mode is closed.
+const BlockedByModel = "scan:model"
+
 // Inspect scans a request body and applies the classes' actions: the
 // policies come after, with Decide. A scan that fails returns ErrScan
 // with what fail mode says: a blocked outcome, or one let through.
@@ -432,6 +452,10 @@ type Scan struct {
 	// compute from what it sees. Without one, tokens are numbered.
 	Conversation wire.Anchor
 	Key          []byte
+	// Model is the detector model, nil when the gateway has none; Ctx
+	// bounds its wait (the caller's deadline).
+	Model Reader
+	Ctx   context.Context
 }
 
 // tokenName names a value's token for a call with a key.
@@ -458,13 +482,25 @@ func (e *Engine) InspectCall(body []byte, call Scan) (*Outcome, error) {
 		}
 		return o, ErrScan
 	}
+	found := make([][]finding, len(ls))
+	for i, l := range ls {
+		if !l.Skip && !blob(l.S) {
+			found[i] = e.patternFindings(l.S)
+		}
+	}
+	if call.Model != nil && (e.s.Model.Secrets || e.s.Model.PII) {
+		if err := e.readModel(call, ls, found); err != nil {
+			if e.s.Model.FailMode == ModelFailClosed {
+				o.Blocked, o.BlockedBy = true, BlockedByModel
+				return o, ErrScan
+			}
+			o.ModelFailed = true
+		}
+	}
 	sc := scan{e: e, o: o, call: call, hits: map[[2]string]*Hit{}}
 	repl := map[int]string{}
 	for i, l := range ls {
-		if l.Skip || blob(l.S) {
-			continue
-		}
-		if r, ok := sc.apply(l, e.find(l.S)); ok {
+		if r, ok := sc.apply(l, found[i]); ok {
 			repl[i] = r
 		}
 	}
@@ -487,9 +523,9 @@ type scan struct {
 	order [][2]string
 }
 
-// apply takes the findings fs in one value and returns the value with the
-// classes' actions applied; false when it is unchanged.
-func (sc *scan) apply(l Leaf, fs []redact.Finding) (string, bool) {
+// apply takes the findings fs in one value and returns the value with
+// their actions applied; false when it is unchanged.
+func (sc *scan) apply(l Leaf, fs []finding) (string, bool) {
 	if len(fs) == 0 {
 		return "", false
 	}
@@ -499,8 +535,7 @@ func (sc *scan) apply(l Leaf, fs []redact.Finding) (string, bool) {
 	var b strings.Builder
 	last, changed := 0, false
 	for _, f := range fs {
-		class := e.class[f.Detector]
-		action := e.action(class)
+		action := f.Action
 		value := s[f.Start:f.End]
 		// A value that JSON must escape can't be put back verbatim in a
 		// streamed answer's text: it is masked instead.
@@ -510,13 +545,16 @@ func (sc *scan) apply(l Leaf, fs []redact.Finding) (string, bool) {
 		k := [2]string{f.Detector, l.Top}
 		h := sc.hits[k]
 		if h == nil {
-			h = &Hit{Detector: f.Detector, Class: class, Action: action, Location: l.Top}
+			h = &Hit{Detector: f.Detector, Class: f.Class, Action: action, Location: l.Top, Model: f.Model}
 			if e.all != nil {
 				if spans == nil {
 					spans = e.all.Find(s)
+					for _, g := range fs {
+						spans = append(spans, redact.Finding{Detector: g.Detector, Start: g.Start, End: g.End})
+					}
 					slices.SortFunc(spans, func(a, b redact.Finding) int { return a.Start - b.Start })
 				}
-				h.Excerpt = excerpt(s, f, spans)
+				h.Excerpt = excerpt(s, redact.Finding{Detector: f.Detector, Start: f.Start, End: f.End}, spans)
 			}
 			sc.hits[k] = h
 			sc.order = append(sc.order, k)
@@ -525,7 +563,7 @@ func (sc *scan) apply(l Leaf, fs []redact.Finding) (string, bool) {
 		b.WriteString(s[last:f.Start])
 		switch action {
 		case Block:
-			o.Blocked, o.BlockedBy = true, class
+			o.Blocked, o.BlockedBy = true, f.Class
 			b.WriteString(value)
 		case Redact:
 			b.WriteString("[REDACTED:" + f.Detector + "]")
@@ -549,6 +587,38 @@ func (sc *scan) apply(l Leaf, fs []redact.Finding) (string, bool) {
 	}
 	b.WriteString(s[last:])
 	return b.String(), true
+}
+
+// readModel asks the model about the leaves it reads and merges its
+// findings into found, then makes every value it found consistent across
+// the request.
+func (e *Engine) readModel(call Scan, ls []Leaf, found [][]finding) error {
+	var idx []int
+	var texts []string
+	for i, l := range ls {
+		if modelReads(l) {
+			idx, texts = append(idx, i), append(texts, l.S)
+		}
+	}
+	if len(texts) == 0 {
+		return nil
+	}
+	ctx := call.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	spans, err := call.Model.Spans(ctx, texts)
+	if err != nil {
+		return err
+	}
+	if len(spans) != len(texts) {
+		return ErrModel
+	}
+	for k, i := range idx {
+		found[i] = merge(found[i], e.modelFindings(ls[i].S, spans[k]))
+	}
+	e.consistent(ls, found)
+	return nil
 }
 
 // plain reports a value JSON writes as it is.
@@ -608,7 +678,7 @@ func (e *Engine) HasPolicies() bool { return len(e.s.Policies) > 0 }
 // or sends it to another model. A policy that fails to evaluate doesn't
 // hold; a request that couldn't be scanned stays as fail mode left it.
 func (e *Engine) Decide(o *Outcome, req rules.Request, c Call) {
-	if len(e.s.Policies) == 0 || o.BlockedBy == "scan" || o.Failed {
+	if len(e.s.Policies) == 0 || o.BlockedBy == "scan" || o.BlockedBy == BlockedByModel || o.Failed {
 		return
 	}
 	findings, classes := map[string]int64{}, map[string]int64{ClassSecret: 0, ClassPII: 0, ClassSensitive: 0, ClassCustom: 0}
@@ -658,6 +728,8 @@ func (o *Outcome) BlockMessage() string {
 		return "the firewall's policy " + strings.TrimPrefix(o.BlockedBy, "policy:") + " refused the request"
 	case o.BlockedBy == "scan":
 		return "the firewall couldn't scan the request, and refuses what it can't scan"
+	case o.BlockedBy == BlockedByModel:
+		return "the firewall's detector model couldn't read the request in time, and this project refuses what it can't read"
 	}
 	var kinds []string
 	for _, h := range o.Hits {

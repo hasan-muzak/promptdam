@@ -168,11 +168,12 @@ func (in *TestFirewallIn) Validate(v *muzak.Validation) {
 // FirewallHitOut is a detector's findings in one part of a call.
 type FirewallHitOut struct {
 	Detector string `json:"detector"`
-	Class    string `json:"class" doc:"secret, pii or custom"`
+	Class    string `json:"class" doc:"secret, pii, sensitive or custom"`
 	Action   string `json:"action" doc:"What the findings got: block, redact, tokenize or alert"`
 	Location string `json:"location" doc:"The request's top-level field they are in: messages, system, tools, input…"`
 	Count    int    `json:"count"`
 	Excerpt  string `json:"excerpt,omitempty" doc:"The text around the first one, findings masked (with excerpts on)"`
+	Model    bool   `json:"model" doc:"Found by the detector model, not a pattern"`
 }
 
 // TestFirewallOut is what the firewall would do with the request.
